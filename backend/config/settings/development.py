@@ -7,13 +7,28 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 
-# Use SQLite for simple development if PostgreSQL not available
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Use PostgreSQL with pgvector for development
+# DATABASE_URL takes precedence (used in Docker), otherwise use localhost (local dev)
+import dj_database_url
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    # Docker environment - use DATABASE_URL
+    DATABASES = {
+        'default': dj_database_url.config(default=DATABASE_URL)
     }
-}
+else:
+    # Local development - connect to Docker PostgreSQL on localhost
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'bet_hope',
+            'USER': 'bet_hope',
+            'PASSWORD': 'bet_hope_password',
+            'HOST': 'localhost',
+            'PORT': '5432',
+        }
+    }
 
 # Django Debug Toolbar (optional)
 try:

@@ -152,18 +152,23 @@ Be objective, data-driven, and clear about uncertainties. Always mention relevan
         context_chunks = []
 
         if include_rag:
-            rag_service = RAGService()
-            results = rag_service.retrieve_for_prediction(prediction, top_k=5)
-            context = rag_service.build_context(results, max_tokens=2000)
-            context_chunks = [r.chunk_id for r in results]
+            try:
+                rag_service = RAGService()
+                results = rag_service.retrieve_for_prediction(prediction, top_k=5)
+                context = rag_service.build_context(results, max_tokens=2000)
+                context_chunks = [r.chunk_id for r in results]
 
-            # Add team stats
-            stats = rag_service.get_relevant_stats(
-                prediction.match.home_team_id,
-                prediction.match.away_team_id
-            )
-            if stats:
-                context += f"\n\n---\n\nCurrent Statistics:\n{json.dumps(stats, indent=2)}"
+                # Add team stats
+                stats = rag_service.get_relevant_stats(
+                    prediction.match.home_team_id,
+                    prediction.match.away_team_id
+                )
+                if stats:
+                    context += f"\n\n---\n\nCurrent Statistics:\n{json.dumps(stats, indent=2)}"
+            except Exception as e:
+                logger.warning(f"RAG retrieval failed, continuing without context: {e}")
+                context = ""
+                context_chunks = []
 
         # Build prompt
         prompt = self._build_prompt(prediction, context)
@@ -207,23 +212,70 @@ Be objective, data-driven, and clear about uncertainties. Always mention relevan
         """Build the analysis prompt."""
         match = prediction.match
 
+        # Calculate predicted total goals from individual scores if available
+        predicted_goals = 0
+        if prediction.predicted_home_score and prediction.predicted_away_score:
+            predicted_goals = float(prediction.predicted_home_score) + float(prediction.predicted_away_score)
+
         prompt = f"""Analyze this football match prediction and provide detailed recommendations.
 
 ## Match Information
 - **Match**: {match.home_team.name} vs {match.away_team.name}
 - **Date**: {match.match_date}
 - **League**: {match.season.league.name}
+- **Prediction Strength**: {prediction.prediction_strength}
+- **Model Version**: {prediction.model_version}
+- **Model Type**: {prediction.model_type}
 
 ## Model Prediction
-- **Predicted Outcome**: {self._outcome_label(prediction.predicted_outcome)}
-- **Confidence**: {float(prediction.confidence) * 100:.1f}%
-- **Home Win Probability**: {float(prediction.home_win_prob) * 100:.1f}%
-- **Draw Probability**: {float(prediction.draw_prob) * 100:.1f}%
-- **Away Win Probability**: {float(prediction.away_win_prob) * 100:.1f}%
-- **Predicted Total Goals**: {float(prediction.predicted_total_goals or 0):.1f}
-- **Over 2.5 Goals Probability**: {float(prediction.over_25_prob or 0) * 100:.1f}%
+- **Predicted Outcome**: {self._outcome_label(prediction.recommended_outcome)}
+- **Confidence**: {float(prediction.confidence_score) * 100:.1f}%
+- **Home Win Probability**: {float(prediction.home_win_probability) * 100:.1f}%
+- **Draw Probability**: {float(prediction.draw_probability) * 100:.1f}%
+- **Away Win Probability**: {float(prediction.away_win_probability) * 100:.1f}%
+- **Predicted Score**: {float(prediction.predicted_home_score or 0):.1f} - {float(prediction.predicted_away_score or 0):.1f}
+- **Predicted Total Goals**: {predicted_goals:.1f}
 
 """
+
+        # Add model key factors if available
+        if prediction.key_factors:
+            prompt += "## Model Key Factors\n"
+            for factor in prediction.key_factors[:10]:
+                if isinstance(factor, dict):
+                    # Handle dictionary format
+                    market = factor.get('market', 'unknown').replace('_', ' ').title()
+                    prob = factor.get('probability', 0)
+                    conf = factor.get('confidence', 'unknown')
+                    prompt += f"- **{market}**: {prob*100:.1f}% probability ({conf} confidence)\n"
+                else:
+                    prompt += f"- {factor}\n"
+            prompt += "\n"
+
+        # Add feature data if available (summarized)
+        if prediction.features_json:
+            features = prediction.features_json
+            prompt += "## Feature Summary\n"
+            # Extract key features
+            key_features = [
+                ('home_form_points', 'Home Team Form Points'),
+                ('away_form_points', 'Away Team Form Points'),
+                ('home_goals_scored_avg', 'Home Goals Scored Avg'),
+                ('away_goals_scored_avg', 'Away Goals Scored Avg'),
+                ('home_goals_conceded_avg', 'Home Goals Conceded Avg'),
+                ('away_goals_conceded_avg', 'Away Goals Conceded Avg'),
+                ('h2h_home_wins', 'H2H Home Wins'),
+                ('h2h_away_wins', 'H2H Away Wins'),
+                ('h2h_draws', 'H2H Draws'),
+                ('home_ppg', 'Home Points Per Game'),
+                ('away_ppg', 'Away Points Per Game'),
+            ]
+            for key, label in key_features:
+                if key in features:
+                    prompt += f"- **{label}**: {features[key]}\n"
+            prompt += "\n"
+
+
 
         if context:
             prompt += f"""## Relevant Context & Statistics

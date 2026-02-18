@@ -141,20 +141,24 @@ class RAGService:
         query_parts = [
             f"{match.home_team.name} vs {match.away_team.name}",
             f"match prediction analysis",
-            f"home win probability {float(prediction.home_win_prob):.0%}",
-            f"away win probability {float(prediction.away_win_prob):.0%}",
+            f"home win probability {float(prediction.home_win_probability):.0%}",
+            f"away win probability {float(prediction.away_win_probability):.0%}",
         ]
 
         # Add outcome-specific context
-        if prediction.predicted_outcome == 'H':
+        if prediction.recommended_outcome == 'HOME':
             query_parts.append(f"home team advantage {match.home_team.name}")
-        elif prediction.predicted_outcome == 'A':
+        elif prediction.recommended_outcome == 'AWAY':
             query_parts.append(f"away team performance {match.away_team.name}")
         else:
             query_parts.append("draw prediction factors")
 
-        # Add goals context
-        if prediction.over_25_prob and float(prediction.over_25_prob) > 0.5:
+        # Add goals context based on predicted scores
+        predicted_goals = 0
+        if prediction.predicted_home_score and prediction.predicted_away_score:
+            predicted_goals = float(prediction.predicted_home_score) + float(prediction.predicted_away_score)
+
+        if predicted_goals > 2.5:
             query_parts.append("high scoring match analysis")
         else:
             query_parts.append("low scoring defensive match")

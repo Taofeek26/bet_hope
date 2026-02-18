@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { useDailyPicks } from '@/hooks/useApi';
 import { Card, CardHeader, CardBody, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ProbabilityBar } from '@/components/ui/ProbabilityBar';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import { formatProbability, getOutcomeLabel } from '@/lib/utils';
 import { Trophy, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -45,8 +47,9 @@ function PickCard({ pick }: { pick: any }) {
   const match = pick.match;
 
   return (
-    <Link href={`/matches/${match.id}`}>
-      <div className="p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
+    <div className="p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 transition-colors">
+      {/* Clickable match info section */}
+      <Link href={`/matches/${match.id}`} className="block">
         {/* League & Time */}
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs text-slate-400">{match.league}</span>
@@ -89,7 +92,18 @@ function PickCard({ pick }: { pick: any }) {
           drawProb={prediction.probabilities.draw}
           awayProb={prediction.probabilities.away}
         />
-      </div>
-    </Link>
+      </Link>
+
+      {/* AI Enhancement - outside the Link to prevent navigation */}
+      {prediction.id && (
+        <AIEnhancement
+          predictionId={prediction.id}
+          matchInfo={{
+            homeTeam: match.home_team,
+            awayTeam: match.away_team,
+          }}
+        />
+      )}
+    </div>
   );
 }

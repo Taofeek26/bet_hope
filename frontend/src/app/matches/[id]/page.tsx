@@ -2,9 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
-import { Calendar, Clock, Trophy, TrendingUp, ArrowLeft, Target } from 'lucide-react';
+import { Calendar, Clock, Trophy, TrendingUp, ArrowLeft, Target, CheckCircle, XCircle } from 'lucide-react';
 import { matchesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import Link from 'next/link';
 
 export default function MatchDetailPage() {
@@ -116,19 +117,56 @@ export default function MatchDetailPage() {
               </div>
 
               <div className="space-y-4">
+                {/* Verification Result for Finished Matches */}
+                {isFinished && match.prediction.result_verification && (
+                  <PredictionVerification
+                    verification={match.prediction.result_verification}
+                    homeTeam={homeTeam}
+                    awayTeam={awayTeam}
+                  />
+                )}
+
                 <div className="p-4 bg-surface rounded-lg">
                   <div className="text-sm text-text-muted mb-1">Predicted Outcome</div>
                   <div className="text-xl font-bold text-brand">
                     {match.prediction.recommended_outcome === 'HOME' ? homeTeam :
                      match.prediction.recommended_outcome === 'AWAY' ? awayTeam : 'Draw'}
                   </div>
+                  {match.prediction.predicted_home_score != null && match.prediction.predicted_away_score != null && (
+                    <div className="text-sm text-text-muted mt-1">
+                      Predicted Score: {Math.round(match.prediction.predicted_home_score)} - {Math.round(match.prediction.predicted_away_score)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
-                  <ProbabilityBox label="Home" value={match.prediction.probabilities?.home} />
-                  <ProbabilityBox label="Draw" value={match.prediction.probabilities?.draw} />
-                  <ProbabilityBox label="Away" value={match.prediction.probabilities?.away} />
+                  <ProbabilityBox
+                    label="Home"
+                    value={match.prediction.probabilities?.home}
+                    isActual={isFinished && match.home_score > match.away_score}
+                  />
+                  <ProbabilityBox
+                    label="Draw"
+                    value={match.prediction.probabilities?.draw}
+                    isActual={isFinished && match.home_score === match.away_score}
+                  />
+                  <ProbabilityBox
+                    label="Away"
+                    value={match.prediction.probabilities?.away}
+                    isActual={isFinished && match.home_score < match.away_score}
+                  />
                 </div>
+
+                {/* AI Enhancement Suggestions - only for non-finished */}
+                {!isFinished && (
+                  <AIEnhancement
+                    predictionId={match.prediction.id}
+                    matchInfo={{
+                      homeTeam,
+                      awayTeam,
+                    }}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -197,12 +235,57 @@ export default function MatchDetailPage() {
   );
 }
 
-function ProbabilityBox({ label, value }: { label: string; value?: number }) {
+function ProbabilityBox({ label, value, isActual }: { label: string; value?: number; isActual?: boolean }) {
   const percentage = value ? (value * 100).toFixed(1) : '0';
   return (
-    <div className="p-4 bg-surface rounded-lg text-center">
-      <div className="text-xs text-text-muted mb-1">{label}</div>
-      <div className="text-xl font-bold text-text">{percentage}%</div>
+    <div className={`p-4 rounded-lg text-center ${isActual ? 'bg-green-500/20 border border-green-500/30' : 'bg-surface'}`}>
+      <div className={`text-xs mb-1 ${isActual ? 'text-green-500 font-medium' : 'text-text-muted'}`}>
+        {label} {isActual && '✓'}
+      </div>
+      <div className={`text-xl font-bold ${isActual ? 'text-green-500' : 'text-text'}`}>{percentage}%</div>
+    </div>
+  );
+}
+
+function PredictionVerification({ verification, homeTeam, awayTeam }: {
+  verification: { actual_result: string; actual_score: string; predicted_result: string; predicted_score?: string; is_correct: boolean };
+  homeTeam: string;
+  awayTeam: string;
+}) {
+  const isCorrect = verification.is_correct;
+  const actualTeam = verification.actual_result === 'HOME' ? homeTeam : verification.actual_result === 'AWAY' ? awayTeam : 'Draw';
+  const predictedTeam = verification.predicted_result === 'HOME' ? homeTeam : verification.predicted_result === 'AWAY' ? awayTeam : 'Draw';
+
+  return (
+    <div className={`p-4 rounded-lg ${isCorrect ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
+      <div className="flex items-center gap-3 mb-3">
+        {isCorrect ? (
+          <CheckCircle className="w-6 h-6 text-green-500" />
+        ) : (
+          <XCircle className="w-6 h-6 text-red-500" />
+        )}
+        <div>
+          <div className={`text-lg font-bold ${isCorrect ? 'text-green-500' : 'text-red-500'}`}>
+            {isCorrect ? 'Prediction Correct!' : 'Prediction Incorrect'}
+          </div>
+          <div className="text-sm text-text-muted">Match has ended</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="p-3 bg-card/50 rounded-lg">
+          <div className="text-xs text-text-muted mb-1">Predicted</div>
+          <div className="font-semibold text-text">{predictedTeam}</div>
+          {verification.predicted_score && (
+            <div className="text-sm text-text-sec">{verification.predicted_score}</div>
+          )}
+        </div>
+        <div className="p-3 bg-card/50 rounded-lg">
+          <div className="text-xs text-text-muted mb-1">Actual Result</div>
+          <div className="font-semibold text-text">{actualTeam}</div>
+          <div className="text-sm text-text-sec">{verification.actual_score}</div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -28,6 +28,7 @@ class PredictionSerializer(serializers.ModelSerializer):
     match = serializers.SerializerMethodField()
     probabilities = serializers.SerializerMethodField()
     recommended_bet = serializers.SerializerMethodField()
+    result_verification = serializers.SerializerMethodField()
 
     class Meta:
         model = Prediction
@@ -43,6 +44,7 @@ class PredictionSerializer(serializers.ModelSerializer):
             'predicted_home_score',
             'predicted_away_score',
             'recommended_bet',
+            'result_verification',
             'created_at',
         ]
 
@@ -83,6 +85,32 @@ class PredictionSerializer(serializers.ModelSerializer):
             'probability': best_prob,
             'confidence': obj.prediction_strength,
             'fair_odds': fair_odds,
+        }
+
+    def get_result_verification(self, obj) -> dict:
+        """Check if prediction was correct for finished matches."""
+        if obj.match.status != 'finished':
+            return None
+
+        if obj.match.home_score is None or obj.match.away_score is None:
+            return None
+
+        # Determine actual result
+        if obj.match.home_score > obj.match.away_score:
+            actual = 'HOME'
+        elif obj.match.home_score < obj.match.away_score:
+            actual = 'AWAY'
+        else:
+            actual = 'DRAW'
+
+        is_correct = obj.recommended_outcome == actual
+
+        return {
+            'actual_result': actual,
+            'actual_score': f"{obj.match.home_score}-{obj.match.away_score}",
+            'predicted_result': obj.recommended_outcome,
+            'predicted_score': f"{round(float(obj.predicted_home_score or 0))}-{round(float(obj.predicted_away_score or 0))}" if obj.predicted_home_score is not None else None,
+            'is_correct': is_correct,
         }
 
 

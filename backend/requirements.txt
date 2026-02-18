@@ -91,6 +91,7 @@ python-dateutil>=2.8.2
 pytz>=2023.3
 python-slugify>=8.0.1
 Pillow>=10.1.0  # Image processing
+feedparser>=6.0.10  # RSS/Atom feed parsing
 
 # =============================================================================
 # CACHING

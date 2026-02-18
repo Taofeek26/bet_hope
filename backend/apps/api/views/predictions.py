@@ -123,15 +123,21 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         """Get predictions for upcoming matches."""
         today = timezone.now().date()
         days = int(request.query_params.get('days', 7))
+        include_finished = request.query_params.get('include_finished', 'false').lower() == 'true'
 
         predictions = Prediction.objects.filter(
             match__match_date__gte=today,
             match__match_date__lte=today + timedelta(days=days),
-            match__status='scheduled',
         ).select_related(
             'match', 'match__home_team', 'match__away_team',
             'match__season__league'
-        ).order_by('match__match_date', 'match__kickoff_time')
+        )
+
+        # Only filter by status if not including finished
+        if not include_finished:
+            predictions = predictions.filter(match__status='scheduled')
+
+        predictions = predictions.order_by('match__match_date', 'match__kickoff_time')
 
         # Optional confidence filter
         min_conf = request.query_params.get('min_confidence')
@@ -140,6 +146,41 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response({
             'period': f"{today} to {today + timedelta(days=days)}",
+            'total': predictions.count(),
+            'predictions': PredictionSerializer(predictions, many=True).data,
+        })
+
+    @action(detail=False, methods=['get'])
+    def recent(self, request):
+        """Get predictions for recent matches (including yesterday and today)."""
+        today = timezone.now().date()
+        days_back = int(request.query_params.get('days_back', 1))
+        days_forward = int(request.query_params.get('days_forward', 7))
+        include_finished = request.query_params.get('include_finished', 'true').lower() == 'true'
+
+        start_date = today - timedelta(days=days_back)
+        end_date = today + timedelta(days=days_forward)
+
+        predictions = Prediction.objects.filter(
+            match__match_date__gte=start_date,
+            match__match_date__lte=end_date,
+        ).select_related(
+            'match', 'match__home_team', 'match__away_team',
+            'match__season__league'
+        )
+
+        if not include_finished:
+            predictions = predictions.filter(match__status='scheduled')
+
+        predictions = predictions.order_by('-match__match_date', 'match__kickoff_time')
+
+        # Optional confidence filter
+        min_conf = request.query_params.get('min_confidence')
+        if min_conf:
+            predictions = predictions.filter(confidence_score__gte=float(min_conf))
+
+        return Response({
+            'period': f"{start_date} to {end_date}",
             'total': predictions.count(),
             'predictions': PredictionSerializer(predictions, many=True).data,
         })
@@ -252,6 +293,10 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         for pred in predictions:
             match = pred.match
 
+            # Skip if scores are None
+            if match.home_score is None or match.away_score is None:
+                continue
+
             # Determine actual result
             if match.home_score > match.away_score:
                 actual = 'H'
@@ -261,7 +306,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                 actual = 'D'
 
             # Map recommended_outcome to H/D/A format
-            outcome_map = {'HOME': 'H', 'DRAW': 'D', 'AWAY': 'A'}
+            outcome_map = {'HOME': 'H', 'DRAW': 'D', 'AWAY': 'A', 'H': 'H', 'D': 'D', 'A': 'A'}
             predicted = outcome_map.get(pred.recommended_outcome, pred.recommended_outcome)
             is_correct = predicted == actual
 
@@ -323,7 +368,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
     def model_info(self, request):
         """Get information about the active model."""
         try:
-            active_model = ModelVersion.objects.filter(is_active=True).first()
+            active_model = ModelVersion.objects.filter(status='active').first()
 
             if active_model:
                 return Response(ModelVersionSerializer(active_model).data)
@@ -375,6 +420,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                     'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
                 },
                 'prediction': {
+                    'id': pred.id,
                     'outcome': pred.recommended_outcome,
                     'confidence': float(pred.confidence_score),
                     'probabilities': {

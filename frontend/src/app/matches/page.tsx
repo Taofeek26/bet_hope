@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, Clock, Trophy, Filter, RefreshCw, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, Trophy, Filter, RefreshCw, ChevronDown, Check, X } from 'lucide-react';
 import { matchesApi, leaguesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useState } from 'react';
@@ -157,8 +157,14 @@ function MatchCard({ match }: { match: any }) {
   const awayTeam = match.away_team_name || match.away_team?.name || 'Away Team';
   const leagueName = match.league_name || match.league?.name || '';
 
+  // Check prediction verification for finished matches
+  const prediction = match.prediction;
+  const verification = prediction?.result_verification;
+  const hasVerification = isFinished && verification && verification.actual_score;
+  const isCorrect = verification?.is_correct;
+
   return (
-    <Link href={`/matches/${match.id}`} className="match-card hover:border-brand/50 transition-colors">
+    <Link href={`/matches/${match.id}`} className={`match-card hover:border-brand/50 transition-colors ${hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : ''}`}>
       <div className="match-teams flex-1">
         <div className="match-team">
           <span className="text-text font-medium">{homeTeam}</span>
@@ -184,15 +190,24 @@ function MatchCard({ match }: { match: any }) {
         )}
       </div>
 
-      <div className="match-prediction min-w-[100px]">
-        {match.prediction && (
-          <>
-            <span className="text-xs text-text-muted">Prediction</span>
-            <span className="badge badge-brand">
-              {match.prediction.predicted_outcome === 'H' ? 'Home' :
-               match.prediction.predicted_outcome === 'A' ? 'Away' : 'Draw'}
-            </span>
-          </>
+      <div className="match-prediction min-w-[120px]">
+        {prediction && (
+          <div className="flex items-center gap-2">
+            {hasVerification && (
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isCorrect ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                {isCorrect ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-red-500" />}
+              </div>
+            )}
+            <div>
+              <span className="text-xs text-text-muted">
+                {hasVerification ? (isCorrect ? 'Correct' : 'Wrong') : 'Prediction'}
+              </span>
+              <span className={`badge ${hasVerification ? (isCorrect ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500') : 'badge-brand'}`}>
+                {prediction.predicted_outcome === 'H' || prediction.recommended_outcome === 'HOME' ? 'Home' :
+                 prediction.predicted_outcome === 'A' || prediction.recommended_outcome === 'AWAY' ? 'Away' : 'Draw'}
+              </span>
+            </div>
+          </div>
         )}
       </div>
     </Link>

@@ -45,6 +45,35 @@ Bet_Hope/
 
 ---
 
+## Quick Reference (Common Commands)
+
+```bash
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f backend
+
+# Check status
+docker compose ps
+
+# Restart after code changes
+docker compose restart backend celery celery-beat
+
+# Rebuild backend (after requirements.txt changes)
+docker compose build backend && docker compose up -d
+
+# Access URLs
+# Frontend:  http://localhost:3001
+# Backend:   http://localhost:8000/api/v1/
+# Flower:    http://localhost:5555
+```
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -194,11 +223,26 @@ npm run dev
 - Daily historical data refresh
 - Weekly model retraining
 
-### Document AI
-- News sentiment analysis
-- Injury report processing
-- Manager quotes analysis
-- Tactical insights extraction
+### Document AI & RAG
+- **News Scraping**: Auto-scrapes football news from ESPN, BBC Sport, Sky Sports
+- **Betting Guides**: Built-in strategy documents for RAG context
+- **Vector Embeddings**: pgvector for semantic search
+- **AI Recommendations**: RAG-enhanced analysis using OpenAI, Claude, or Gemini
+
+### Scheduled Background Tasks
+
+| Task | Schedule | Description |
+|------|----------|-------------|
+| Data Sync | 4:00 AM UTC | Download latest match data |
+| Model Training | 5:00 AM UTC | Retrain prediction models |
+| Generate Predictions | Every 6 hours | Update match predictions |
+| Update Results | Every 3 hours | Fetch completed match results |
+| **Morning News Scrape** | 6:00 AM UTC | Scrape football news RSS feeds |
+| **Evening News Scrape** | 6:00 PM UTC | Scrape football news RSS feeds |
+| Document Refresh | 4:30 AM UTC | Full document refresh pipeline |
+| Embed Documents | 4:45 AM UTC | Generate embeddings for RAG |
+| Cleanup Old News | 5:30 AM UTC | Remove news older than 7 days |
+| Weekly Cleanup | Sunday 3:00 AM | Clean up old data and embeddings |
 
 ### Multi-League Support
 - **Tier 1:** Premier League, La Liga, Serie A, Bundesliga, Ligue 1
@@ -276,6 +320,11 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
 | `/api/v1/ai-recommendations/generate/` | POST | Generate AI recommendation |
 | `/api/v1/ai-recommendations/providers/` | GET | List available AI providers |
 | `/api/v1/documents/` | GET | List documents for RAG |
+| `/api/v1/documents/stats/` | GET | Document statistics |
+| `/api/v1/documents/search/?q=query` | GET | Search documents (vector similarity) |
+| `/api/v1/documents/refresh/` | POST | Trigger document refresh |
+| `/api/v1/documents/scrape-news/` | POST | Scrape latest football news |
+| `/api/v1/documents/upload/` | POST | Upload new document |
 
 Full API documentation: `backend/docs/API.md`
 
@@ -283,23 +332,77 @@ Full API documentation: `backend/docs/API.md`
 
 ## Deployment
 
-### Docker Compose (Production)
+### Docker Commands
 
+#### Start All Services
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+# Start all services in detached mode
+docker compose up -d
+
+# Or with full path (macOS)
+/Applications/Docker.app/Contents/Resources/bin/docker compose up -d
+```
+
+#### Stop All Services
+```bash
+# Stop all services
+docker compose down
+
+# Stop and remove volumes (WARNING: deletes database data)
+docker compose down -v
+```
+
+#### Start/Stop Individual Services
+```bash
+# Start only backend and frontend
+docker compose up -d backend frontend
+
+# Stop only backend
+docker compose stop backend
+
+# Restart backend
+docker compose restart backend
+
+# Restart celery workers (after code changes)
+docker compose restart celery celery-beat
+```
+
+#### Rebuild After Code Changes
+```bash
+# Rebuild and restart backend
+docker compose build backend && docker compose up -d backend
+
+# Rebuild all services
+docker compose build && docker compose up -d
+```
+
+#### View Logs
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f celery
+```
+
+#### Check Service Status
+```bash
+docker compose ps
 ```
 
 ### Services (Development)
 
-| Service | Port | Description |
-|---------|------|-------------|
-| frontend | 3001 | Next.js app (dev mode) |
-| backend | 8000 | Django API |
-| celery | - | Background workers |
-| celery-beat | - | Task scheduler |
-| flower | 5555 | Celery monitoring |
-| postgres | 5432 | PostgreSQL + pgvector |
-| redis | 6379 | Cache & queue |
+| Service | Port | URL | Description |
+|---------|------|-----|-------------|
+| frontend | 3001 | http://localhost:3001 | Next.js app (dev mode) |
+| backend | 8000 | http://localhost:8000/api/v1/ | Django API |
+| celery | - | - | Background workers |
+| celery-beat | - | - | Task scheduler |
+| flower | 5555 | http://localhost:5555 | Celery monitoring |
+| postgres | 5432 | - | PostgreSQL + pgvector |
+| redis | 6379 | - | Cache & queue |
 
 ### Services (Production)
 

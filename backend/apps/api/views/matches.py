@@ -43,7 +43,8 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = Match.objects.select_related(
-            'home_team', 'away_team', 'season', 'season__league'
+            'home_team', 'away_team', 'season', 'season__league',
+            'statistics', 'odds'
         ).prefetch_related('predictions')
 
         # Filter by league
@@ -146,7 +147,7 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
             status=Match.Status.FINISHED,
         ).select_related(
             'home_team', 'away_team', 'season__league'
-        ).order_by('-match_date', '-kickoff_time')
+        ).prefetch_related('predictions').order_by('-match_date', '-kickoff_time')
 
         # Optional league filter
         league = request.query_params.get('league')

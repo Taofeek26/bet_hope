@@ -76,6 +76,61 @@ app.conf.beat_schedule = {
         'schedule': crontab(day_of_week=0, hour=3, minute=0),  # Sunday 3:00 AM
         'options': {'queue': 'default'},
     },
+
+    # Document scraping and embedding tasks
+    'daily-document-refresh': {
+        'task': 'tasks.documents.refresh_all_documents',
+        'schedule': crontab(hour=4, minute=30),  # 4:30 AM UTC (after data sync starts)
+        'options': {'queue': 'default'},
+    },
+
+    # Scrape external documentation
+    'daily-scrape-docs': {
+        'task': 'tasks.documents.scrape_documentation',
+        'schedule': crontab(hour=4, minute=15),  # 4:15 AM UTC
+        'options': {'queue': 'default'},
+    },
+
+    # Update built-in strategy documents
+    'daily-update-strategies': {
+        'task': 'tasks.documents.update_strategy_documents',
+        'schedule': crontab(hour=4, minute=20),  # 4:20 AM UTC
+        'options': {'queue': 'default'},
+    },
+
+    # Embed new documents
+    'daily-embed-documents': {
+        'task': 'tasks.documents.embed_documents',
+        'schedule': crontab(hour=4, minute=45),  # 4:45 AM UTC (after updates)
+        'options': {'queue': 'default'},
+    },
+
+    # Weekly cleanup of old embeddings
+    'weekly-cleanup-embeddings': {
+        'task': 'tasks.documents.cleanup_old_embeddings',
+        'schedule': crontab(day_of_week=0, hour=3, minute=30),  # Sunday 3:30 AM
+        'options': {'queue': 'default'},
+    },
+
+    # Scrape football news twice daily
+    'morning-football-news': {
+        'task': 'tasks.documents.scrape_football_news',
+        'schedule': crontab(hour=6, minute=0),  # 6:00 AM UTC
+        'options': {'queue': 'default'},
+    },
+
+    'evening-football-news': {
+        'task': 'tasks.documents.scrape_football_news',
+        'schedule': crontab(hour=18, minute=0),  # 6:00 PM UTC
+        'options': {'queue': 'default'},
+    },
+
+    # Clean up old news daily
+    'daily-cleanup-old-news': {
+        'task': 'tasks.documents.cleanup_old_news',
+        'schedule': crontab(hour=5, minute=30),  # 5:30 AM UTC
+        'options': {'queue': 'default'},
+    },
 }
 
 # Task routing
@@ -84,6 +139,7 @@ app.conf.task_routes = {
     'tasks.training.*': {'queue': 'ml'},
     'tasks.predictions.*': {'queue': 'predictions'},
     'tasks.analytics.*': {'queue': 'analytics'},
+    'tasks.documents.*': {'queue': 'default'},
 }
 
 # Task settings

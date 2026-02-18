@@ -197,3 +197,29 @@ export interface PaginatedResponse<T> {
 
 // Form types
 export type FormResult = 'W' | 'D' | 'L';
+
+// AI Recommendation types
+export interface AIRecommendation {
+  id: number;
+  prediction_id: number;
+  provider: 'openai' | 'anthropic' | 'google';
+  model: string;
+  recommendation: string;
+  confidence_assessment: string;
+  risk_analysis: string;
+  key_factors: string[];
+  tokens_used: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  created_at: string;
+}
+
+export interface AIRecommendationResponse {
+  status: 'success' | 'error';
+  recommendation: string;
+  confidence_assessment: string;
+  risk_analysis: string;
+  key_factors: string[];
+  provider: string;
+  model: string;
+  tokens_used: number;
+}

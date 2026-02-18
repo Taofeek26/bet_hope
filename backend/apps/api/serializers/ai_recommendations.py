@@ -58,11 +58,11 @@ class AIRecommendationSerializer(serializers.ModelSerializer):
     def get_prediction_summary(self, obj) -> dict:
         pred = obj.prediction
         return {
-            'outcome': pred.predicted_outcome,
-            'confidence': float(pred.confidence),
-            'home_prob': float(pred.home_win_prob),
-            'draw_prob': float(pred.draw_prob),
-            'away_prob': float(pred.away_win_prob),
+            'outcome': pred.recommended_outcome,
+            'confidence': float(pred.confidence_score),
+            'home_prob': float(pred.home_win_probability),
+            'draw_prob': float(pred.draw_probability),
+            'away_prob': float(pred.away_win_probability),
         }
 
 

@@ -1,6 +1,7 @@
 """
 AI Recommendation Views
 """
+from django.db import models
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -270,3 +271,121 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=False, methods=['post'])
+    def refresh(self, request):
+        """
+        Trigger a full document refresh (scrape, update, embed).
+
+        POST /api/v1/documents/refresh/
+        {
+            "async": true,  // Run as Celery task (default)
+            "include_news": true  // Include football news scraping
+        }
+        """
+        run_async = request.data.get('async', True)
+        include_news = request.data.get('include_news', True)
+
+        try:
+            if run_async:
+                from tasks.documents import refresh_all_documents
+
+                result = refresh_all_documents.delay(include_news=include_news)
+
+                return Response({
+                    'status': 'queued',
+                    'task_id': result.id,
+                    'message': 'Document refresh task queued',
+                })
+            else:
+                # Run synchronously
+                from tasks.documents import (
+                    scrape_documentation,
+                    update_strategy_documents,
+                    embed_documents,
+                    scrape_football_news,
+                )
+
+                scrape_result = scrape_documentation()
+                strategy_result = update_strategy_documents()
+
+                news_result = None
+                if include_news:
+                    try:
+                        news_result = scrape_football_news()
+                    except Exception as e:
+                        news_result = {'status': 'error', 'message': str(e)}
+
+                embed_result = embed_documents()
+
+                return Response({
+                    'status': 'success',
+                    'scrape': scrape_result,
+                    'strategy': strategy_result,
+                    'news': news_result,
+                    'embed': embed_result,
+                })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='scrape-news')
+    def scrape_news(self, request):
+        """
+        Scrape latest football news from RSS feeds.
+
+        POST /api/v1/documents/scrape-news/
+        {
+            "async": true,
+            "max_articles": 10
+        }
+        """
+        run_async = request.data.get('async', True)
+        max_articles = request.data.get('max_articles', 10)
+
+        try:
+            from tasks.documents import scrape_football_news
+
+            if run_async:
+                result = scrape_football_news.delay(max_articles_per_feed=max_articles)
+                return Response({
+                    'status': 'queued',
+                    'task_id': result.id,
+                    'message': 'News scraping task queued',
+                })
+            else:
+                result = scrape_football_news(max_articles_per_feed=max_articles)
+                return Response(result)
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Get document statistics.
+
+        GET /api/v1/documents/stats/
+        """
+        from apps.documents.models import DocumentChunk
+
+        total_docs = Document.objects.filter(is_active=True).count()
+        total_chunks = DocumentChunk.objects.count()
+        embedded_chunks = DocumentChunk.objects.filter(embedding__isnull=False).count()
+
+        by_type = Document.objects.filter(is_active=True).values(
+            'document_type'
+        ).annotate(count=models.Count('id'))
+
+        return Response({
+            'total_documents': total_docs,
+            'total_chunks': total_chunks,
+            'embedded_chunks': embedded_chunks,
+            'by_type': {item['document_type']: item['count'] for item in by_type},
+        })

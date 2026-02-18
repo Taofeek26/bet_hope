@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { leaguesApi, teamsApi, matchesApi, predictionsApi } from '@/lib/api';
+import { leaguesApi, teamsApi, matchesApi, predictionsApi, aiApi } from '@/lib/api';
 
 // Query keys
 export const queryKeys = {
@@ -267,6 +267,42 @@ export function useGeneratePrediction() {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: queryKeys.predictions.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.predictions.upcoming });
+    },
+  });
+}
+
+// AI Recommendation hooks
+export function useAIProviders() {
+  return useQuery({
+    queryKey: ['ai', 'providers'],
+    queryFn: () => aiApi.getProviders(),
+    staleTime: 3600000, // Cache for 1 hour
+  });
+}
+
+export function useAIRecommendation(predictionId: number) {
+  return useQuery({
+    queryKey: ['ai', 'recommendation', predictionId],
+    queryFn: () => aiApi.getForPrediction(predictionId),
+    enabled: !!predictionId,
+    retry: false, // Don't retry if not found
+  });
+}
+
+export function useGenerateAIRecommendation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      prediction_id: number;
+      provider?: 'openai' | 'anthropic' | 'google';
+      include_rag?: boolean;
+    }) => aiApi.generate(params),
+    onSuccess: (_, variables) => {
+      // Invalidate the recommendation cache for this prediction
+      queryClient.invalidateQueries({
+        queryKey: ['ai', 'recommendation', variables.prediction_id],
+      });
     },
   });
 }

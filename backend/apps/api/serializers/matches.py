@@ -72,6 +72,7 @@ class MatchListSerializer(serializers.ModelSerializer):
     away_team_name = serializers.CharField(source='away_team.name', read_only=True)
     league_name = serializers.CharField(source='season.league.name', read_only=True)
     has_prediction = serializers.SerializerMethodField()
+    prediction = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -88,6 +89,7 @@ class MatchListSerializer(serializers.ModelSerializer):
             'status',
             'league_name',
             'has_prediction',
+            'prediction',
         ]
 
     def get_has_prediction(self, obj) -> bool:
@@ -95,6 +97,22 @@ class MatchListSerializer(serializers.ModelSerializer):
         if hasattr(obj, '_prefetched_objects_cache') and 'predictions' in obj._prefetched_objects_cache:
             return len(obj._prefetched_objects_cache['predictions']) > 0
         return obj.predictions.exists()
+
+    def get_prediction(self, obj):
+        from .predictions import PredictionSerializer
+
+        # Try prefetched predictions first
+        if hasattr(obj, '_prefetched_objects_cache') and 'predictions' in obj._prefetched_objects_cache:
+            predictions = obj._prefetched_objects_cache['predictions']
+            if predictions:
+                return PredictionSerializer(predictions[0]).data
+            return None
+
+        # Fall back to query
+        prediction = obj.predictions.order_by('-created_at').first()
+        if prediction:
+            return PredictionSerializer(prediction).data
+        return None
 
 
 class MatchSerializer(serializers.ModelSerializer):
@@ -168,8 +186,17 @@ class MatchDetailSerializer(serializers.ModelSerializer):
     def get_prediction(self, obj):
         from .predictions import PredictionSerializer
 
-        if hasattr(obj, 'prediction'):
-            return PredictionSerializer(obj.prediction).data
+        # Try prefetched predictions first
+        if hasattr(obj, '_prefetched_objects_cache') and 'predictions' in obj._prefetched_objects_cache:
+            predictions = obj._prefetched_objects_cache['predictions']
+            if predictions:
+                return PredictionSerializer(predictions[0]).data
+            return None
+
+        # Fall back to query
+        prediction = obj.predictions.order_by('-created_at').first()
+        if prediction:
+            return PredictionSerializer(prediction).data
         return None
 
     def get_h2h(self, obj) -> dict:
