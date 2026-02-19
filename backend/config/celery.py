@@ -131,6 +131,38 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=5, minute=30),  # 5:30 AM UTC
         'options': {'queue': 'default'},
     },
+
+    # =========================================================================
+    # Football-Data.org API Tasks (Real-time fixtures and results)
+    # =========================================================================
+
+    # Sync upcoming fixtures from API every 6 hours
+    'sync-fixtures-api': {
+        'task': 'tasks.data_sync.sync_fixtures_api',
+        'schedule': crontab(hour='*/6', minute=0),  # Every 6 hours at :00
+        'options': {'queue': 'data_sync'},
+    },
+
+    # Sync recent results from API every 3 hours
+    'sync-results-api': {
+        'task': 'tasks.data_sync.sync_results_api',
+        'schedule': crontab(hour='*/3', minute=45),  # Every 3 hours at :45
+        'options': {'queue': 'data_sync'},
+    },
+
+    # Sync live scores during peak match times (weekends)
+    'sync-live-scores-weekend': {
+        'task': 'tasks.data_sync.sync_live_scores',
+        'schedule': crontab(day_of_week='0,6', hour='12-23', minute='*/15'),  # Every 15 min on weekends
+        'options': {'queue': 'data_sync'},
+    },
+
+    # Sync live scores on weekday evenings
+    'sync-live-scores-weekday': {
+        'task': 'tasks.data_sync.sync_live_scores',
+        'schedule': crontab(day_of_week='1-5', hour='18-23', minute='*/15'),  # Every 15 min weekday evenings
+        'options': {'queue': 'data_sync'},
+    },
 }
 
 # Task routing

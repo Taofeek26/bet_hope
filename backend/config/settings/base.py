@@ -271,9 +271,15 @@ SUPPORTED_LEAGUES = {
     'BRA': {'name': 'Serie A', 'country': 'Brazil', 'tier': 2, 'fd_code': 'BRA'},
 }
 
-# Football-Data.co.uk URLs
+# Football-Data.co.uk URLs (CSV historical data)
 FOOTBALL_DATA_BASE_URL = 'https://www.football-data.co.uk'
 FOOTBALL_DATA_CSV_URL = 'https://www.football-data.co.uk/mmz4281'
+
+# Football-Data.org API (real-time fixtures and results)
+# Get a free API key at: https://www.football-data.org/client/register
+# Free tier: 10 requests/min, covers Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Championship, UCL
+FOOTBALL_DATA_API_KEY = os.getenv('FOOTBALL_DATA_API_KEY', '')
+FOOTBALL_DATA_API_URL = 'https://api.football-data.org/v4'
 
 # Historical data range (10 years)
 HISTORICAL_SEASONS = [

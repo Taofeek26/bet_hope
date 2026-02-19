@@ -10,6 +10,7 @@ from .views import (
     TeamViewSet,
     MatchViewSet,
     PredictionViewSet,
+    DataSyncViewSet,
 )
 from .views.ai_recommendations import AIRecommendationViewSet, DocumentViewSet
 
@@ -22,6 +23,7 @@ router.register(r'matches', MatchViewSet, basename='match')
 router.register(r'predictions', PredictionViewSet, basename='prediction')
 router.register(r'ai-recommendations', AIRecommendationViewSet, basename='ai-recommendation')
 router.register(r'documents', DocumentViewSet, basename='document')
+router.register(r'sync', DataSyncViewSet, basename='sync')
 
 app_name = 'api'
 

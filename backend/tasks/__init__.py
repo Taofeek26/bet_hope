@@ -10,7 +10,16 @@ This module contains all scheduled tasks for:
 - Document scraping and embedding
 """
 
-from .data_sync import sync_all_leagues, sync_historical_data, update_recent_results
+from .data_sync import (
+    sync_all_leagues,
+    sync_historical_data,
+    update_recent_results,
+    sync_single_league,
+    sync_fixtures_api,
+    sync_results_api,
+    sync_live_scores,
+    check_api_status,
+)
 from .training import retrain_model
 from .predictions import generate_predictions, validate_predictions
 from .analytics import calculate_model_metrics
@@ -26,9 +35,17 @@ from .documents import (
 )
 
 __all__ = [
+    # Data sync tasks
     'sync_all_leagues',
     'sync_historical_data',
     'update_recent_results',
+    'sync_single_league',
+    # Football-Data.org API tasks
+    'sync_fixtures_api',
+    'sync_results_api',
+    'sync_live_scores',
+    'check_api_status',
+    # ML tasks
     'retrain_model',
     'generate_predictions',
     'validate_predictions',
@@ -40,4 +57,6 @@ __all__ = [
     'embed_documents',
     'refresh_all_documents',
     'cleanup_old_embeddings',
+    'scrape_football_news',
+    'cleanup_old_news',
 ]
