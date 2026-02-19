@@ -13,7 +13,7 @@ export function PredictionStats() {
 
   if (isLoading) return <LoadingSpinner />;
 
-  if (!stats || stats.error) {
+  if (!stats || (stats as any).error) {
     return (
       <div className="text-text-muted text-center py-8">
         <p className="mb-2">No verified predictions yet.</p>
