@@ -13,12 +13,12 @@ export default function MatchesPage() {
   const [selectedLeague, setSelectedLeague] = useState<string>('');
 
   // Fetch leagues for filter
-  const { data: leagues } = useQuery({
+  const { data: leagues } = useQuery<any>({
     queryKey: ['leagues'],
     queryFn: () => leaguesApi.getAll(),
   });
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['matches', view, selectedDays, selectedLeague],
     queryFn: () => {
       if (view === 'live') return matchesApi.getLive();

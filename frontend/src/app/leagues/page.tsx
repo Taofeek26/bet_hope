@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import Link from 'next/link';
 
 export default function LeaguesPage() {
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['leagues'],
     queryFn: () => leaguesApi.getAll(),
   });

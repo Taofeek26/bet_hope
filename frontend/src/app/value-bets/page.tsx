@@ -59,7 +59,7 @@ export default function ValueBetsPage() {
   }, [today]);
 
   // Fetch value bets - either for specific date or all week
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['value-bets', viewMode === 'day' ? selectedDateStr : 'week'],
     queryFn: () => predictionsApi.getValueBets(
       viewMode === 'day' ? { date: selectedDateStr } : { days: 7 }

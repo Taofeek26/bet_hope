@@ -11,19 +11,19 @@ export default function TeamDetailPage() {
   const params = useParams();
   const teamId = Number(params.id);
 
-  const { data: team, isLoading: teamLoading, error: teamError } = useQuery({
+  const { data: team, isLoading: teamLoading, error: teamError } = useQuery<any>({
     queryKey: ['team', teamId],
     queryFn: () => teamsApi.getById(teamId),
     enabled: !!teamId,
   });
 
-  const { data: fixtures, isLoading: fixturesLoading } = useQuery({
+  const { data: fixtures, isLoading: fixturesLoading } = useQuery<any>({
     queryKey: ['team-fixtures', teamId],
     queryFn: () => teamsApi.getFixtures(teamId),
     enabled: !!teamId,
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<any>({
     queryKey: ['team-stats', teamId],
     queryFn: () => teamsApi.getStats(teamId),
     enabled: !!teamId,

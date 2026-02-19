@@ -10,7 +10,7 @@ import { useState } from 'react';
 export default function PredictionsPage() {
   const [filter, setFilter] = useState('all');
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['predictions', filter],
     queryFn: () => predictionsApi.getRecent({ days_back: 30, days_forward: 7, include_finished: true }),
   });

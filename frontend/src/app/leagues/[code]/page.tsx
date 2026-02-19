@@ -11,13 +11,13 @@ export default function LeagueDetailPage() {
   const params = useParams();
   const code = params.code as string;
 
-  const { data: league, isLoading: leagueLoading, error: leagueError } = useQuery({
+  const { data: league, isLoading: leagueLoading, error: leagueError } = useQuery<any>({
     queryKey: ['league', code],
     queryFn: () => leaguesApi.getByCode(code),
     enabled: !!code,
   });
 
-  const { data: standings, isLoading: standingsLoading } = useQuery({
+  const { data: standings, isLoading: standingsLoading } = useQuery<any>({
     queryKey: ['league-standings', code],
     queryFn: () => leaguesApi.getStandings(code),
     enabled: !!code,

@@ -12,7 +12,7 @@ export default function MatchDetailPage() {
   const params = useParams();
   const matchId = Number(params.id);
 
-  const { data: match, isLoading, error } = useQuery({
+  const { data: match, isLoading, error } = useQuery<any>({
     queryKey: ['match', matchId],
     queryFn: () => matchesApi.getById(matchId),
     enabled: !!matchId,
