@@ -19,6 +19,7 @@ from .data_sync import (
     sync_results_api,
     sync_live_scores,
     check_api_status,
+    sync_teams_with_logos,
 )
 from .training import retrain_model
 from .predictions import generate_predictions, validate_predictions
@@ -40,11 +41,12 @@ __all__ = [
     'sync_historical_data',
     'update_recent_results',
     'sync_single_league',
-    # Football-Data.org API tasks
+    # API-Football tasks
     'sync_fixtures_api',
     'sync_results_api',
     'sync_live_scores',
     'check_api_status',
+    'sync_teams_with_logos',
     # ML tasks
     'retrain_model',
     'generate_predictions',

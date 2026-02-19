@@ -86,7 +86,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: bet_hope_celery
-    command: celery -A config worker -l info -Q default,predictions,data_sync
+    command: celery -A config worker -l info -Q default,predictions,data_sync,ml,analytics
     env_file:
       - ./backend/.env
     environment:

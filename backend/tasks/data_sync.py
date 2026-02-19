@@ -226,23 +226,23 @@ def check_api_status():
         return {
             'status': 'not_configured',
             'message': 'API_FOOTBALL_KEY environment variable not set',
-            'help': 'Get a free API key at https://www.football-data.org/client/register'
+            'help': 'Get a free API key at https://dashboard.api-football.com/register'
         }
 
     try:
         provider = FootballDataAPIProvider()
-        competitions = provider.get_competitions()
+        account_status = provider.get_status()
 
-        if competitions:
+        if account_status:
             return {
                 'status': 'ok',
-                'competitions_available': len(competitions),
-                'free_tier': list(FootballDataAPIProvider.COMPETITIONS.keys()),
+                'account': account_status,
+                'supported_leagues': list(FootballDataAPIProvider.LEAGUES.keys()),
             }
         else:
             return {
                 'status': 'error',
-                'message': 'Could not fetch competitions'
+                'message': 'Could not fetch account status'
             }
 
     except Exception as e:
@@ -250,3 +250,36 @@ def check_api_status():
             'status': 'error',
             'message': str(e)
         }
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def sync_teams_with_logos(self, league_code: str = None):
+    """
+    Sync teams with logos from API-Football.
+    This should be run once to populate all team logos.
+
+    Args:
+        league_code: Optional league code to filter
+    """
+    from apps.data_ingestion.providers import FootballDataAPIProvider
+
+    if not settings.API_FOOTBALL_KEY:
+        logger.warning("API_FOOTBALL_KEY not configured. Skipping teams sync.")
+        return {'status': 'skipped', 'message': 'API key not configured'}
+
+    logger.info(f"Syncing teams with logos for {league_code or 'all leagues'}...")
+
+    try:
+        provider = FootballDataAPIProvider()
+        created, updated = provider.sync_teams_with_logos(league_code)
+
+        logger.info(f"Teams sync completed: {created} created, {updated} updated")
+        return {
+            'status': 'success',
+            'created': created,
+            'updated': updated,
+        }
+
+    except Exception as e:
+        logger.error(f"Teams sync failed: {e}")
+        raise self.retry(exc=e)

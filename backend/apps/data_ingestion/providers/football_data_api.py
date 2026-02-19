@@ -497,25 +497,35 @@ class FootballDataAPIProvider:
             defaults={'name': season_name}
         )
 
-        # Get teams
+        # Get teams with logos
         teams_data = fixture.get('teams', {})
         home_data = teams_data.get('home', {})
         away_data = teams_data.get('away', {})
 
         home_name = home_data.get('name', 'Unknown')
         away_name = away_data.get('name', 'Unknown')
+        home_logo = home_data.get('logo', '')
+        away_logo = away_data.get('logo', '')
 
-        home_team, _ = Team.objects.get_or_create(
+        home_team, home_created = Team.objects.get_or_create(
             name=home_name,
             league=league,
-            defaults={'fd_name': home_name}
+            defaults={'fd_name': home_name, 'logo_url': home_logo}
         )
+        # Update logo if not set
+        if not home_created and not home_team.logo_url and home_logo:
+            home_team.logo_url = home_logo
+            home_team.save(update_fields=['logo_url'])
 
-        away_team, _ = Team.objects.get_or_create(
+        away_team, away_created = Team.objects.get_or_create(
             name=away_name,
             league=league,
-            defaults={'fd_name': away_name}
+            defaults={'fd_name': away_name, 'logo_url': away_logo}
         )
+        # Update logo if not set
+        if not away_created and not away_team.logo_url and away_logo:
+            away_team.logo_url = away_logo
+            away_team.save(update_fields=['logo_url'])
 
         # Parse date and time
         fixture_info = fixture.get('fixture', {})
@@ -636,6 +646,111 @@ class FootballDataAPIProvider:
 
         logger.info(f"Updated {updated} live matches")
         return updated
+
+    def get_teams(self, league_id: int, season: Optional[int] = None) -> Optional[List[Dict]]:
+        """
+        Get teams for a league.
+
+        Args:
+            league_id: API-Football league ID
+            season: Season year (default: current)
+
+        Returns:
+            List of team data with logos
+        """
+        if not season:
+            today = date.today()
+            season = today.year if today.month >= 7 else today.year - 1
+
+        data = self._request('/teams', {
+            'league': league_id,
+            'season': season
+        })
+
+        if data:
+            return data.get('response', [])
+        return None
+
+    def sync_teams_with_logos(self, league_code: Optional[str] = None) -> Tuple[int, int]:
+        """
+        Sync teams with their logos from API-Football.
+
+        Args:
+            league_code: Optional league code to filter
+
+        Returns:
+            Tuple of (created, updated)
+        """
+        from apps.leagues.models import League
+        from apps.teams.models import Team
+
+        today = date.today()
+        season = today.year if today.month >= 7 else today.year - 1
+
+        created = 0
+        updated = 0
+
+        leagues_to_sync = {}
+        if league_code and league_code in self.LEAGUES:
+            leagues_to_sync[league_code] = self.LEAGUES[league_code]
+        else:
+            leagues_to_sync = self.LEAGUES
+
+        for code, info in leagues_to_sync.items():
+            try:
+                teams = self.get_teams(info['id'], season)
+                if not teams:
+                    continue
+
+                # Get or create league
+                league, _ = League.objects.get_or_create(
+                    code=code,
+                    defaults={
+                        'name': info['name'],
+                        'country': info['country'],
+                        'tier': info['tier'],
+                    }
+                )
+
+                for team_data in teams:
+                    team_info = team_data.get('team', {})
+                    team_name = team_info.get('name', 'Unknown')
+                    team_logo = team_info.get('logo', '')
+                    team_code = team_info.get('code', '')
+                    team_founded = team_info.get('founded')
+
+                    venue = team_data.get('venue', {})
+                    stadium = venue.get('name', '')
+                    stadium_capacity = venue.get('capacity')
+                    city = venue.get('city', '')
+
+                    team, team_created = Team.objects.update_or_create(
+                        name=team_name,
+                        league=league,
+                        defaults={
+                            'fd_name': team_name,
+                            'logo_url': team_logo,
+                            'code': team_code or '',
+                            'founded': team_founded,
+                            'stadium': stadium,
+                            'stadium_capacity': stadium_capacity,
+                            'city': city,
+                        }
+                    )
+
+                    if team_created:
+                        created += 1
+                    else:
+                        updated += 1
+
+                logger.info(f"Synced teams for {code}: {created} created, {updated} updated")
+
+            except Exception as e:
+                logger.error(f"Error syncing teams for {code}: {e}")
+                continue
+
+        logger.info(f"Total teams synced: {created} created, {updated} updated")
+        return created, updated
 
     @classmethod
     def is_configured(cls) -> bool:

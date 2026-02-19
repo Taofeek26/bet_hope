@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet Hope - Architecture Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* App Color Theme */
+            --page: #030303;
+            --card: #0A0A0A;
+            --surface: #111111;
+            --input: #1A1A1A;
+            --border: #222222;
+            --border-dim: #1A1A1A;
+            --border-bright: #333333;
+            --text: #FFFFFF;
+            --text-sec: #A3A3A3;
+            --text-muted: #666666;
+            --brand1: #38BDF8;
+            --brand2: #7DD3FC;
+            --brand3: #BAE6FD;
+            --gradient: linear-gradient(90.72deg, #0EA5E9 0%, #38BDF8 49.62%, #7DD3FC 100%);
+            --success: #22c55e;
+            --error: #dc2626;
+            --warning: #f59e0b;
+            --info: #7DD3FC;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--page);
+            color: var(--text);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        /* Navigation */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            z-index: 100;
+            padding: 24px 0;
+        }
+
+        .nav-header {
+            padding: 0 20px 24px;
+            border-bottom: 1px solid var(--border-dim);
+            margin-bottom: 16px;
+        }
+
+        .nav-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--brand1);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 12px;
+        }
+
+        .nav-title {
+            font-size: 1.25rem;
+            font-weight: 800;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-section {
+            padding: 8px 12px;
+        }
+
+        .nav-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 8px;
+            margin-top: 8px;
+        }
+
+        .nav-link {
+            display: block;
+            padding: 8px 12px;
+            color: var(--text-sec);
+            text-decoration: none;
+            font-size: 13px;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+
+        .nav-link:hover {
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        .nav-link.active {
+            background: var(--brand1);
+            color: var(--page);
+        }
+
+        .nav-sublink {
+            padding-left: 24px;
+            font-size: 12px;
+        }
+
+        /* Main Content */
+        .main {
+            margin-left: 280px;
+            padding: 40px 48px;
+            max-width: 1200px;
+        }
+
+        /* Typography */
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text);
+            margin: 48px 0 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            scroll-margin-top: 24px;
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--brand1);
+            margin: 32px 0 16px;
+            scroll-margin-top: 24px;
+        }
+
+        h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            margin: 24px 0 12px;
+        }
+
+        p {
+            color: var(--text-sec);
+            margin-bottom: 16px;
+        }
+
+        .lead {
+            font-size: 1.1rem;
+            color: var(--text);
+            margin-bottom: 32px;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--brand1);
+            font-size: 18px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* Code */
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            background: var(--surface);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--brand2);
+        }
+
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-sec);
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-dim);
+        }
+
+        th {
+            background: var(--surface);
+            color: var(--text);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-sec);
+        }
+
+        tr:hover td {
+            background: var(--surface);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-brand { background: rgba(56, 189, 248, 0.15); color: var(--brand1); }
+        .badge-success { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .badge-error { background: rgba(220, 38, 38, 0.15); color: var(--error); }
+        .badge-info { background: rgba(125, 211, 252, 0.15); color: var(--info); }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            gap: 24px;
+        }
+
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+        @media (max-width: 1024px) {
+            .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+            .nav { display: none; }
+            .main { margin-left: 0; padding: 24px; }
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 16px 0;
+            padding-left: 24px;
+            color: var(--text-sec);
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        li strong {
+            color: var(--text);
+        }
+
+        /* Flow Diagram */
+        .flow-diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 24px 0;
+            overflow-x: auto;
+        }
+
+        .flow-diagram pre {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin: 24px 0;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--brand1);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* File Tree */
+        .file-tree {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            line-height: 1.8;
+        }
+
+        .file-tree .folder {
+            color: var(--brand1);
+        }
+
+        .file-tree .file {
+            color: var(--text-sec);
+        }
+
+        .file-tree .comment {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Connection Lines */
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 16px 0;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+        }
+
+        .connection-arrow {
+            color: var(--brand1);
+            font-size: 20px;
+        }
+
+        .connection-box {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        /* Section Divider */
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 48px 0;
+        }
+
+        /* Color Swatches */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .color-swatch {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .color-preview {
+            height: 60px;
+        }
+
+        .color-info {
+            padding: 10px;
+            background: var(--surface);
+        }
+
+        .color-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .color-value {
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+        }
+
+        /* Highlight Box */
+        .highlight-box {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 16px 0;
+        }
+
+        .highlight-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .highlight-box.success {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        /* Method/Function Block */
+        .method-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+
+        .method-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .method-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--brand1);
+            font-weight: 500;
+        }
+
+        .method-type {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--surface);
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .method-body {
+            padding: 12px 16px;
+            font-size: 13px;
+            color: var(--text-sec);
+        }
+
+        /* API Endpoint */
+        .endpoint {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 8px 0;
+        }
+
+        .endpoint-method {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .endpoint-method.get { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .endpoint-method.post { background: rgba(56, 189, 248, 0.2); color: var(--brand1); }
+        .endpoint-method.put { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .endpoint-method.delete { background: rgba(220, 38, 38, 0.2); color: var(--error); }
+
+        .endpoint-path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        .endpoint-desc {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-left: auto;
+        }
+
+        /* Model Card */
+        .model-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 12px 0;
+        }
+
+        .model-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--brand1);
+            margin-bottom: 12px;
+        }
+
+        .model-fields {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .model-field {
+            font-size: 12px;
+            padding: 6px 10px;
+            background: var(--surface);
+            border-radius: 4px;
+        }
+
+        .model-field-name {
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .model-field-type {
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+
+        /* TOC Indicator */
+        .toc-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: var(--brand1);
+            color: var(--page);
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 6px;
+            margin-right: 10px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--surface);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-bright);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Sidebar -->
+    <nav class="nav">
+        <div class="nav-header">
+            <div class="nav-badge">Architecture Docs</div>
+            <div class="nav-title">Bet Hope</div>
+        </div>
+        <div class="nav-section">
+            <a href="#overview" class="nav-link">Overview</a>
+            <a href="#tech-stack" class="nav-link">Technology Stack</a>
+            <a href="#project-structure" class="nav-link">Project Structure</a>
+
+            <div class="nav-section-title">Backend</div>
+            <a href="#django-apps" class="nav-link">Django Apps</a>
+            <a href="#models" class="nav-link nav-sublink">Models</a>
+            <a href="#api-endpoints" class="nav-link">API Endpoints</a>
+            <a href="#services" class="nav-link">Services</a>
+            <a href="#ml-pipeline" class="nav-link nav-sublink">ML Pipeline</a>
+            <a href="#ai-rag" class="nav-link nav-sublink">AI & RAG</a>
+            <a href="#celery-tasks" class="nav-link">Celery Tasks</a>
+
+            <div class="nav-section-title">Frontend</div>
+            <a href="#pages" class="nav-link">Pages</a>
+            <a href="#components" class="nav-link">Components</a>
+            <a href="#state-management" class="nav-link">State Management</a>
+            <a href="#api-client" class="nav-link">API Client</a>
+
+            <div class="nav-section-title">Design</div>
+            <a href="#color-theme" class="nav-link">Color Theme</a>
+            <a href="#data-flow" class="nav-link">Data Flow</a>
+            <a href="#integrations" class="nav-link">Integrations</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Header -->
+        <section id="overview">
+            <h1>Bet Hope Architecture</h1>
+            <p class="lead">
+                AI-Powered Football Match Prediction Platform - A full-stack production-grade system that leverages
+                Machine Learning, RAG (Retrieval Augmented Generation), and multi-provider AI to predict football
+                match outcomes across the world's top leagues.
+            </p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">20+</div>
+                    <div class="stat-label">Leagues Supported</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">10</div>
+                    <div class="stat-label">Django Apps</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">50+</div>
+                    <div class="stat-label">API Endpoints</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">14</div>
+                    <div class="stat-label">Scheduled Tasks</div>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Technology Stack -->
+        <section id="tech-stack">
+            <h2><span class="toc-num">1</span>Technology Stack</h2>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon">&#9881;</div>
+                        <div class="card-title">Backend</div>
+                    </div>
+                    <table>
+                        <tr><td><strong>Framework</strong></td><td>Django 5.x + Django REST Framework</td></tr>
+                        <tr><td><strong>Database</strong></td><td>PostgreSQL 16 + pgvector</td></tr>
+                        <tr><td><strong>Cache/Queue</strong></td><td>Redis + Celery</td></tr>
+                        <tr><td><strong>ML</strong></td><td>XGBoost + Scikit-learn</td></tr>
+                        <tr><td><strong>AI/NLP</strong></td><td>OpenAI, Anthropic, Google AI</td></tr>
+                        <tr><td><strong>Embeddings</strong></td><td>Sentence Transformers</td></tr>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon">&#9878;</div>
+                        <div class="card-title">Frontend</div>
+                    </div>
+                    <table>
+                        <tr><td><strong>Framework</strong></td><td>Next.js 14 (App Router)</td></tr>
+                        <tr><td><strong>Language</strong></td><td>TypeScript</td></tr>
+                        <tr><td><strong>Styling</strong></td><td>Tailwind CSS</td></tr>
+                        <tr><td><strong>State</strong></td><td>Zustand + React Query</td></tr>
+                        <tr><td><strong>Charts</strong></td><td>Recharts</td></tr>
+                        <tr><td><strong>Icons</strong></td><td>Lucide React</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">&#9729;</div>
+                    <div class="card-title">Infrastructure</div>
+                </div>
+                <div class="grid grid-4">
+                    <div>
+                        <h4>Containers</h4>
+                        <p>Docker + Docker Compose</p>
+                    </div>
+                    <div>
+                        <h4>Web Server</h4>
+                        <p>Gunicorn + Uvicorn</p>
+                    </div>
+                    <div>
+                        <h4>Monitoring</h4>
+                        <p>Flower (Celery)</p>
+                    </div>
+                    <div>
+                        <h4>Logging</h4>
+                        <p>Sentry + Structlog</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Project Structure -->
+        <section id="project-structure">
+            <h2><span class="toc-num">2</span>Project Structure</h2>
+
+            <div class="file-tree">
+<span class="folder">Bet_Hope/</span>
+├── <span class="file">docker-compose.yml</span> <span class="comment"># Full stack orchestration</span>
+├── <span class="file">README.md</span>
+│
+├── <span class="folder">backend/</span> <span class="comment"># Django + ML Backend</span>
+│   ├── <span class="folder">config/</span> <span class="comment"># Django settings, Celery config</span>
+│   │   ├── <span class="file">settings/base.py</span>
+│   │   ├── <span class="file">celery.py</span>
+│   │   └── <span class="file">urls.py</span>
+│   │
+│   ├── <span class="folder">apps/</span> <span class="comment"># Django applications</span>
+│   │   ├── <span class="folder">core/</span> <span class="comment"># Base models, management commands</span>
+│   │   ├── <span class="folder">leagues/</span> <span class="comment"># League, Season models</span>
+│   │   ├── <span class="folder">teams/</span> <span class="comment"># Team, TeamStats, H2H models</span>
+│   │   ├── <span class="folder">players/</span> <span class="comment"># Player model (placeholder)</span>
+│   │   ├── <span class="folder">matches/</span> <span class="comment"># Match, Statistics, Odds models</span>
+│   │   ├── <span class="folder">predictions/</span> <span class="comment"># Prediction, ModelVersion models</span>
+│   │   ├── <span class="folder">analytics/</span> <span class="comment"># ModelMetrics, DailyStats</span>
+│   │   ├── <span class="folder">documents/</span> <span class="comment"># Document, Chunk, AI models</span>
+│   │   ├── <span class="folder">ml_pipeline/</span> <span class="comment"># Feature extraction, training, inference</span>
+│   │   └── <span class="folder">api/</span> <span class="comment"># REST API views, serializers</span>
+│   │
+│   ├── <span class="folder">tasks/</span> <span class="comment"># Celery background tasks</span>
+│   │   ├── <span class="file">data_sync.py</span>
+│   │   ├── <span class="file">training.py</span>
+│   │   ├── <span class="file">predictions.py</span>
+│   │   └── <span class="file">documents.py</span>
+│   │
+│   └── <span class="folder">models/</span> <span class="comment"># Trained ML model artifacts</span>
+│
+├── <span class="folder">frontend/</span> <span class="comment"># Next.js Frontend</span>
+│   └── <span class="folder">src/</span>
+│       ├── <span class="folder">app/</span> <span class="comment"># Next.js App Router pages</span>
+│       ├── <span class="folder">components/</span> <span class="comment"># React components</span>
+│       ├── <span class="folder">hooks/</span> <span class="comment"># Custom React hooks (useApi.ts)</span>
+│       ├── <span class="folder">lib/</span> <span class="comment"># API client, utilities, store</span>
+│       ├── <span class="folder">contexts/</span> <span class="comment"># React contexts</span>
+│       ├── <span class="folder">types/</span> <span class="comment"># TypeScript interfaces</span>
+│       └── <span class="folder">styles/</span> <span class="comment"># Global CSS</span>
+│
+└── <span class="folder">docs/</span> <span class="comment"># Documentation</span>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Django Apps -->
+        <section id="django-apps">
+            <h2><span class="toc-num">3</span>Django Apps</h2>
+
+            <p>The backend consists of 10 Django applications, each handling a specific domain:</p>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h4>Core App</h4>
+                    <p>Base classes and management commands</p>
+                    <ul>
+                        <li><code>TimeStampedModel</code> - created_at, updated_at</li>
+                        <li><code>SyncedModel</code> - last_synced_at, sync_source</li>
+                        <li>Management commands for setup and testing</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Leagues App</h4>
+                    <p>League and season management</p>
+                    <ul>
+                        <li><code>League</code> - 20+ leagues across 4 tiers</li>
+                        <li><code>Season</code> - Season tracking with status</li>
+                        <li>Supports Big 5 + international competitions</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Teams App</h4>
+                    <p>Team data and statistics</p>
+                    <ul>
+                        <li><code>Team</code> - Club information</li>
+                        <li><code>TeamSeasonStats</code> - Season performance</li>
+                        <li><code>HeadToHead</code> - Historical H2H records</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Matches App</h4>
+                    <p>Match data and live tracking</p>
+                    <ul>
+                        <li><code>Match</code> - Fixture and result data</li>
+                        <li><code>MatchStatistics</code> - Detailed match stats</li>
+                        <li><code>MatchOdds</code> - Betting odds from bookmakers</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Predictions App</h4>
+                    <p>ML predictions and model tracking</p>
+                    <ul>
+                        <li><code>Prediction</code> - Match predictions with probabilities</li>
+                        <li><code>ModelVersion</code> - Model versioning and metrics</li>
+                        <li>Validation against actual results</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Documents App</h4>
+                    <p>RAG and AI recommendations</p>
+                    <ul>
+                        <li><code>Document</code> - Knowledge base articles</li>
+                        <li><code>DocumentChunk</code> - Vector embeddings</li>
+                        <li><code>AIRecommendation</code> - LLM-generated analysis</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Models -->
+        <section id="models">
+            <h2><span class="toc-num">4</span>Database Models</h2>
+
+            <h3>League Model</h3>
+            <div class="model-card">
+                <div class="model-name">League</div>
+                <div class="model-fields">
+                    <div class="model-field"><span class="model-field-name">name</span><span class="model-field-type">CharField</span></div>
+                    <div class="model-field"><span class="model-field-name">country</span><span class="model-field-type">CharField</span></div>
+                    <div class="model-field"><span class="model-field-name">code</span><span class="model-field-type">CharField (unique)</span></div>
+                    <div class="model-field"><span class="model-field-name">tier</span><span class="model-field-type">IntegerField (1-4)</span></div>
+                    <div class="model-field"><span class="model-field-name">is_active</span><span class="model-field-type">BooleanField</span></div>
+                    <div class="model-field"><span class="model-field-name">has_xg_data</span><span class="model-field-type">BooleanField</span></div>
+                </div>
+            </div>
+
+            <h3>Match Model</h3>
+            <div class="model-card">
+                <div class="model-name">Match</div>
+                <div class="model-fields">
+                    <div class="model-field"><span class="model-field-name">season</span><span class="model-field-type">ForeignKey(Season)</span></div>
+                    <div class="model-field"><span class="model-field-name">home_team</span><span class="model-field-type">ForeignKey(Team)</span></div>
+                    <div class="model-field"><span class="model-field-name">away_team</span><span class="model-field-type">ForeignKey(Team)</span></div>
+                    <div class="model-field"><span class="model-field-name">match_date</span><span class="model-field-type">DateField</span></div>
+                    <div class="model-field"><span class="model-field-name">status</span><span class="model-field-type">CharField (choices)</span></div>
+                    <div class="model-field"><span class="model-field-name">home_score</span><span class="model-field-type">IntegerField</span></div>
+                    <div class="model-field"><span class="model-field-name">away_score</span><span class="model-field-type">IntegerField</span></div>
+                    <div class="model-field"><span class="model-field-name">outcome</span><span class="model-field-type">CharField (H/D/A)</span></div>
+                </div>
+            </div>
+
+            <h3>Prediction Model</h3>
+            <div class="model-card">
+                <div class="model-name">Prediction</div>
+                <div class="model-fields">
+                    <div class="model-field"><span class="model-field-name">match</span><span class="model-field-type">ForeignKey(Match)</span></div>
+                    <div class="model-field"><span class="model-field-name">home_win_probability</span><span class="model-field-type">FloatField (0-1)</span></div>
+                    <div class="model-field"><span class="model-field-name">draw_probability</span><span class="model-field-type">FloatField (0-1)</span></div>
+                    <div class="model-field"><span class="model-field-name">away_win_probability</span><span class="model-field-type">FloatField (0-1)</span></div>
+                    <div class="model-field"><span class="model-field-name">confidence_score</span><span class="model-field-type">FloatField (0-1)</span></div>
+                    <div class="model-field"><span class="model-field-name">recommended_outcome</span><span class="model-field-type">CharField</span></div>
+                    <div class="model-field"><span class="model-field-name">model_version</span><span class="model-field-type">CharField</span></div>
+                    <div class="model-field"><span class="model-field-name">is_correct</span><span class="model-field-type">BooleanField (null)</span></div>
+                </div>
+            </div>
+
+            <h3>Document & AI Models</h3>
+            <div class="model-card">
+                <div class="model-name">DocumentChunk</div>
+                <div class="model-fields">
+                    <div class="model-field"><span class="model-field-name">document</span><span class="model-field-type">ForeignKey(Document)</span></div>
+                    <div class="model-field"><span class="model-field-name">content</span><span class="model-field-type">TextField</span></div>
+                    <div class="model-field"><span class="model-field-name">embedding</span><span class="model-field-type">VectorField (1536 dims)</span></div>
+                    <div class="model-field"><span class="model-field-name">chunk_index</span><span class="model-field-type">IntegerField</span></div>
+                </div>
+            </div>
+
+            <div class="model-card">
+                <div class="model-name">AIRecommendation</div>
+                <div class="model-fields">
+                    <div class="model-field"><span class="model-field-name">prediction</span><span class="model-field-type">ForeignKey(Prediction)</span></div>
+                    <div class="model-field"><span class="model-field-name">provider</span><span class="model-field-type">CharField (openai/anthropic/google)</span></div>
+                    <div class="model-field"><span class="model-field-name">recommendation</span><span class="model-field-type">TextField</span></div>
+                    <div class="model-field"><span class="model-field-name">confidence_assessment</span><span class="model-field-type">TextField</span></div>
+                    <div class="model-field"><span class="model-field-name">risk_analysis</span><span class="model-field-type">TextField</span></div>
+                    <div class="model-field"><span class="model-field-name">key_factors</span><span class="model-field-type">JSONField</span></div>
+                    <div class="model-field"><span class="model-field-name">tokens_used</span><span class="model-field-type">IntegerField</span></div>
+                    <div class="model-field"><span class="model-field-name">status</span><span class="model-field-type">CharField</span></div>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- API Endpoints -->
+        <section id="api-endpoints">
+            <h2><span class="toc-num">5</span>API Endpoints</h2>
+
+            <h3>Leagues API</h3>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/leagues/</span>
+                <span class="endpoint-desc">List all leagues</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/leagues/{code}/</span>
+                <span class="endpoint-desc">Get league details</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/leagues/{code}/standings/</span>
+                <span class="endpoint-desc">League standings</span>
+            </div>
+
+            <h3>Matches API</h3>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/matches/</span>
+                <span class="endpoint-desc">List matches with filters</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/matches/upcoming/</span>
+                <span class="endpoint-desc">Next 7 days, grouped by date</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/matches/today/</span>
+                <span class="endpoint-desc">Today's matches by status</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/matches/live/</span>
+                <span class="endpoint-desc">Currently live matches</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/matches/results/</span>
+                <span class="endpoint-desc">Recent results with pagination</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/matches/{id}/statistics/</span>
+                <span class="endpoint-desc">Detailed match stats</span>
+            </div>
+
+            <h3>Predictions API</h3>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/predictions/</span>
+                <span class="endpoint-desc">List predictions</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method post">POST</span>
+                <span class="endpoint-path">/api/v1/predictions/generate/</span>
+                <span class="endpoint-desc">Generate single prediction</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/predictions/value-bets/</span>
+                <span class="endpoint-desc">Identify value betting opportunities</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/predictions/daily-picks/</span>
+                <span class="endpoint-desc">Top picks for specific date</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/predictions/stats/</span>
+                <span class="endpoint-desc">Accuracy statistics</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/predictions/model-info/</span>
+                <span class="endpoint-desc">Active model details</span>
+            </div>
+
+            <h3>AI & Documents API</h3>
+            <div class="endpoint">
+                <span class="endpoint-method post">POST</span>
+                <span class="endpoint-path">/api/v1/ai-recommendations/generate/</span>
+                <span class="endpoint-desc">Generate AI recommendation with RAG</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/ai-recommendations/providers/</span>
+                <span class="endpoint-desc">List available AI providers</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/documents/</span>
+                <span class="endpoint-desc">List documents</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/documents/search/?q=query</span>
+                <span class="endpoint-desc">Vector similarity search</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method post">POST</span>
+                <span class="endpoint-path">/api/v1/documents/refresh/</span>
+                <span class="endpoint-desc">Trigger full document refresh</span>
+            </div>
+            <div class="endpoint">
+                <span class="endpoint-method post">POST</span>
+                <span class="endpoint-path">/api/v1/documents/scrape-news/</span>
+                <span class="endpoint-desc">Scrape latest football news</span>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Services -->
+        <section id="services">
+            <h2><span class="toc-num">6</span>Services</h2>
+        </section>
+
+        <!-- ML Pipeline -->
+        <section id="ml-pipeline">
+            <h3>ML Pipeline</h3>
+
+            <p>The machine learning pipeline handles feature extraction, model training, and prediction inference.</p>
+
+            <div class="card">
+                <h4>Feature Extractor</h4>
+                <code>apps/ml_pipeline/features/feature_extractor.py</code>
+                <p style="margin-top: 12px;">Orchestrates feature extraction with 9 feature groups:</p>
+                <ul>
+                    <li><strong>form</strong> - Last 5-6 matches form metrics</li>
+                    <li><strong>extended_form</strong> - Longer-term form trends</li>
+                    <li><strong>venue_form</strong> - Home/away form separation</li>
+                    <li><strong>season</strong> - Season-to-date statistics</li>
+                    <li><strong>xg</strong> - Expected goals metrics</li>
+                    <li><strong>patterns</strong> - BTTS, over/under rates</li>
+                    <li><strong>h2h</strong> - Head-to-head records</li>
+                    <li><strong>context</strong> - Rest days, seasonality</li>
+                    <li><strong>odds</strong> - Implied probabilities from bookmakers</li>
+                </ul>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">extract_match_features(match_id)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Single match feature extraction with caching</div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">build_training_data(seasons, leagues)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Historical training dataset with optional disk caching</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h4>Model Trainer</h4>
+                <code>apps/ml_pipeline/training/trainer.py</code>
+                <p style="margin-top: 12px;">XGBoost model training with multiple prediction targets:</p>
+
+                <div class="grid grid-2" style="margin-top: 16px;">
+                    <div class="highlight-box">
+                        <strong>Result Model</strong><br>
+                        3-class classifier (Home/Draw/Away)
+                    </div>
+                    <div class="highlight-box">
+                        <strong>Goals Model</strong><br>
+                        Regression for total goals
+                    </div>
+                    <div class="highlight-box">
+                        <strong>Over 2.5 Model</strong><br>
+                        Binary classifier
+                    </div>
+                    <div class="highlight-box">
+                        <strong>BTTS Model</strong><br>
+                        Both teams to score
+                    </div>
+                </div>
+
+                <h4 style="margin-top: 24px;">Configuration</h4>
+                <pre><code>XGBoost Config:
+- n_estimators: 500
+- max_depth: 6
+- learning_rate: 0.05
+- subsample: 0.8
+- colsample_bytree: 0.8
+- objective: multi:softprob</code></pre>
+            </div>
+
+            <div class="card">
+                <h4>Match Predictor</h4>
+                <code>apps/ml_pipeline/inference/predictor.py</code>
+                <p style="margin-top: 12px;">Production prediction generation:</p>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">predict_match(match_id)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Generate prediction for single match with full analysis</div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">predict_upcoming(days=7)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Batch predict all upcoming matches within window</div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">_calculate_value_bets(prediction, odds)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Compare model probability vs market odds for value identification</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI & RAG -->
+        <section id="ai-rag">
+            <h3>AI & RAG Services</h3>
+
+            <div class="card">
+                <h4>Embedding Service</h4>
+                <code>apps/documents/services/embedding_service.py</code>
+                <p style="margin-top: 12px;">Multi-provider text embedding with caching:</p>
+
+                <table>
+                    <tr>
+                        <th>Provider</th>
+                        <th>Model</th>
+                        <th>Dimensions</th>
+                    </tr>
+                    <tr>
+                        <td>OpenAI</td>
+                        <td>text-embedding-3-small</td>
+                        <td>1536</td>
+                    </tr>
+                    <tr>
+                        <td>Local</td>
+                        <td>all-MiniLM-L6-v2</td>
+                        <td>384 → padded to 1536</td>
+                    </tr>
+                </table>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">chunk_text(text, chunk_size=1000, overlap=200)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Split text into overlapping chunks for embedding</div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">embed_document(document_id)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Create chunks and embeddings, store in database</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h4>RAG Service</h4>
+                <code>apps/documents/services/rag_service.py</code>
+                <p style="margin-top: 12px;">Vector similarity retrieval using pgvector:</p>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">retrieve(query, top_k=5, min_score=0.5)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Cosine distance-based similarity search</div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">retrieve_for_prediction(prediction)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Context-aware retrieval with team/league filtering</div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">build_context(results, max_tokens=2000)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Format results for LLM consumption</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h4>AI Recommendation Service</h4>
+                <code>apps/documents/services/ai_recommendation_service.py</code>
+                <p style="margin-top: 12px;">Multi-provider LLM integration:</p>
+
+                <div class="grid grid-3" style="margin: 16px 0;">
+                    <div class="highlight-box">
+                        <strong>OpenAI</strong><br>GPT-4
+                    </div>
+                    <div class="highlight-box">
+                        <strong>Anthropic</strong><br>Claude-3-Sonnet
+                    </div>
+                    <div class="highlight-box">
+                        <strong>Google</strong><br>Gemini Pro
+                    </div>
+                </div>
+
+                <div class="method-block">
+                    <div class="method-header">
+                        <span class="method-name">generate_recommendation(prediction_id, include_rag=True)</span>
+                        <span class="method-type">Method</span>
+                    </div>
+                    <div class="method-body">Full pipeline: RAG retrieval → LLM analysis → structured response</div>
+                </div>
+
+                <p>Returns structured analysis with:</p>
+                <ul>
+                    <li><strong>recommendation</strong> - Main betting recommendation</li>
+                    <li><strong>confidence_assessment</strong> - Why the prediction is confident/uncertain</li>
+                    <li><strong>risk_analysis</strong> - Potential risks and concerns</li>
+                    <li><strong>key_factors</strong> - Most important factors influencing prediction</li>
+                </ul>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Celery Tasks -->
+        <section id="celery-tasks">
+            <h2><span class="toc-num">7</span>Celery Tasks</h2>
+
+            <p>Automated background tasks managed by Celery with Redis broker:</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Task</th>
+                        <th>Schedule</th>
+                        <th>Queue</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>sync_all_leagues</code></td>
+                        <td>4:00 AM UTC</td>
+                        <td><span class="badge badge-info">data_sync</span></td>
+                        <td>Download latest CSV data from Football-Data.co.uk</td>
+                    </tr>
+                    <tr>
+                        <td><code>sync_historical_data</code></td>
+                        <td>Monday 2:00 AM</td>
+                        <td><span class="badge badge-info">data_sync</span></td>
+                        <td>Full historical sync (last 5 seasons)</td>
+                    </tr>
+                    <tr>
+                        <td><code>update_recent_results</code></td>
+                        <td>Every 3 hours</td>
+                        <td><span class="badge badge-info">data_sync</span></td>
+                        <td>Check for completed matches</td>
+                    </tr>
+                    <tr>
+                        <td><code>retrain_model</code></td>
+                        <td>5:00 AM UTC</td>
+                        <td><span class="badge badge-warning">ml</span></td>
+                        <td>Daily model retraining</td>
+                    </tr>
+                    <tr>
+                        <td><code>generate_predictions</code></td>
+                        <td>Every 6 hours</td>
+                        <td><span class="badge badge-brand">predictions</span></td>
+                        <td>Generate predictions for upcoming matches</td>
+                    </tr>
+                    <tr>
+                        <td><code>validate_predictions</code></td>
+                        <td>6:00 AM UTC</td>
+                        <td><span class="badge badge-brand">predictions</span></td>
+                        <td>Validate predictions against actual results</td>
+                    </tr>
+                    <tr>
+                        <td><code>calculate_model_metrics</code></td>
+                        <td>7:00 AM UTC</td>
+                        <td><span class="badge badge-success">analytics</span></td>
+                        <td>Calculate accuracy and performance metrics</td>
+                    </tr>
+                    <tr>
+                        <td><code>scrape_football_news</code></td>
+                        <td>6:00 AM & 6:00 PM</td>
+                        <td><span class="badge badge-brand">default</span></td>
+                        <td>Scrape news from ESPN, BBC, Sky Sports RSS</td>
+                    </tr>
+                    <tr>
+                        <td><code>embed_documents</code></td>
+                        <td>4:45 AM UTC</td>
+                        <td><span class="badge badge-brand">default</span></td>
+                        <td>Generate embeddings for new documents</td>
+                    </tr>
+                    <tr>
+                        <td><code>cleanup_old_news</code></td>
+                        <td>5:30 AM UTC</td>
+                        <td><span class="badge badge-brand">default</span></td>
+                        <td>Remove news older than 7 days</td>
+                    </tr>
+                    <tr>
+                        <td><code>cleanup_old_data</code></td>
+                        <td>Sunday 3:00 AM</td>
+                        <td><span class="badge badge-brand">default</span></td>
+                        <td>Weekly data maintenance</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Frontend Pages -->
+        <section id="pages">
+            <h2><span class="toc-num">8</span>Frontend Pages</h2>
+
+            <div class="grid grid-3">
+                <div class="card">
+                    <h4>Dashboard</h4>
+                    <code>/app/page.tsx</code>
+                    <ul>
+                        <li>Key metrics display</li>
+                        <li>7-day date selector</li>
+                        <li>Live matches (15s refresh)</li>
+                        <li>Daily picks with AI</li>
+                        <li>Model performance stats</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Predictions</h4>
+                    <code>/app/predictions/page.tsx</code>
+                    <ul>
+                        <li>Filter by confidence</li>
+                        <li>Probability breakdown</li>
+                        <li>Result verification</li>
+                        <li>AI Enhancement button</li>
+                        <li>30-day history</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Matches</h4>
+                    <code>/app/matches/page.tsx</code>
+                    <ul>
+                        <li>Upcoming/Live/Results tabs</li>
+                        <li>League filtering</li>
+                        <li>Day range selection</li>
+                        <li>Live refresh (15s)</li>
+                        <li>Match detail links</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Value Bets</h4>
+                    <code>/app/value-bets/page.tsx</code>
+                    <ul>
+                        <li>Edge calculation</li>
+                        <li>Strength indicators</li>
+                        <li>Model vs Market odds</li>
+                        <li>Confidence bars</li>
+                        <li>Color-coded ratings</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Analytics</h4>
+                    <code>/app/analytics/page.tsx</code>
+                    <ul>
+                        <li>Accuracy by outcome</li>
+                        <li>Confidence breakdown</li>
+                        <li>30-day window</li>
+                        <li>Model info display</li>
+                        <li>Performance trends</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Leagues</h4>
+                    <code>/app/leagues/page.tsx</code>
+                    <ul>
+                        <li>Grouped by tier</li>
+                        <li>20+ leagues</li>
+                        <li>Country badges</li>
+                        <li>Standings links</li>
+                        <li>League details</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Components -->
+        <section id="components">
+            <h2><span class="toc-num">9</span>React Components</h2>
+
+            <h3>Layout Components</h3>
+            <div class="grid grid-3">
+                <div class="card">
+                    <h4>Sidebar</h4>
+                    <code>components/layout/Sidebar.tsx</code>
+                    <p>Left navigation panel (260px, collapsible to 60px). Navigation items with keyboard shortcuts 1-7.</p>
+                </div>
+                <div class="card">
+                    <h4>Header</h4>
+                    <code>components/layout/Header.tsx</code>
+                    <p>Sticky top header with search, notifications, user menu. Responsive mobile support.</p>
+                </div>
+                <div class="card">
+                    <h4>MainContent</h4>
+                    <code>components/layout/MainContent.tsx</code>
+                    <p>Content wrapper that adjusts margin based on sidebar collapse state.</p>
+                </div>
+            </div>
+
+            <h3>UI Components</h3>
+            <div class="grid grid-2">
+                <div class="card">
+                    <h4>Card</h4>
+                    <code>components/ui/Card.tsx</code>
+                    <p>Reusable card container. Exports: Card, CardHeader, CardBody, CardTitle.</p>
+                </div>
+                <div class="card">
+                    <h4>Badge</h4>
+                    <code>components/ui/Badge.tsx</code>
+                    <p>Variants: default, win (green), draw (yellow), loss (red), live (animated).</p>
+                </div>
+                <div class="card">
+                    <h4>ProbabilityBar</h4>
+                    <code>components/ui/ProbabilityBar.tsx</code>
+                    <p>3-color stacked bar for H/D/A probabilities. SimpleProbabilityBar for single values.</p>
+                </div>
+                <div class="card">
+                    <h4>LoadingSpinner</h4>
+                    <code>components/ui/LoadingSpinner.tsx</code>
+                    <p>Animated circular spinner with customizable size (sm/md/lg).</p>
+                </div>
+            </div>
+
+            <h3>Feature Components</h3>
+            <div class="grid grid-2">
+                <div class="card">
+                    <h4>DailyPicks</h4>
+                    <code>components/predictions/DailyPicks.tsx</code>
+                    <p>High-confidence predictions for a date with AI Enhancement integration.</p>
+                </div>
+                <div class="card">
+                    <h4>AIEnhancement</h4>
+                    <code>components/predictions/AIEnhancement.tsx</code>
+                    <p>Inline AI analysis with expandable details. Shows recommendation, confidence, risk, key factors.</p>
+                </div>
+                <div class="card">
+                    <h4>LiveMatches</h4>
+                    <code>components/matches/LiveMatches.tsx</code>
+                    <p>Grid display of live matches with pulse animation. 15-second auto-refresh.</p>
+                </div>
+                <div class="card">
+                    <h4>PredictionStats</h4>
+                    <code>components/predictions/PredictionStats.tsx</code>
+                    <p>Accuracy breakdown by confidence level and outcome type.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- State Management -->
+        <section id="state-management">
+            <h2><span class="toc-num">10</span>State Management</h2>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h4>Zustand Stores</h4>
+                    <code>lib/store.ts</code>
+
+                    <div class="method-block">
+                        <div class="method-header">
+                            <span class="method-name">useAppStore</span>
+                            <span class="method-type">Persisted</span>
+                        </div>
+                        <div class="method-body">
+                            selectedLeague, sidebarOpen, theme, confidenceFilter<br>
+                            <small>Key: 'bet-hope-storage'</small>
+                        </div>
+                    </div>
+
+                    <div class="method-block">
+                        <div class="method-header">
+                            <span class="method-name">useFavoritesStore</span>
+                            <span class="method-type">Persisted</span>
+                        </div>
+                        <div class="method-body">
+                            favoriteTeams[], favoriteLeagues[], add/remove/toggle<br>
+                            <small>Key: 'bet-hope-favorites'</small>
+                        </div>
+                    </div>
+
+                    <div class="method-block">
+                        <div class="method-header">
+                            <span class="method-name">useLiveMatchesStore</span>
+                            <span class="method-type">Memory</span>
+                        </div>
+                        <div class="method-body">
+                            liveMatches[], updateMatch()
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h4>React Query Hooks</h4>
+                    <code>hooks/useApi.ts</code>
+
+                    <p>TanStack React Query with smart caching:</p>
+
+                    <table>
+                        <tr><td><code>useLiveMatches()</code></td><td>15s refetch</td></tr>
+                        <tr><td><code>useTodayMatches()</code></td><td>30s refetch</td></tr>
+                        <tr><td><code>useUpcomingMatches()</code></td><td>60s refetch</td></tr>
+                        <tr><td><code>useDailyPicks()</code></td><td>5min refetch</td></tr>
+                        <tr><td><code>useModelInfo()</code></td><td>1hr cache</td></tr>
+                        <tr><td><code>useAIProviders()</code></td><td>1hr cache</td></tr>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- API Client -->
+        <section id="api-client">
+            <h2><span class="toc-num">11</span>API Client</h2>
+
+            <div class="card">
+                <h4>Axios Instance</h4>
+                <code>lib/api.ts</code>
+
+                <pre><code>const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
+  headers: { 'Content-Type': 'application/json' }
+});
+
+// Request interceptor: Add Bearer token
+// Response interceptor: Clear token on 401</code></pre>
+
+                <h4 style="margin-top: 24px;">API Modules</h4>
+                <div class="grid grid-3">
+                    <div>
+                        <strong>api.leagues</strong>
+                        <ul>
+                            <li>getAll()</li>
+                            <li>getByCode()</li>
+                            <li>getStandings()</li>
+                            <li>getSeasons()</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>api.matches</strong>
+                        <ul>
+                            <li>getUpcoming()</li>
+                            <li>getToday()</li>
+                            <li>getLive()</li>
+                            <li>getResults()</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>api.predictions</strong>
+                        <ul>
+                            <li>generate()</li>
+                            <li>getValueBets()</li>
+                            <li>getDailyPicks()</li>
+                            <li>getStats()</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Color Theme -->
+        <section id="color-theme">
+            <h2><span class="toc-num">12</span>Color Theme</h2>
+
+            <h3>Background Colors</h3>
+            <div class="color-grid">
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #030303;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Page</div>
+                        <div class="color-value">#030303</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #0A0A0A;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Card</div>
+                        <div class="color-value">#0A0A0A</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #111111;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Surface</div>
+                        <div class="color-value">#111111</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #1A1A1A;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Input</div>
+                        <div class="color-value">#1A1A1A</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Brand Colors (Sky Blue)</h3>
+            <div class="color-grid">
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #38BDF8;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Brand 1</div>
+                        <div class="color-value">#38BDF8</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #7DD3FC;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Brand 2</div>
+                        <div class="color-value">#7DD3FC</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #BAE6FD;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Brand 3</div>
+                        <div class="color-value">#BAE6FD</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: linear-gradient(90deg, #0EA5E9, #38BDF8, #7DD3FC);"></div>
+                    <div class="color-info">
+                        <div class="color-name">Gradient</div>
+                        <div class="color-value">linear-gradient</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Status Colors</h3>
+            <div class="color-grid">
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #22c55e;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Success</div>
+                        <div class="color-value">#22c55e</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #f59e0b;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Warning</div>
+                        <div class="color-value">#f59e0b</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #dc2626;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Error</div>
+                        <div class="color-value">#dc2626</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #7DD3FC;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Info</div>
+                        <div class="color-value">#7DD3FC</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Text Colors</h3>
+            <div class="color-grid">
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #FFFFFF;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Primary</div>
+                        <div class="color-value">#FFFFFF</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #A3A3A3;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Secondary</div>
+                        <div class="color-value">#A3A3A3</div>
+                    </div>
+                </div>
+                <div class="color-swatch">
+                    <div class="color-preview" style="background: #666666;"></div>
+                    <div class="color-info">
+                        <div class="color-name">Muted</div>
+                        <div class="color-value">#666666</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Data Flow -->
+        <section id="data-flow">
+            <h2><span class="toc-num">13</span>Data Flow Architecture</h2>
+
+            <div class="flow-diagram">
+                <pre>
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           EXTERNAL DATA SOURCES                                  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  Football-Data.co.uk    │    RSS News Feeds    │    Betting Odds APIs           │
+│  (CSV match data)       │    (ESPN, BBC, Sky)  │    (Market prices)             │
+└────────────┬────────────┴──────────┬───────────┴──────────────┬─────────────────┘
+             │                       │                          │
+             ▼                       ▼                          ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           CELERY TASK SCHEDULER                                  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  sync_all_leagues()     │    scrape_news()     │    update_results()            │
+│  (Daily 4 AM)           │    (6 AM & 6 PM)     │    (Every 3 hours)             │
+└────────────┬────────────┴──────────┬───────────┴──────────────┬─────────────────┘
+             │                       │                          │
+             ▼                       ▼                          ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              POSTGRESQL DATABASE                                 │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  Leagues │ Teams │ Matches │ Stats │ Odds │ Documents │ Chunks │ Embeddings     │
+└────────────────────────────────────────────────────┬────────────────────────────┘
+                                                     │
+                    ┌────────────────────────────────┼────────────────────────────┐
+                    │                                │                            │
+                    ▼                                ▼                            ▼
+         ┌──────────────────┐            ┌──────────────────┐          ┌──────────────────┐
+         │  FEATURE ENGINE  │            │   EMBEDDING SVC  │          │   RAG SERVICE    │
+         │                  │            │                  │          │                  │
+         │  - Team stats    │            │  - OpenAI API    │          │  - pgvector      │
+         │  - Form metrics  │            │  - Local model   │          │  - Similarity    │
+         │  - H2H records   │            │  - Chunking      │          │  - Context build │
+         │  - xG data       │            │  - Caching       │          │  - Top-K retrieval│
+         └────────┬─────────┘            └────────┬─────────┘          └────────┬─────────┘
+                  │                               │                             │
+                  ▼                               │                             │
+         ┌──────────────────┐                     │                             │
+         │   ML PREDICTOR   │                     │                             │
+         │                  │                     │                             │
+         │  - XGBoost model │                     │                             │
+         │  - Probability   │                     │                             │
+         │  - Confidence    │                     │                             │
+         │  - Value bets    │                     │                             │
+         └────────┬─────────┘                     │                             │
+                  │                               │                             │
+                  ▼                               ▼                             ▼
+         ┌────────────────────────────────────────────────────────────────────────┐
+         │                        AI RECOMMENDATION SERVICE                        │
+         │                                                                         │
+         │   Prediction + RAG Context + Team Stats → LLM (OpenAI/Claude/Gemini)   │
+         │                                                                         │
+         │   Output: Recommendation, Confidence Assessment, Risk Analysis          │
+         └────────────────────────────────────────────────────────────────────────┘
+                                          │
+                                          ▼
+         ┌────────────────────────────────────────────────────────────────────────┐
+         │                         REST API (DRF)                                  │
+         ├────────────────────────────────────────────────────────────────────────┤
+         │  /matches/  │  /predictions/  │  /ai-recommendations/  │  /documents/  │
+         └────────────────────────────────────────────────────────────────────────┘
+                                          │
+                                          ▼
+         ┌────────────────────────────────────────────────────────────────────────┐
+         │                      NEXT.JS FRONTEND                                   │
+         ├────────────────────────────────────────────────────────────────────────┤
+         │                                                                         │
+         │   React Query Hooks → API Client → Zustand State → React Components    │
+         │                                                                         │
+         │   Pages: Dashboard │ Predictions │ Matches │ Value Bets │ Analytics    │
+         └────────────────────────────────────────────────────────────────────────┘
+                </pre>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Integrations -->
+        <section id="integrations">
+            <h2><span class="toc-num">14</span>External Integrations</h2>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h4>Data Sources</h4>
+                    <table>
+                        <tr><td><strong>Football-Data.co.uk</strong></td><td>Match data, fixtures, standings, odds</td></tr>
+                        <tr><td><strong>ESPN RSS</strong></td><td>Football news articles</td></tr>
+                        <tr><td><strong>BBC Sport RSS</strong></td><td>Football news articles</td></tr>
+                        <tr><td><strong>Sky Sports RSS</strong></td><td>Football news articles</td></tr>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h4>AI Providers</h4>
+                    <table>
+                        <tr><td><strong>OpenAI</strong></td><td>GPT-4, text-embedding-3-small</td></tr>
+                        <tr><td><strong>Anthropic</strong></td><td>Claude 3 Sonnet</td></tr>
+                        <tr><td><strong>Google AI</strong></td><td>Gemini Pro</td></tr>
+                        <tr><td><strong>HuggingFace</strong></td><td>Sentence Transformers (local)</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <h3>Authentication</h3>
+            <div class="highlight-box">
+                <strong>JWT Authentication</strong><br>
+                Access token: 60 minutes | Refresh token: 7 days<br>
+                Endpoints: <code>/api/v1/auth/token/</code> and <code>/api/v1/auth/token/refresh/</code>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Footer -->
+        <footer style="text-align: center; padding: 40px 0; color: var(--text-muted);">
+            <p>Bet Hope Architecture Documentation</p>
+            <p style="font-size: 12px; margin-top: 8px;">Generated on February 2026</p>
+        </footer>
+    </main>
+</body>
+</html>
