@@ -36,7 +36,7 @@ if SENTRY_DSN:
 # Logging
 LOGGING['handlers']['file'] = {
     'class': 'logging.handlers.RotatingFileHandler',
-    'filename': '/var/log/bet_hope/django.log',
+    'filename': '/app/logs/django.log',
     'maxBytes': 1024 * 1024 * 10,  # 10 MB
     'backupCount': 5,
     'formatter': 'verbose',
