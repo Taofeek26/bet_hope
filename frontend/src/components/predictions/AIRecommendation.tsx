@@ -64,10 +64,11 @@ export function AIRecommendation({ predictionId, matchInfo }: AIRecommendationPr
 
   return (
     <Card className="border-purple-500/30">
-      <CardHeader
-        className="cursor-pointer flex items-center justify-between"
+      <div
+        className="cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
+      <CardHeader className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-purple-500/20">
             <Brain className="w-5 h-5 text-purple-400" />
@@ -90,6 +91,7 @@ export function AIRecommendation({ predictionId, matchInfo }: AIRecommendationPr
           )}
         </button>
       </CardHeader>
+      </div>
 
       {expanded && (
         <CardBody className="space-y-4">
