@@ -332,7 +332,7 @@ Full API documentation: `backend/docs/API.md`
 
 ## Deployment
 
-### Docker Commands
+### Local Development (Docker)
 
 #### Start All Services
 ```bash
@@ -404,17 +404,309 @@ docker compose ps
 | postgres | 5432 | - | PostgreSQL + pgvector |
 | redis | 6379 | - | Cache & queue |
 
+---
+
+## Production Deployment (Oracle Cloud)
+
+### Architecture (Production)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         NGINX (Port 80/443)                      │
+│                    Reverse Proxy & Load Balancer                 │
+└─────────────────────┬───────────────────────┬───────────────────┘
+                      │                       │
+          ┌───────────▼───────────┐ ┌────────▼────────┐
+          │    Next.js Frontend   │ │  Django Backend │
+          │       (Port 3000)     │ │   (Port 8000)   │
+          └───────────────────────┘ └────────┬────────┘
+                                             │
+                    ┌────────────────────────┼────────────────────────┐
+                    │                        │                        │
+          ┌─────────▼─────────┐   ┌─────────▼─────────┐   ┌─────────▼─────────┐
+          │ PostgreSQL+pgvector│   │      Redis        │   │   Celery Workers  │
+          │     (Port 5432)    │   │   (Port 6379)     │   │   (Background)    │
+          └────────────────────┘   └───────────────────┘   └───────────────────┘
+```
+
 ### Services (Production)
 
 | Service | Port | Description |
 |---------|------|-------------|
-| nginx | 80/443 | Reverse proxy |
-| frontend | 3000 | Next.js app |
-| backend | 8000 | Django API |
-| celery | - | Background workers |
+| nginx | 80/443 | Reverse proxy, SSL termination |
+| frontend | 3000 | Next.js app (SSG/SSR) |
+| backend | 8000 | Django API + Gunicorn |
+| celery | - | Background workers (2 concurrent) |
 | celery-beat | - | Task scheduler |
-| postgres | 5432 | Database |
-| redis | 6379 | Cache & queue |
+| db | 5432 | PostgreSQL 15 + pgvector |
+| redis | 6379 | Cache & message broker |
+
+### Server Requirements
+
+- **OS**: Ubuntu 22.04 LTS
+- **RAM**: 1GB minimum (with 2GB swap)
+- **Storage**: 20GB+
+- **Ports**: 80, 443, 22 (SSH)
+
+### Initial Server Setup
+
+```bash
+# SSH into your server
+ssh ubuntu@<your-server-ip>
+
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+
+# Install Docker Compose
+sudo apt install docker-compose-plugin -y
+
+# Create swap (required for 1GB RAM servers)
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Logout and login again for docker group to take effect
+exit
+```
+
+### First-Time Deployment
+
+```bash
+# SSH back into server
+ssh ubuntu@<your-server-ip>
+
+# Clone repository
+git clone <repository-url> /opt/bet_hope
+cd /opt/bet_hope
+
+# Create production environment file
+cat > backend/.env.prod << 'EOF'
+DJANGO_SETTINGS_MODULE=config.settings.production
+SECRET_KEY=<generate-a-secure-random-key>
+DEBUG=false
+DJANGO_ALLOWED_HOSTS=<your-server-ip>,yourdomain.com,localhost,127.0.0.1
+
+DATABASE_URL=postgres://bet_hope:secure_password_change_me@db:5432/bet_hope
+DB_PASSWORD=secure_password_change_me
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+
+ML_MODEL_PATH=/app/ml/artifacts
+PYTORCH_ENABLE_MPS_FALLBACK=1
+
+# API Keys (add your keys)
+API_FOOTBALL_KEY=your_api_key
+OPENAI_API_KEY=your_openai_key
+EOF
+
+# Start production containers
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Enable pgvector extension (first time only)
+docker compose -f docker-compose.prod.yml exec db psql -U bet_hope -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+# Restart backend to run migrations
+docker compose -f docker-compose.prod.yml restart backend celery celery-beat
+
+# Verify all services are running
+docker compose -f docker-compose.prod.yml ps
+
+# Test endpoints
+curl http://<your-server-ip>/           # Frontend
+curl http://<your-server-ip>/api/       # Backend API
+curl http://<your-server-ip>/health/    # Health check
+```
+
+---
+
+## Pushing Changes to Production
+
+### Standard Workflow
+
+After making changes locally:
+
+```bash
+# 1. Commit and push changes
+git add .
+git commit -m "Your commit message"
+git push origin main
+
+# 2. SSH into production server
+ssh ubuntu@<your-server-ip>
+
+# 3. Pull and deploy
+cd /opt/bet_hope
+git pull origin main
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 4. Verify deployment
+docker compose -f docker-compose.prod.yml ps
+curl http://localhost/health/
+```
+
+### Quick Deploy Commands
+
+```bash
+# Backend only (faster)
+git pull && docker compose -f docker-compose.prod.yml up -d --build backend celery celery-beat && docker compose -f docker-compose.prod.yml restart nginx
+
+# Frontend only
+git pull && docker compose -f docker-compose.prod.yml up -d --build frontend && docker compose -f docker-compose.prod.yml restart nginx
+
+# Full rebuild
+git pull && docker compose -f docker-compose.prod.yml up -d --build
+
+# Just restart (no rebuild)
+docker compose -f docker-compose.prod.yml restart
+```
+
+### View Production Logs
+
+```bash
+# All services
+docker compose -f docker-compose.prod.yml logs -f
+
+# Specific service
+docker compose -f docker-compose.prod.yml logs -f backend
+docker compose -f docker-compose.prod.yml logs -f celery
+docker compose -f docker-compose.prod.yml logs -f nginx
+
+# Last 100 lines
+docker compose -f docker-compose.prod.yml logs --tail 100 backend
+```
+
+---
+
+## Production Operations
+
+### Create Admin User
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+```
+
+### Seed Initial Data
+
+```bash
+# Seed leagues
+docker compose -f docker-compose.prod.yml exec backend python manage.py seed_leagues
+
+# Backfill historical data
+docker compose -f docker-compose.prod.yml exec backend python manage.py backfill_historical --seasons 3
+```
+
+### Run Database Migrations
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py migrate
+```
+
+### Access Django Shell
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py shell
+```
+
+### Access Database
+
+```bash
+docker compose -f docker-compose.prod.yml exec db psql -U bet_hope
+```
+
+---
+
+## Troubleshooting Production
+
+### 502 Bad Gateway
+Nginx can't reach backend (usually after container recreation):
+```bash
+docker compose -f docker-compose.prod.yml restart nginx
+```
+
+### 400 Bad Request (ALLOWED_HOSTS)
+```bash
+# Check current setting
+docker compose -f docker-compose.prod.yml exec backend env | grep ALLOWED
+
+# Fix: Update backend/.env.prod
+DJANGO_ALLOWED_HOSTS=<your-server-ip>,yourdomain.com,localhost
+
+# Restart
+docker compose -f docker-compose.prod.yml restart backend celery celery-beat
+```
+
+### 301 Redirect Loop (SSL not configured)
+```bash
+# Ensure these are in backend/.env.prod:
+SECURE_SSL_REDIRECT=false
+SESSION_COOKIE_SECURE=false
+CSRF_COOKIE_SECURE=false
+
+# Restart
+docker compose -f docker-compose.prod.yml restart backend
+```
+
+### pgvector Extension Missing
+```bash
+# Error: type "vector" does not exist
+docker compose -f docker-compose.prod.yml exec db psql -U bet_hope -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker compose -f docker-compose.prod.yml restart backend
+```
+
+### Out of Memory
+```bash
+# Check swap
+free -h
+
+# Enable swap if needed
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+### Container Won't Start
+```bash
+docker compose -f docker-compose.prod.yml logs <service-name>
+```
+
+---
+
+## SSL/HTTPS Setup
+
+### Using Let's Encrypt
+
+```bash
+# Install certbot
+sudo apt install certbot -y
+
+# Stop nginx temporarily
+docker compose -f docker-compose.prod.yml stop nginx
+
+# Get certificate
+sudo certbot certonly --standalone -d yourdomain.com
+
+# Copy certificates
+sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem nginx/ssl/
+sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem nginx/ssl/
+sudo chown $USER:$USER nginx/ssl/*.pem
+
+# Update nginx.conf (uncomment SSL server block)
+# Update backend/.env.prod:
+SECURE_SSL_REDIRECT=true
+SESSION_COOKIE_SECURE=true
+CSRF_COOKIE_SECURE=true
+SECURE_HSTS_SECONDS=31536000
+
+# Restart
+docker compose -f docker-compose.prod.yml up -d
+```
 
 ---
 
