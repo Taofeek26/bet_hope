@@ -110,13 +110,31 @@ function MatchRow({ match }: { match: any }) {
           {/* Teams */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white truncate">
-                {match.home_team_name}
-              </span>
+              <div className="flex items-center gap-2">
+                {match.home_team_logo ? (
+                  <img src={match.home_team_logo} alt={match.home_team_name} className="w-5 h-5 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                    {match.home_team_name?.charAt(0)}
+                  </div>
+                )}
+                <span className="text-sm font-medium text-white truncate">
+                  {match.home_team_name}
+                </span>
+              </div>
               <span className="text-xs text-slate-500 mx-2">vs</span>
-              <span className="text-sm font-medium text-white truncate">
-                {match.away_team_name}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-white truncate">
+                  {match.away_team_name}
+                </span>
+                {match.away_team_logo ? (
+                  <img src={match.away_team_logo} alt={match.away_team_name} className="w-5 h-5 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                    {match.away_team_name?.charAt(0)}
+                  </div>
+                )}
+              </div>
             </div>
             <span className="text-xs text-slate-500">{match.league_name}</span>
           </div>

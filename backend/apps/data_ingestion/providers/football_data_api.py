@@ -546,7 +546,23 @@ class FootballDataAPIProvider:
 
         # Create unique ID using API fixture ID
         api_id = fixture_info.get('id')
-        match_id = f"apifb_{api_id}" if api_id else f"{our_league_code}_{season_code}_{match_date}_{home_name}_{away_name}"
+        api_match_id = f"apifb_{api_id}" if api_id else None
+
+        # IMPORTANT: First check if a match already exists for these teams on this date
+        # This prevents duplicates when CSV data and API data both exist
+        existing_match = Match.objects.filter(
+            home_team=home_team,
+            away_team=away_team,
+            match_date=match_date,
+            season=db_season
+        ).first()
+
+        if existing_match:
+            # Update existing match (from CSV) with API data
+            match_id = existing_match.fd_match_id
+        else:
+            # No existing match, use API ID or generate one
+            match_id = api_match_id or f"{our_league_code}_{season_code}_{match_date}_{home_name}_{away_name}"
 
         # Get score if available
         goals = fixture.get('goals', {})

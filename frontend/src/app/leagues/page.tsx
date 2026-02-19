@@ -103,9 +103,13 @@ function LeagueCard({ league }: { league: any }) {
       className="card card-compact hover:border-brand transition-colors group"
     >
       <div className="flex items-center gap-4">
-        <div className="card-icon">
-          <Trophy className="w-5 h-5" />
-        </div>
+        {league.logo_url ? (
+          <img src={league.logo_url} alt={league.name} className="w-10 h-10 object-contain" />
+        ) : (
+          <div className="card-icon">
+            <Trophy className="w-5 h-5" />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-text group-hover:text-brand truncate">
             {league.name}

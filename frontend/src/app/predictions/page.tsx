@@ -97,7 +97,27 @@ function PredictionCard({ prediction }: { prediction: any }) {
           </div>
           <div>
             <div className="font-semibold text-text flex items-center gap-2">
-              {match.home_team || 'Home'} vs {match.away_team || 'Away'}
+              <div className="flex items-center gap-1.5">
+                {match.home_team_logo ? (
+                  <img src={match.home_team_logo} alt={match.home_team} className="w-5 h-5 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                    {(match.home_team || 'H')?.charAt(0)}
+                  </div>
+                )}
+                <span>{match.home_team || 'Home'}</span>
+              </div>
+              <span className="text-text-muted text-sm">vs</span>
+              <div className="flex items-center gap-1.5">
+                <span>{match.away_team || 'Away'}</span>
+                {match.away_team_logo ? (
+                  <img src={match.away_team_logo} alt={match.away_team} className="w-5 h-5 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                    {(match.away_team || 'A')?.charAt(0)}
+                  </div>
+                )}
+              </div>
               {hasVerification && (
                 <span className={`text-xs px-2 py-0.5 rounded font-medium ${isCorrect ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
                   FT: {verification.actual_score}

@@ -131,16 +131,39 @@ class Command(BaseCommand):
                     errors += 1
                     continue
 
+                # Determine recommended outcome based on highest probability
+                home_prob = prediction_data.get('home_win_prob', 0.33)
+                draw_prob = prediction_data.get('draw_prob', 0.33)
+                away_prob = prediction_data.get('away_win_prob', 0.33)
+
+                if home_prob >= draw_prob and home_prob >= away_prob:
+                    recommended = 'HOME'
+                elif away_prob >= draw_prob:
+                    recommended = 'AWAY'
+                else:
+                    recommended = 'DRAW'
+
+                # Determine prediction strength
+                confidence = prediction_data.get('confidence', 0.4)
+                if confidence >= 0.7:
+                    strength = 'strong'
+                elif confidence >= 0.5:
+                    strength = 'moderate'
+                else:
+                    strength = 'weak'
+
                 obj, was_created = Prediction.objects.update_or_create(
                     match=match,
                     defaults={
                         'model_version': predictor.model_version or 'current',
-                        'home_win_probability': Decimal(str(prediction_data.get('home_win_prob', 0.33))),
-                        'draw_probability': Decimal(str(prediction_data.get('draw_prob', 0.33))),
-                        'away_win_probability': Decimal(str(prediction_data.get('away_win_prob', 0.33))),
+                        'home_win_probability': Decimal(str(home_prob)),
+                        'draw_probability': Decimal(str(draw_prob)),
+                        'away_win_probability': Decimal(str(away_prob)),
                         'predicted_home_score': Decimal(str(prediction_data.get('predicted_total_goals', 2.5) * 0.55)),
                         'predicted_away_score': Decimal(str(prediction_data.get('predicted_total_goals', 2.5) * 0.45)),
-                        'confidence_score': Decimal(str(prediction_data.get('confidence', 0.4))),
+                        'confidence_score': Decimal(str(confidence)),
+                        'recommended_outcome': recommended,
+                        'prediction_strength': strength,
                         'model_type': 'xgboost',
                         'key_factors': prediction_data.get('value_bets', []),
                     }
@@ -195,15 +218,38 @@ class Command(BaseCommand):
                     errors += 1
                     continue
 
+                # Determine recommended outcome based on highest probability
+                home_prob = prediction_data.get('home_win_prob', 0.33)
+                draw_prob = prediction_data.get('draw_prob', 0.33)
+                away_prob = prediction_data.get('away_win_prob', 0.33)
+
+                if home_prob >= draw_prob and home_prob >= away_prob:
+                    recommended = 'HOME'
+                elif away_prob >= draw_prob:
+                    recommended = 'AWAY'
+                else:
+                    recommended = 'DRAW'
+
+                # Determine prediction strength
+                confidence = prediction_data.get('confidence', 0.4)
+                if confidence >= 0.7:
+                    strength = 'strong'
+                elif confidence >= 0.5:
+                    strength = 'moderate'
+                else:
+                    strength = 'weak'
+
                 Prediction.objects.create(
                     match=match,
                     model_version=predictor.model_version or 'current',
-                    home_win_probability=Decimal(str(prediction_data.get('home_win_prob', 0.33))),
-                    draw_probability=Decimal(str(prediction_data.get('draw_prob', 0.33))),
-                    away_win_probability=Decimal(str(prediction_data.get('away_win_prob', 0.33))),
+                    home_win_probability=Decimal(str(home_prob)),
+                    draw_probability=Decimal(str(draw_prob)),
+                    away_win_probability=Decimal(str(away_prob)),
                     predicted_home_score=Decimal(str(prediction_data.get('predicted_total_goals', 2.5) * 0.55)),
                     predicted_away_score=Decimal(str(prediction_data.get('predicted_total_goals', 2.5) * 0.45)),
-                    confidence_score=Decimal(str(prediction_data.get('confidence', 0.4))),
+                    confidence_score=Decimal(str(confidence)),
+                    recommended_outcome=recommended,
+                    prediction_strength=strength,
                     model_type='xgboost',
                     key_factors=prediction_data.get('value_bets', []),
                 )
@@ -254,6 +300,22 @@ class Command(BaseCommand):
 
             confidence = max(home_prob, draw_prob, away_prob)
 
+            # Determine recommended outcome
+            if home_prob >= draw_prob and home_prob >= away_prob:
+                recommended = 'HOME'
+            elif away_prob >= draw_prob:
+                recommended = 'AWAY'
+            else:
+                recommended = 'DRAW'
+
+            # Determine prediction strength
+            if confidence >= 0.7:
+                strength = 'strong'
+            elif confidence >= 0.5:
+                strength = 'moderate'
+            else:
+                strength = 'weak'
+
             try:
                 Prediction.objects.create(
                     match=match,
@@ -264,6 +326,8 @@ class Command(BaseCommand):
                     predicted_home_score=Decimal('1.50'),
                     predicted_away_score=Decimal('1.20'),
                     confidence_score=Decimal(str(confidence)),
+                    recommended_outcome=recommended,
+                    prediction_strength=strength,
                     model_type='statistical',
                     key_factors=[
                         {'factor': 'Home advantage', 'impact': 'positive'},
@@ -324,6 +388,20 @@ class Command(BaseCommand):
         validated = 0
         correct = 0
 
+        # Normalize outcome codes for comparison
+        def normalize_outcome(outcome):
+            """Normalize outcome to HOME/AWAY/DRAW format."""
+            if outcome is None:
+                return None
+            outcome = outcome.upper()
+            if outcome in ('H', 'HOME', '1'):
+                return 'HOME'
+            elif outcome in ('A', 'AWAY', '2'):
+                return 'AWAY'
+            elif outcome in ('D', 'DRAW', 'X'):
+                return 'DRAW'
+            return outcome
+
         for pred in predictions:
             match = pred.match
             if match.home_score is None or match.away_score is None:
@@ -337,8 +415,11 @@ class Command(BaseCommand):
             else:
                 actual = 'DRAW'
 
+            # Normalize recommended_outcome for comparison
+            recommended = normalize_outcome(pred.recommended_outcome)
+
             pred.actual_outcome = actual
-            pred.is_correct = (pred.recommended_outcome == actual)
+            pred.is_correct = (recommended == actual)
             pred.save(update_fields=['actual_outcome', 'is_correct', 'updated_at'])
 
             validated += 1

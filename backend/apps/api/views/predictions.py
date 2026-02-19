@@ -189,14 +189,35 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
     def value_bets(self, request):
         """Get value bet suggestions."""
         today = timezone.now().date()
-        days = int(request.query_params.get('days', 3))
+
+        # Support specific date filtering (like dashboard)
+        date_str = request.query_params.get('date')
+        days = int(request.query_params.get('days', 7))
 
         from apps.matches.models import Match, MatchOdds
 
+        # Build date filter
+        if date_str:
+            # Specific date requested
+            try:
+                from datetime import datetime
+                specific_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                date_filter = {'match_date': specific_date}
+            except ValueError:
+                date_filter = {
+                    'match_date__gte': today,
+                    'match_date__lte': today + timedelta(days=days),
+                }
+        else:
+            # Default: next N days
+            date_filter = {
+                'match_date__gte': today,
+                'match_date__lte': today + timedelta(days=days),
+            }
+
         # Get upcoming matches with predictions and odds
         matches = Match.objects.filter(
-            match_date__gte=today,
-            match_date__lte=today + timedelta(days=days),
+            **date_filter,
             status='scheduled',
             predictions__isnull=False,
         ).select_related(
@@ -236,6 +257,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                             'id': match.id,
                             'home_team': match.home_team.name,
                             'away_team': match.away_team.name,
+                            'home_team_logo': match.home_team.logo_url,
+                            'away_team_logo': match.away_team.logo_url,
                             'date': match.match_date.isoformat(),
                             'time': match.kickoff_time.isoformat() if match.kickoff_time else None,
                         },
@@ -416,6 +439,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                     'id': match.id,
                     'home_team': match.home_team.name,
                     'away_team': match.away_team.name,
+                    'home_team_logo': match.home_team.logo_url,
+                    'away_team_logo': match.away_team.logo_url,
                     'league': match.season.league.name,
                     'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
                 },

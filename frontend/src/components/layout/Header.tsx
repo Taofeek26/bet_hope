@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Menu, Search, Bell, User } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { TaskStatusIndicator } from '@/components/ui/TaskStatusIndicator';
 
 export function Header() {
   const { toggleSidebar } = useAppStore();
@@ -53,6 +54,9 @@ export function Header() {
           >
             <Search className="w-5 h-5" />
           </button>
+
+          {/* Task Status Indicator */}
+          <TaskStatusIndicator />
 
           {/* Notifications */}
           <button className="relative p-2 rounded-lg hover:bg-slate-700 text-slate-400">

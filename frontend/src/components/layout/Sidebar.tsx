@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { useModelInfo } from '@/hooks/useApi';
 
 const navItems = [
   { href: '/', icon: Home, label: 'Dashboard', num: '1' },
@@ -37,6 +38,9 @@ const bottomItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { collapsed, toggle } = useSidebar();
+  const { data: modelInfo } = useModelInfo();
+
+  const modelVersion = modelInfo?.version || '1.0.0';
 
   return (
     <aside className={cn('sidebar', collapsed && 'sidebar-collapsed')}>
@@ -96,7 +100,7 @@ export function Sidebar() {
         <div className="sidebar-footer">
           <div className="flex items-center gap-2 text-text-muted">
             <div className="w-2 h-2 rounded-full bg-brand-1 animate-pulse" />
-            <span>Model v2.1 Active</span>
+            <span>Model v{modelVersion} Active</span>
           </div>
         </div>
       )}

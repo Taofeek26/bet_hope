@@ -53,9 +53,13 @@ export default function LeagueDetailPage() {
       {/* League Header */}
       <div className="card mb-6">
         <div className="flex items-center gap-6">
-          <div className="w-20 h-20 rounded-xl bg-brand/10 flex items-center justify-center">
-            <Trophy className="w-10 h-10 text-brand" />
-          </div>
+          {league.logo_url ? (
+            <img src={league.logo_url} alt={league.name} className="w-20 h-20 object-contain" />
+          ) : (
+            <div className="w-20 h-20 rounded-xl bg-brand/10 flex items-center justify-center">
+              <Trophy className="w-10 h-10 text-brand" />
+            </div>
+          )}
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-text">{league.name}</h1>
             <div className="flex items-center gap-4 mt-2 text-text-muted">
@@ -122,24 +126,36 @@ export default function LeagueDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {standings.standings.map((team: any, index: number) => (
-                  <tr key={team.team_id || index} className="border-b border-border-dim hover:bg-surface">
-                    <td className="py-3 px-2 text-text-muted">{team.position || index + 1}</td>
-                    <td className="py-3 px-2">
-                      <Link href={`/teams/${team.team_id}`} className="text-text hover:text-brand">
-                        {team.team_name || team.team?.name || 'Unknown'}
-                      </Link>
-                    </td>
-                    <td className="text-center py-3 px-2 text-text-sec">{team.matches_played || team.played || 0}</td>
-                    <td className="text-center py-3 px-2 text-text-sec">{team.wins || 0}</td>
-                    <td className="text-center py-3 px-2 text-text-sec">{team.draws || 0}</td>
-                    <td className="text-center py-3 px-2 text-text-sec">{team.losses || 0}</td>
-                    <td className="text-center py-3 px-2 text-text-sec">
-                      {(team.goals_for || 0) - (team.goals_against || 0)}
-                    </td>
-                    <td className="text-center py-3 px-2 font-bold text-text">{team.points || 0}</td>
-                  </tr>
-                ))}
+                {standings.standings.map((team: any, index: number) => {
+                  const teamName = team.team_name || team.team?.name || 'Unknown';
+                  const teamLogo = team.team_logo || team.team?.logo_url;
+
+                  return (
+                    <tr key={team.team_id || index} className="border-b border-border-dim hover:bg-surface">
+                      <td className="py-3 px-2 text-text-muted">{team.position || index + 1}</td>
+                      <td className="py-3 px-2">
+                        <Link href={`/teams/${team.team_id}`} className="flex items-center gap-2 text-text hover:text-brand">
+                          {teamLogo ? (
+                            <img src={teamLogo} alt={teamName} className="w-5 h-5 object-contain" />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                              {teamName.charAt(0)}
+                            </div>
+                          )}
+                          {teamName}
+                        </Link>
+                      </td>
+                      <td className="text-center py-3 px-2 text-text-sec">{team.matches_played || team.played || 0}</td>
+                      <td className="text-center py-3 px-2 text-text-sec">{team.wins || 0}</td>
+                      <td className="text-center py-3 px-2 text-text-sec">{team.draws || 0}</td>
+                      <td className="text-center py-3 px-2 text-text-sec">{team.losses || 0}</td>
+                      <td className="text-center py-3 px-2 text-text-sec">
+                        {(team.goals_for || 0) - (team.goals_against || 0)}
+                      </td>
+                      <td className="text-center py-3 px-2 font-bold text-text">{team.points || 0}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

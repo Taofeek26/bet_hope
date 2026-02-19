@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { leaguesApi, teamsApi, matchesApi, predictionsApi, aiApi } from '@/lib/api';
+import { leaguesApi, teamsApi, matchesApi, predictionsApi, aiApi, syncApi } from '@/lib/api';
 
 // Query keys
 export const queryKeys = {
@@ -304,5 +304,15 @@ export function useGenerateAIRecommendation() {
         queryKey: ['ai', 'recommendation', variables.prediction_id],
       });
     },
+  });
+}
+
+// Task Status hooks
+export function useTaskStatus() {
+  return useQuery({
+    queryKey: ['sync', 'task-status'],
+    queryFn: () => syncApi.getTaskStatus(),
+    refetchInterval: 300000, // Refresh every 5 minutes
+    staleTime: 60000, // Consider stale after 1 minute
   });
 }

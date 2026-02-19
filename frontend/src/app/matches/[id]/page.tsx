@@ -64,9 +64,13 @@ export default function MatchDetailPage() {
 
         <div className="flex items-center justify-between py-6">
           <div className="flex-1 text-center">
-            <div className="w-16 h-16 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-3">
-              <Trophy className="w-8 h-8 text-brand" />
-            </div>
+            {match.home_team?.logo_url ? (
+              <img src={match.home_team.logo_url} alt={homeTeam} className="w-16 h-16 object-contain mx-auto mb-3" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-3">
+                <span className="text-2xl font-bold text-brand">{homeTeam.charAt(0)}</span>
+              </div>
+            )}
             <h2 className="text-xl font-bold text-text">{homeTeam}</h2>
             <p className="text-sm text-text-muted">Home</p>
           </div>
@@ -92,9 +96,13 @@ export default function MatchDetailPage() {
           </div>
 
           <div className="flex-1 text-center">
-            <div className="w-16 h-16 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-3">
-              <Trophy className="w-8 h-8 text-brand" />
-            </div>
+            {match.away_team?.logo_url ? (
+              <img src={match.away_team.logo_url} alt={awayTeam} className="w-16 h-16 object-contain mx-auto mb-3" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-3">
+                <span className="text-2xl font-bold text-brand">{awayTeam.charAt(0)}</span>
+              </div>
+            )}
             <h2 className="text-xl font-bold text-text">{awayTeam}</h2>
             <p className="text-sm text-text-muted">Away</p>
           </div>

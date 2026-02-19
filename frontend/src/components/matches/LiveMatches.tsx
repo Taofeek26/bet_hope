@@ -53,7 +53,14 @@ function LiveMatchCard({ match }: { match: any }) {
 
         {/* Score */}
         <div className="flex items-center justify-between">
-          <div className="flex-1">
+          <div className="flex-1 flex items-center gap-2">
+            {(match.home_team?.logo_url || match.home_team_logo) ? (
+              <img src={match.home_team?.logo_url || match.home_team_logo} alt={match.home_team?.name || match.home_team} className="w-6 h-6 object-contain" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                {(match.home_team?.name || match.home_team)?.charAt(0)}
+              </div>
+            )}
             <p className="font-medium text-white text-sm">
               {match.home_team?.name || match.home_team}
             </p>
@@ -63,10 +70,17 @@ function LiveMatchCard({ match }: { match: any }) {
               {match.home_score ?? 0} - {match.away_score ?? 0}
             </span>
           </div>
-          <div className="flex-1 text-right">
+          <div className="flex-1 flex items-center justify-end gap-2">
             <p className="font-medium text-white text-sm">
               {match.away_team?.name || match.away_team}
             </p>
+            {(match.away_team?.logo_url || match.away_team_logo) ? (
+              <img src={match.away_team?.logo_url || match.away_team_logo} alt={match.away_team?.name || match.away_team} className="w-6 h-6 object-contain" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                {(match.away_team?.name || match.away_team)?.charAt(0)}
+              </div>
+            )}
           </div>
         </div>
       </div>

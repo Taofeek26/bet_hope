@@ -87,15 +87,38 @@ def generate_prediction_for_match(match_id: int):
         if 'error' in prediction_data:
             return {'status': 'error', 'message': prediction_data['error']}
 
+        # Determine recommended outcome based on highest probability
+        home_prob = prediction_data.get('home_win_prob', 0.33)
+        draw_prob = prediction_data.get('draw_prob', 0.33)
+        away_prob = prediction_data.get('away_win_prob', 0.33)
+
+        if home_prob >= draw_prob and home_prob >= away_prob:
+            recommended = 'HOME'
+        elif away_prob >= draw_prob:
+            recommended = 'AWAY'
+        else:
+            recommended = 'DRAW'
+
+        # Determine prediction strength
+        confidence = prediction_data.get('confidence', 0.4)
+        if confidence >= 0.7:
+            strength = 'strong'
+        elif confidence >= 0.5:
+            strength = 'moderate'
+        else:
+            strength = 'weak'
+
         # Save prediction
         pred, created = Prediction.objects.update_or_create(
             match=match,
             defaults={
                 'model_version': predictor.model_version or 'current',
-                'home_win_probability': Decimal(str(prediction_data.get('home_win_prob', 0.33))),
-                'draw_probability': Decimal(str(prediction_data.get('draw_prob', 0.33))),
-                'away_win_probability': Decimal(str(prediction_data.get('away_win_prob', 0.33))),
-                'confidence_score': Decimal(str(prediction_data.get('confidence', 0.4))),
+                'home_win_probability': Decimal(str(home_prob)),
+                'draw_probability': Decimal(str(draw_prob)),
+                'away_win_probability': Decimal(str(away_prob)),
+                'confidence_score': Decimal(str(confidence)),
+                'recommended_outcome': recommended,
+                'prediction_strength': strength,
                 'model_type': 'xgboost',
             }
         )

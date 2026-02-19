@@ -70,6 +70,8 @@ class MatchListSerializer(serializers.ModelSerializer):
 
     home_team_name = serializers.CharField(source='home_team.name', read_only=True)
     away_team_name = serializers.CharField(source='away_team.name', read_only=True)
+    home_team_logo = serializers.CharField(source='home_team.logo_url', read_only=True)
+    away_team_logo = serializers.CharField(source='away_team.logo_url', read_only=True)
     league_name = serializers.CharField(source='season.league.name', read_only=True)
     has_prediction = serializers.SerializerMethodField()
     prediction = serializers.SerializerMethodField()
@@ -80,8 +82,10 @@ class MatchListSerializer(serializers.ModelSerializer):
             'id',
             'home_team',
             'home_team_name',
+            'home_team_logo',
             'away_team',
             'away_team_name',
+            'away_team_logo',
             'match_date',
             'kickoff_time',
             'home_score',

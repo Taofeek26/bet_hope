@@ -155,6 +155,8 @@ function MatchCard({ match }: { match: any }) {
   // Handle both nested and flat team name formats
   const homeTeam = match.home_team_name || match.home_team?.name || 'Home Team';
   const awayTeam = match.away_team_name || match.away_team?.name || 'Away Team';
+  const homeLogo = match.home_team?.logo_url || match.home_team_logo;
+  const awayLogo = match.away_team?.logo_url || match.away_team_logo;
   const leagueName = match.league_name || match.league?.name || '';
 
   // Check prediction verification for finished matches
@@ -167,10 +169,24 @@ function MatchCard({ match }: { match: any }) {
     <Link href={`/matches/${match.id}`} className={`match-card hover:border-brand/50 transition-colors ${hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : ''}`}>
       <div className="match-teams flex-1">
         <div className="match-team">
+          {homeLogo ? (
+            <img src={homeLogo} alt={homeTeam} className="w-6 h-6 object-contain" />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-surface flex items-center justify-center text-xs font-bold text-text-muted">
+              {homeTeam.charAt(0)}
+            </div>
+          )}
           <span className="text-text font-medium">{homeTeam}</span>
         </div>
         <span className="match-vs">vs</span>
         <div className="match-team">
+          {awayLogo ? (
+            <img src={awayLogo} alt={awayTeam} className="w-6 h-6 object-contain" />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-surface flex items-center justify-center text-xs font-bold text-text-muted">
+              {awayTeam.charAt(0)}
+            </div>
+          )}
           <span className="text-text font-medium">{awayTeam}</span>
         </div>
       </div>

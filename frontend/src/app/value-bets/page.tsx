@@ -1,17 +1,78 @@
 'use client';
 
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Target, TrendingUp, AlertCircle, Clock, RefreshCw } from 'lucide-react';
+import { Target, TrendingUp, AlertCircle, Clock, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
+// Date utilities
+function formatDateForAPI(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateDisplay(date: Date, today: Date): string {
+  const diffDays = Math.floor((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return `${dayNames[date.getDay()]} ${date.getDate()} ${monthNames[date.getMonth()]}`;
+}
+
 export default function ValueBetsPage() {
+  const [selectedDateOffset, setSelectedDateOffset] = useState(0);
+  const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
+
+  // Calculate the selected date based on offset
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const selectedDate = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + selectedDateOffset);
+    return d;
+  }, [today, selectedDateOffset]);
+
+  const selectedDateStr = formatDateForAPI(selectedDate);
+  const selectedDateLabel = formatDateDisplay(selectedDate, today);
+
+  // Generate date options (today + 6 days)
+  const dateOptions = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      return {
+        offset: i,
+        date: d,
+        label: formatDateDisplay(d, today),
+        short: i === 0 ? 'Today' : i === 1 ? 'Tom' : `${d.getDate()}`,
+      };
+    });
+  }, [today]);
+
+  // Fetch value bets - either for specific date or all week
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['value-bets'],
-    queryFn: () => predictionsApi.getValueBets(),
+    queryKey: ['value-bets', viewMode === 'day' ? selectedDateStr : 'week'],
+    queryFn: () => predictionsApi.getValueBets(
+      viewMode === 'day' ? { date: selectedDateStr } : { days: 7 }
+    ),
   });
 
   const valueBets = data?.value_bets || [];
+
+  // Filter by date if in week view and a date is selected
+  const filteredBets = useMemo(() => {
+    if (viewMode === 'week') return valueBets;
+    return valueBets.filter((bet: any) => bet.match?.date === selectedDateStr);
+  }, [valueBets, selectedDateStr, viewMode]);
 
   return (
     <>
@@ -36,43 +97,126 @@ export default function ValueBetsPage() {
         </div>
       </div>
 
+      {/* Date Selector Card */}
+      <div className="card card-compact mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="card-icon">
+              <Target className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-text">
+                {viewMode === 'day'
+                  ? (selectedDateOffset === 0 ? "Today's Value Bets" : `Value Bets for ${selectedDateLabel}`)
+                  : "All Value Bets (Next 7 Days)"
+                }
+              </h2>
+              <p className="text-xs text-text-muted">
+                {filteredBets.length} value bet{filteredBets.length !== 1 ? 's' : ''} found
+              </p>
+            </div>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 bg-surface rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('day')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  viewMode === 'day'
+                    ? 'bg-brand text-bg'
+                    : 'text-text-muted hover:text-text'
+                }`}
+              >
+                By Day
+              </button>
+              <button
+                onClick={() => setViewMode('week')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  viewMode === 'week'
+                    ? 'bg-brand text-bg'
+                    : 'text-text-muted hover:text-text'
+                }`}
+              >
+                All Week
+              </button>
+            </div>
+
+            {/* Date Navigation (only in day mode) */}
+            {viewMode === 'day' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedDateOffset(Math.max(0, selectedDateOffset - 1))}
+                  disabled={selectedDateOffset === 0}
+                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="flex gap-1">
+                  {dateOptions.map((opt) => (
+                    <button
+                      key={opt.offset}
+                      onClick={() => setSelectedDateOffset(opt.offset)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                        selectedDateOffset === opt.offset
+                          ? 'bg-brand text-bg'
+                          : 'bg-surface text-text-muted hover:bg-input hover:text-text'
+                      }`}
+                    >
+                      {opt.short}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setSelectedDateOffset(Math.min(6, selectedDateOffset + 1))}
+                  disabled={selectedDateOffset === 6}
+                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="stats-grid mb-6">
         <div className="stat-card">
-          <div className="stat-value">{valueBets.length}</div>
+          <div className="stat-value">{filteredBets.length}</div>
           <div className="stat-label">Active Value Bets</div>
         </div>
         <div className="stat-card">
           <div className="stat-value">
-            {valueBets.length > 0
-              ? `${(valueBets.filter((b: any) => b.rating === 'strong').length / valueBets.length * 100).toFixed(0)}%`
+            {filteredBets.length > 0
+              ? `${(filteredBets.filter((b: any) => b.rating === 'strong').length / filteredBets.length * 100).toFixed(0)}%`
               : '--'}
           </div>
           <div className="stat-label">Strong Bets</div>
         </div>
         <div className="stat-card">
           <div className="stat-value">
-            {valueBets.length > 0
-              ? `${(valueBets.reduce((sum: number, b: any) => sum + (b.edge || 0), 0) / valueBets.length * 100).toFixed(1)}%`
+            {filteredBets.length > 0
+              ? `${(filteredBets.reduce((sum: number, b: any) => sum + (b.edge || 0), 0) / filteredBets.length * 100).toFixed(1)}%`
               : '--'}
           </div>
           <div className="stat-label">Avg Edge</div>
         </div>
         <div className="stat-card">
           <div className="stat-value">
-            {valueBets.length > 0
-              ? (valueBets.reduce((sum: number, b: any) => sum + (b.odds || 0), 0) / valueBets.length).toFixed(2)
+            {filteredBets.length > 0
+              ? (filteredBets.reduce((sum: number, b: any) => sum + (b.odds || 0), 0) / filteredBets.length).toFixed(2)
               : '--'}
           </div>
           <div className="stat-label">Avg Odds</div>
         </div>
-      </div>
-
-      <div className="flex justify-end mb-4">
-        <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
       </div>
 
       {isLoading ? (
@@ -86,20 +230,32 @@ export default function ValueBetsPage() {
             Try Again
           </button>
         </div>
-      ) : valueBets.length === 0 ? (
+      ) : filteredBets.length === 0 ? (
         <div className="card text-center py-16">
           <div className="card-icon w-16 h-16 mx-auto mb-4">
             <Target className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-semibold text-text mb-2">No Value Bets Available</h3>
+          <h3 className="text-lg font-semibold text-text mb-2">
+            No Value Bets for {viewMode === 'day' ? selectedDateLabel : 'This Week'}
+          </h3>
           <p className="text-text-muted text-sm max-w-sm mx-auto">
-            Value bets will appear here once the backend is connected and predictions are generated.
+            {viewMode === 'day'
+              ? 'Try selecting a different date or view all week.'
+              : 'Value bets will appear here when our model identifies opportunities with positive edge.'}
           </p>
+          {viewMode === 'day' && (
+            <button
+              onClick={() => setViewMode('week')}
+              className="btn btn-secondary mt-4"
+            >
+              View All Week
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
-          {valueBets.map((bet: any) => (
-            <ValueBetCard key={bet.id} bet={bet} />
+          {filteredBets.map((bet: any, index: number) => (
+            <ValueBetCard key={`${bet.match?.id}-${bet.market}-${index}`} bet={bet} />
           ))}
         </div>
       )}
@@ -115,6 +271,13 @@ function ValueBetCard({ bet }: { bet: any }) {
 
   // Map market to readable label
   const marketLabel = bet.market === 'home' ? 'Home Win' : bet.market === 'away' ? 'Away Win' : 'Draw';
+
+  // Format date for display
+  const matchDate = match.date ? new Date(match.date) : null;
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dateLabel = matchDate
+    ? `${dayNames[matchDate.getDay()]} ${matchDate.getDate()}/${matchDate.getMonth() + 1}`
+    : 'TBD';
 
   // Determine card styling based on strength - using brand color palette only
   const cardClass = isStrong
@@ -143,12 +306,32 @@ function ValueBetCard({ bet }: { bet: any }) {
             <Target className="w-5 h-5" />
           </div>
           <div>
-            <div className="font-semibold text-text">
-              {match.home_team || 'Home'} vs {match.away_team || 'Away'}
+            <div className="font-semibold text-text flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                {match.home_team_logo ? (
+                  <img src={match.home_team_logo} alt={match.home_team} className="w-5 h-5 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                    {match.home_team?.charAt(0) || 'H'}
+                  </div>
+                )}
+                <span>{match.home_team || 'Home'}</span>
+              </div>
+              <span className="text-text-muted">vs</span>
+              <div className="flex items-center gap-1.5">
+                <span>{match.away_team || 'Away'}</span>
+                {match.away_team_logo ? (
+                  <img src={match.away_team_logo} alt={match.away_team} className="w-5 h-5 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                    {match.away_team?.charAt(0) || 'A'}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="text-xs text-text-muted flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              {match.date || 'TBD'} {match.time && `• ${match.time}`}
+              {dateLabel} {match.time && `• ${match.time}`}
             </div>
           </div>
         </div>
@@ -190,4 +373,3 @@ function ValueBetCard({ bet }: { bet: any }) {
     </div>
   );
 }
-

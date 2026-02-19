@@ -58,12 +58,26 @@ function PickCard({ pick }: { pick: any }) {
 
         {/* Teams */}
         <div className="flex items-center justify-between mb-4">
-          <div className="flex-1">
+          <div className="flex-1 flex items-center gap-2">
+            {match.home_team_logo ? (
+              <img src={match.home_team_logo} alt={match.home_team} className="w-6 h-6 object-contain" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                {match.home_team?.charAt(0)}
+              </div>
+            )}
             <p className="font-medium text-white">{match.home_team}</p>
           </div>
           <div className="px-4 text-slate-500">vs</div>
-          <div className="flex-1 text-right">
+          <div className="flex-1 flex items-center justify-end gap-2">
             <p className="font-medium text-white">{match.away_team}</p>
+            {match.away_team_logo ? (
+              <img src={match.away_team_logo} alt={match.away_team} className="w-6 h-6 object-contain" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                {match.away_team?.charAt(0)}
+              </div>
+            )}
           </div>
         </div>
 
