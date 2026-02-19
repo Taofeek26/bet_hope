@@ -20,46 +20,38 @@ class DataSyncViewSet(viewsets.ViewSet):
     - Check API status
     - Trigger fixture sync
     - Trigger results sync
-    - Get available competitions
+    - Get available leagues
     """
 
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def api_status(self, request):
         """
-        Check Football-Data.org API status and configuration.
+        Check API-Football status and configuration.
 
         Returns:
-            API configuration status and available competitions
+            API configuration status and account info
         """
-        if not settings.FOOTBALL_DATA_API_KEY:
+        if not settings.API_FOOTBALL_KEY:
             return Response({
                 'status': 'not_configured',
-                'message': 'FOOTBALL_DATA_API_KEY environment variable not set',
-                'help': 'Get a free API key at https://www.football-data.org/client/register'
+                'message': 'API_FOOTBALL_KEY environment variable not set',
+                'help': 'Get a free API key at https://dashboard.api-football.com/register'
             })
 
         try:
             provider = FootballDataAPIProvider()
-            competitions = provider.get_competitions()
+            account_status = provider.get_status()
 
-            if competitions:
+            if account_status:
                 return Response({
                     'status': 'ok',
-                    'competitions_available': len(competitions),
-                    'free_tier_competitions': list(FootballDataAPIProvider.COMPETITIONS.keys()),
-                    'competitions': [
-                        {
-                            'code': c['code'],
-                            'name': c['name'],
-                            'country': c.get('area', {}).get('name', 'Unknown')
-                        }
-                        for c in competitions[:20]  # Limit to first 20
-                    ]
+                    'account': account_status,
+                    'supported_leagues': list(FootballDataAPIProvider.LEAGUES.keys()),
                 })
             else:
                 return Response({
                     'status': 'error',
-                    'message': 'Could not fetch competitions from API'
+                    'message': 'Could not fetch account status from API'
                 }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         except Exception as e:
@@ -71,11 +63,11 @@ class DataSyncViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
     def sync_fixtures(self, request):
         """
-        Trigger fixture sync from Football-Data.org API.
+        Trigger fixture sync from API-Football.
 
         Query params:
             days: Number of days ahead to sync (default: 14)
-            competition: Optional competition code to filter
+            league: Optional league code to filter (e.g., 'E0' for Premier League)
 
         Returns:
             Task status and results
@@ -83,24 +75,22 @@ class DataSyncViewSet(viewsets.ViewSet):
         from tasks import sync_fixtures_api
 
         days = int(request.query_params.get('days', 14))
-        competition = request.query_params.get('competition')
+        league = request.query_params.get('league')
 
-        # Check if API is configured
-        if not settings.FOOTBALL_DATA_API_KEY:
+        if not settings.API_FOOTBALL_KEY:
             return Response({
                 'status': 'error',
-                'message': 'FOOTBALL_DATA_API_KEY not configured'
+                'message': 'API_FOOTBALL_KEY not configured'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Trigger async task
             task = sync_fixtures_api.delay(days=days)
 
             return Response({
                 'status': 'started',
                 'task_id': task.id,
                 'message': f'Fixture sync started for next {days} days',
-                'competition': competition or 'all'
+                'league': league or 'all'
             })
 
         except Exception as e:
@@ -112,11 +102,11 @@ class DataSyncViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
     def sync_results(self, request):
         """
-        Trigger results sync from Football-Data.org API.
+        Trigger results sync from API-Football.
 
         Query params:
             days: Number of days back to sync (default: 3)
-            competition: Optional competition code to filter
+            league: Optional league code to filter
 
         Returns:
             Task status and results
@@ -124,12 +114,12 @@ class DataSyncViewSet(viewsets.ViewSet):
         from tasks import sync_results_api
 
         days = int(request.query_params.get('days', 3))
-        competition = request.query_params.get('competition')
+        league = request.query_params.get('league')
 
-        if not settings.FOOTBALL_DATA_API_KEY:
+        if not settings.API_FOOTBALL_KEY:
             return Response({
                 'status': 'error',
-                'message': 'FOOTBALL_DATA_API_KEY not configured'
+                'message': 'API_FOOTBALL_KEY not configured'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -139,7 +129,7 @@ class DataSyncViewSet(viewsets.ViewSet):
                 'status': 'started',
                 'task_id': task.id,
                 'message': f'Results sync started for last {days} days',
-                'competition': competition or 'all'
+                'league': league or 'all'
             })
 
         except Exception as e:
@@ -151,17 +141,17 @@ class DataSyncViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
     def sync_live(self, request):
         """
-        Trigger live scores sync from Football-Data.org API.
+        Trigger live scores sync from API-Football.
 
         Returns:
             Task status and results
         """
         from tasks import sync_live_scores
 
-        if not settings.FOOTBALL_DATA_API_KEY:
+        if not settings.API_FOOTBALL_KEY:
             return Response({
                 'status': 'error',
-                'message': 'FOOTBALL_DATA_API_KEY not configured'
+                'message': 'API_FOOTBALL_KEY not configured'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -180,26 +170,26 @@ class DataSyncViewSet(viewsets.ViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
-    def competitions(self, request):
+    def leagues(self, request):
         """
-        Get list of supported competitions from free tier.
+        Get list of supported leagues.
 
         Returns:
-            List of supported competitions with details
+            List of supported leagues with details
         """
-        competitions = FootballDataAPIProvider.get_available_competitions()
+        leagues = FootballDataAPIProvider.get_available_leagues()
 
         return Response({
-            'count': len(competitions),
-            'competitions': [
+            'count': len(leagues),
+            'leagues': [
                 {
-                    'api_code': code,
+                    'code': code,
+                    'api_id': info['id'],
                     'name': info['name'],
                     'country': info['country'],
-                    'our_code': info['code'],
                     'tier': info['tier']
                 }
-                for code, info in competitions.items()
+                for code, info in leagues.items()
             ]
         })
 
@@ -213,10 +203,10 @@ class DataSyncViewSet(viewsets.ViewSet):
         """
         from tasks import sync_fixtures_api, sync_results_api
 
-        if not settings.FOOTBALL_DATA_API_KEY:
+        if not settings.API_FOOTBALL_KEY:
             return Response({
                 'status': 'error',
-                'message': 'FOOTBALL_DATA_API_KEY not configured'
+                'message': 'API_FOOTBALL_KEY not configured'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:

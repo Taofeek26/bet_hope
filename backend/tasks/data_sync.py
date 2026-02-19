@@ -3,7 +3,7 @@ Data Synchronization Tasks
 
 Tasks for syncing match data from:
 - Football-Data.co.uk (CSV historical data)
-- Football-Data.org API (real-time fixtures and results)
+- API-Football API (real-time fixtures and results)
 """
 import logging
 from celery import shared_task
@@ -115,13 +115,13 @@ def sync_single_league(league_code: str, season: str = '2526'):
 
 
 # ============================================================================
-# Football-Data.org API Tasks (Real-time fixtures and results)
+# API-Football API Tasks (Real-time fixtures and results)
 # ============================================================================
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
 def sync_fixtures_api(self, days: int = 14):
     """
-    Sync upcoming fixtures from Football-Data.org API.
+    Sync upcoming fixtures from API-Football API.
     Runs every 6 hours to keep fixtures up to date.
 
     Args:
@@ -129,8 +129,8 @@ def sync_fixtures_api(self, days: int = 14):
     """
     from apps.data_ingestion.providers import FootballDataAPIProvider
 
-    if not settings.FOOTBALL_DATA_API_KEY:
-        logger.warning("FOOTBALL_DATA_API_KEY not configured. Skipping API sync.")
+    if not settings.API_FOOTBALL_KEY:
+        logger.warning("API_FOOTBALL_KEY not configured. Skipping API sync.")
         return {'status': 'skipped', 'message': 'API key not configured'}
 
     logger.info(f"Syncing fixtures from API for next {days} days...")
@@ -154,7 +154,7 @@ def sync_fixtures_api(self, days: int = 14):
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
 def sync_results_api(self, days: int = 3):
     """
-    Sync recent results from Football-Data.org API.
+    Sync recent results from API-Football API.
     Runs every 3 hours to get latest results.
 
     Args:
@@ -162,8 +162,8 @@ def sync_results_api(self, days: int = 3):
     """
     from apps.data_ingestion.providers import FootballDataAPIProvider
 
-    if not settings.FOOTBALL_DATA_API_KEY:
-        logger.warning("FOOTBALL_DATA_API_KEY not configured. Skipping API sync.")
+    if not settings.API_FOOTBALL_KEY:
+        logger.warning("API_FOOTBALL_KEY not configured. Skipping API sync.")
         return {'status': 'skipped', 'message': 'API key not configured'}
 
     logger.info(f"Syncing results from API for last {days} days...")
@@ -191,12 +191,12 @@ def sync_results_api(self, days: int = 3):
 @shared_task
 def sync_live_scores():
     """
-    Update live match scores from Football-Data.org API.
+    Update live match scores from API-Football API.
     Can be called frequently during match days.
     """
     from apps.data_ingestion.providers import FootballDataAPIProvider
 
-    if not settings.FOOTBALL_DATA_API_KEY:
+    if not settings.API_FOOTBALL_KEY:
         return {'status': 'skipped', 'message': 'API key not configured'}
 
     logger.info("Updating live scores from API...")
@@ -218,14 +218,14 @@ def sync_live_scores():
 @shared_task
 def check_api_status():
     """
-    Check if Football-Data.org API is configured and working.
+    Check if API-Football API is configured and working.
     """
     from apps.data_ingestion.providers import FootballDataAPIProvider
 
-    if not settings.FOOTBALL_DATA_API_KEY:
+    if not settings.API_FOOTBALL_KEY:
         return {
             'status': 'not_configured',
-            'message': 'FOOTBALL_DATA_API_KEY environment variable not set',
+            'message': 'API_FOOTBALL_KEY environment variable not set',
             'help': 'Get a free API key at https://www.football-data.org/client/register'
         }
 

@@ -275,11 +275,11 @@ SUPPORTED_LEAGUES = {
 FOOTBALL_DATA_BASE_URL = 'https://www.football-data.co.uk'
 FOOTBALL_DATA_CSV_URL = 'https://www.football-data.co.uk/mmz4281'
 
-# Football-Data.org API (real-time fixtures and results)
-# Get a free API key at: https://www.football-data.org/client/register
-# Free tier: 10 requests/min, covers Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Championship, UCL
-FOOTBALL_DATA_API_KEY = os.getenv('FOOTBALL_DATA_API_KEY', '')
-FOOTBALL_DATA_API_URL = 'https://api.football-data.org/v4'
+# API-Football (real-time fixtures and results)
+# Get a free API key at: https://dashboard.api-football.com/register
+# Free tier: 100 requests/day, covers all major leagues worldwide
+API_FOOTBALL_KEY = os.getenv('API_FOOTBALL_KEY', '')
+API_FOOTBALL_URL = 'https://v3.football.api-sports.io'
 
 # Historical data range (10 years)
 HISTORICAL_SEASONS = [

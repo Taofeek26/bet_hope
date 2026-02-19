@@ -1,84 +1,81 @@
 """
-Football-Data.org API Provider
+API-Football Provider (api-football.com)
 
 REST API provider for real-time fixtures and results.
-Free tier: 10 requests/minute, covers top European leagues.
+Free tier: 100 requests/day, covers all major leagues.
 
-Requires API key - get one free at: https://www.football-data.org/client/register
+Requires API key - get one free at: https://dashboard.api-football.com/register
 
-Free tier competitions:
-- Premier League (PL)
-- La Liga (PD)
-- Serie A (SA)
-- Bundesliga (BL1)
-- Ligue 1 (FL1)
-- Championship (ELC)
-- Champions League (CL)
-- Eredivisie (DED)
-- Primeira Liga (PPL)
-- European Championship (EC)
-- World Cup (WC)
+Free tier includes all endpoints:
+- Fixtures, results, livescores
+- Standings, teams, players
+- All major leagues worldwide
 """
 import logging
 import time
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Tuple
-from decimal import Decimal
 
 import requests
 from django.conf import settings
 from django.db import transaction
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 
 class FootballDataAPIProvider:
     """
-    Provider for Football-Data.org REST API.
+    Provider for API-Football REST API.
     Provides real-time fixtures and results.
+
+    Register for free at: https://dashboard.api-football.com/register
     """
 
-    BASE_URL = "https://api.football-data.org/v4"
+    BASE_URL = "https://v3.football.api-sports.io"
 
-    # Competition codes mapping
-    # These are the free tier competitions
-    COMPETITIONS = {
-        'PL': {'name': 'Premier League', 'country': 'England', 'code': 'E0', 'tier': 1},
-        'PD': {'name': 'La Liga', 'country': 'Spain', 'code': 'SP1', 'tier': 1},
-        'SA': {'name': 'Serie A', 'country': 'Italy', 'code': 'I1', 'tier': 1},
-        'BL1': {'name': 'Bundesliga', 'country': 'Germany', 'code': 'D1', 'tier': 1},
-        'FL1': {'name': 'Ligue 1', 'country': 'France', 'code': 'F1', 'tier': 1},
-        'ELC': {'name': 'Championship', 'country': 'England', 'code': 'E1', 'tier': 3},
-        'DED': {'name': 'Eredivisie', 'country': 'Netherlands', 'code': 'N1', 'tier': 2},
-        'PPL': {'name': 'Primeira Liga', 'country': 'Portugal', 'code': 'P1', 'tier': 2},
-        'CL': {'name': 'Champions League', 'country': 'Europe', 'code': 'CL', 'tier': 1},
+    # League IDs mapping (API-Football uses numeric IDs)
+    # Map our league codes to API-Football league IDs
+    LEAGUES = {
+        'E0': {'id': 39, 'name': 'Premier League', 'country': 'England', 'tier': 1},
+        'SP1': {'id': 140, 'name': 'La Liga', 'country': 'Spain', 'tier': 1},
+        'I1': {'id': 135, 'name': 'Serie A', 'country': 'Italy', 'tier': 1},
+        'D1': {'id': 78, 'name': 'Bundesliga', 'country': 'Germany', 'tier': 1},
+        'F1': {'id': 61, 'name': 'Ligue 1', 'country': 'France', 'tier': 1},
+        'E1': {'id': 40, 'name': 'Championship', 'country': 'England', 'tier': 3},
+        'N1': {'id': 88, 'name': 'Eredivisie', 'country': 'Netherlands', 'tier': 2},
+        'P1': {'id': 94, 'name': 'Primeira Liga', 'country': 'Portugal', 'tier': 2},
+        'B1': {'id': 144, 'name': 'Pro League', 'country': 'Belgium', 'tier': 2},
+        'T1': {'id': 203, 'name': 'Super Lig', 'country': 'Turkey', 'tier': 2},
+        'SC0': {'id': 179, 'name': 'Premiership', 'country': 'Scotland', 'tier': 4},
+        'G1': {'id': 197, 'name': 'Super League', 'country': 'Greece', 'tier': 2},
+        'CL': {'id': 2, 'name': 'Champions League', 'country': 'Europe', 'tier': 1},
+        'EL': {'id': 3, 'name': 'Europa League', 'country': 'Europe', 'tier': 1},
     }
 
-    # Mapping from our league codes to API competition codes
-    LEAGUE_TO_COMPETITION = {
-        'E0': 'PL',   # Premier League
-        'SP1': 'PD',  # La Liga
-        'I1': 'SA',   # Serie A
-        'D1': 'BL1',  # Bundesliga
-        'F1': 'FL1',  # Ligue 1
-        'E1': 'ELC',  # Championship
-        'N1': 'DED',  # Eredivisie
-        'P1': 'PPL',  # Primeira Liga
-        'CL': 'CL',   # Champions League
-    }
+    # Reverse mapping: API league ID to our code
+    ID_TO_CODE = {info['id']: code for code, info in LEAGUES.items()}
 
     # Status mapping from API to our model
     STATUS_MAPPING = {
-        'SCHEDULED': 'scheduled',
-        'TIMED': 'scheduled',
-        'IN_PLAY': 'live',
-        'PAUSED': 'halftime',
-        'FINISHED': 'finished',
-        'SUSPENDED': 'postponed',
-        'POSTPONED': 'postponed',
-        'CANCELLED': 'cancelled',
-        'AWARDED': 'finished',
+        'TBD': 'scheduled',
+        'NS': 'scheduled',      # Not Started
+        '1H': 'live',           # First Half
+        'HT': 'halftime',       # Halftime
+        '2H': 'live',           # Second Half
+        'ET': 'live',           # Extra Time
+        'P': 'live',            # Penalties
+        'FT': 'finished',       # Full Time
+        'AET': 'finished',      # After Extra Time
+        'PEN': 'finished',      # After Penalties
+        'BT': 'live',           # Break Time
+        'SUSP': 'postponed',    # Suspended
+        'INT': 'postponed',     # Interrupted
+        'PST': 'postponed',     # Postponed
+        'CANC': 'cancelled',    # Cancelled
+        'ABD': 'cancelled',     # Abandoned
+        'AWD': 'finished',      # Awarded
+        'WO': 'finished',       # Walkover
+        'LIVE': 'live',
     }
 
     def __init__(self, api_key: Optional[str] = None):
@@ -86,20 +83,21 @@ class FootballDataAPIProvider:
         Initialize the API provider.
 
         Args:
-            api_key: Football-Data.org API key. If not provided, uses settings.
+            api_key: API-Football API key. If not provided, uses settings.
         """
-        self.api_key = api_key or getattr(settings, 'FOOTBALL_DATA_API_KEY', None)
+        self.api_key = api_key or getattr(settings, 'API_FOOTBALL_KEY', None)
         if not self.api_key:
-            logger.warning("No FOOTBALL_DATA_API_KEY configured. API calls will fail.")
+            logger.warning("No API_FOOTBALL_KEY configured. API calls will fail.")
 
         self.session = requests.Session()
         self.session.headers.update({
-            'X-Auth-Token': self.api_key or '',
+            'x-apisports-key': self.api_key or '',
         })
 
-        # Rate limiting: 10 requests per minute for free tier
+        # Rate limiting: 100 requests per day for free tier
+        # Be conservative - space out requests
         self.last_request_time = 0
-        self.min_request_interval = 6  # seconds between requests (10 req/min)
+        self.min_request_interval = 1  # 1 second between requests
 
     def _rate_limit(self):
         """Ensure we don't exceed rate limits."""
@@ -115,7 +113,7 @@ class FootballDataAPIProvider:
         Make an API request with rate limiting.
 
         Args:
-            endpoint: API endpoint (e.g., '/competitions/PL/matches')
+            endpoint: API endpoint (e.g., '/fixtures')
             params: Query parameters
 
         Returns:
@@ -128,20 +126,31 @@ class FootballDataAPIProvider:
         self._rate_limit()
 
         url = f"{self.BASE_URL}{endpoint}"
-        logger.info(f"API request: {url}")
+        logger.info(f"API request: {url} params={params}")
 
         try:
             response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+
+            # Check for API errors
+            if data.get('errors'):
+                errors = data['errors']
+                if isinstance(errors, dict):
+                    for key, msg in errors.items():
+                        logger.error(f"API error: {key}: {msg}")
+                else:
+                    logger.error(f"API error: {errors}")
+                return None
+
+            return data
 
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429:
-                logger.warning("Rate limit exceeded. Waiting 60 seconds...")
-                time.sleep(60)
-                return self._request(endpoint, params)
+                logger.warning("Rate limit exceeded. Daily limit reached.")
+                return None
             elif response.status_code == 403:
-                logger.error("API key invalid or subscription required for this resource")
+                logger.error("API key invalid")
             else:
                 logger.error(f"HTTP error: {e}")
             return None
@@ -150,88 +159,116 @@ class FootballDataAPIProvider:
             logger.error(f"Request failed: {e}")
             return None
 
-    def get_competitions(self) -> Optional[List[Dict]]:
+    def get_status(self) -> Optional[Dict]:
         """
-        Get list of available competitions.
+        Get API account status and remaining requests.
 
         Returns:
-            List of competition data
+            Account status info
         """
-        data = self._request('/competitions')
+        data = self._request('/status')
         if data:
-            return data.get('competitions', [])
+            return data.get('response', {})
         return None
 
-    def get_matches(
-        self,
-        competition: str,
-        date_from: Optional[date] = None,
-        date_to: Optional[date] = None,
-        status: Optional[str] = None,
-        matchday: Optional[int] = None,
-    ) -> Optional[List[Dict]]:
+    def get_leagues(self) -> Optional[List[Dict]]:
         """
-        Get matches for a competition.
-
-        Args:
-            competition: Competition code (e.g., 'PL')
-            date_from: Start date filter
-            date_to: End date filter
-            status: Status filter (SCHEDULED, LIVE, FINISHED, etc.)
-            matchday: Matchday number filter
+        Get list of available leagues.
 
         Returns:
-            List of match data
+            List of league data
+        """
+        data = self._request('/leagues')
+        if data:
+            return data.get('response', [])
+        return None
+
+    def get_fixtures(
+        self,
+        league_id: Optional[int] = None,
+        date_str: Optional[str] = None,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+        season: Optional[int] = None,
+        status: Optional[str] = None,
+        live: bool = False,
+    ) -> Optional[List[Dict]]:
+        """
+        Get fixtures/matches.
+
+        Args:
+            league_id: League ID filter
+            date_str: Specific date (YYYY-MM-DD)
+            from_date: Start date filter (YYYY-MM-DD)
+            to_date: End date filter (YYYY-MM-DD)
+            season: Season year (e.g., 2025)
+            status: Status filter (NS, LIVE, FT, etc.)
+            live: If True, get only live matches
+
+        Returns:
+            List of fixture data
         """
         params = {}
-        if date_from:
-            params['dateFrom'] = date_from.isoformat()
-        if date_to:
-            params['dateTo'] = date_to.isoformat()
-        if status:
-            params['status'] = status
-        if matchday:
-            params['matchday'] = matchday
 
-        data = self._request(f'/competitions/{competition}/matches', params)
+        if live:
+            params['live'] = 'all'
+        else:
+            if league_id:
+                params['league'] = league_id
+            if date_str:
+                params['date'] = date_str
+            if from_date:
+                params['from'] = from_date
+            if to_date:
+                params['to'] = to_date
+            if season:
+                params['season'] = season
+            if status:
+                params['status'] = status
+
+        data = self._request('/fixtures', params)
         if data:
-            return data.get('matches', [])
+            return data.get('response', [])
         return None
 
     def get_upcoming_fixtures(
         self,
-        competition: Optional[str] = None,
+        league_code: Optional[str] = None,
         days: int = 14
     ) -> Optional[List[Dict]]:
         """
         Get upcoming fixtures.
 
         Args:
-            competition: Optional competition filter
+            league_code: Our league code (e.g., 'E0')
             days: Number of days ahead to fetch
 
         Returns:
-            List of upcoming match data
+            List of upcoming fixture data
         """
         today = date.today()
-        date_to = today + timedelta(days=days)
+        to_date = today + timedelta(days=days)
 
-        if competition:
-            return self.get_matches(
-                competition,
-                date_from=today,
-                date_to=date_to,
-                status='SCHEDULED'
+        # Get current season year
+        season = today.year if today.month >= 7 else today.year - 1
+
+        if league_code and league_code in self.LEAGUES:
+            league_id = self.LEAGUES[league_code]['id']
+            return self.get_fixtures(
+                league_id=league_id,
+                from_date=today.isoformat(),
+                to_date=to_date.isoformat(),
+                season=season
             )
         else:
-            # Get fixtures across all free competitions
+            # Get fixtures for all supported leagues
             all_fixtures = []
-            for comp_code in self.COMPETITIONS.keys():
-                fixtures = self.get_matches(
-                    comp_code,
-                    date_from=today,
-                    date_to=date_to,
-                    status='SCHEDULED'
+            for code, info in self.LEAGUES.items():
+                fixtures = self.get_fixtures(
+                    league_id=info['id'],
+                    from_date=today.isoformat(),
+                    to_date=to_date.isoformat(),
+                    season=season
                 )
                 if fixtures:
                     all_fixtures.extend(fixtures)
@@ -239,37 +276,42 @@ class FootballDataAPIProvider:
 
     def get_recent_results(
         self,
-        competition: Optional[str] = None,
+        league_code: Optional[str] = None,
         days: int = 7
     ) -> Optional[List[Dict]]:
         """
         Get recent match results.
 
         Args:
-            competition: Optional competition filter
+            league_code: Our league code (e.g., 'E0')
             days: Number of days back to fetch
 
         Returns:
             List of finished match data
         """
         today = date.today()
-        date_from = today - timedelta(days=days)
+        from_date = today - timedelta(days=days)
 
-        if competition:
-            return self.get_matches(
-                competition,
-                date_from=date_from,
-                date_to=today,
-                status='FINISHED'
+        season = today.year if today.month >= 7 else today.year - 1
+
+        if league_code and league_code in self.LEAGUES:
+            league_id = self.LEAGUES[league_code]['id']
+            return self.get_fixtures(
+                league_id=league_id,
+                from_date=from_date.isoformat(),
+                to_date=today.isoformat(),
+                season=season,
+                status='FT-AET-PEN'  # Finished statuses
             )
         else:
             all_results = []
-            for comp_code in self.COMPETITIONS.keys():
-                results = self.get_matches(
-                    comp_code,
-                    date_from=date_from,
-                    date_to=today,
-                    status='FINISHED'
+            for code, info in self.LEAGUES.items():
+                results = self.get_fixtures(
+                    league_id=info['id'],
+                    from_date=from_date.isoformat(),
+                    to_date=today.isoformat(),
+                    season=season,
+                    status='FT-AET-PEN'
                 )
                 if results:
                     all_results.extend(results)
@@ -282,36 +324,47 @@ class FootballDataAPIProvider:
         Returns:
             List of live match data
         """
-        data = self._request('/matches', {'status': 'IN_PLAY'})
-        if data:
-            return data.get('matches', [])
-        return None
+        return self.get_fixtures(live=True)
 
-    def get_standings(self, competition: str) -> Optional[List[Dict]]:
+    def get_standings(self, league_code: str, season: Optional[int] = None) -> Optional[List[Dict]]:
         """
-        Get current standings for a competition.
+        Get current standings for a league.
 
         Args:
-            competition: Competition code
+            league_code: Our league code
+            season: Season year (default: current)
 
         Returns:
-            List of standing tables
+            Standings data
         """
-        data = self._request(f'/competitions/{competition}/standings')
+        if league_code not in self.LEAGUES:
+            return None
+
+        league_id = self.LEAGUES[league_code]['id']
+
+        if not season:
+            today = date.today()
+            season = today.year if today.month >= 7 else today.year - 1
+
+        data = self._request('/standings', {
+            'league': league_id,
+            'season': season
+        })
+
         if data:
-            return data.get('standings', [])
+            return data.get('response', [])
         return None
 
     def sync_fixtures_to_database(
         self,
-        competition: Optional[str] = None,
+        league_code: Optional[str] = None,
         days: int = 14
     ) -> Tuple[int, int]:
         """
         Sync upcoming fixtures to database.
 
         Args:
-            competition: Optional competition filter
+            league_code: Optional league filter
             days: Days ahead to sync
 
         Returns:
@@ -321,7 +374,7 @@ class FootballDataAPIProvider:
         from apps.teams.models import Team
         from apps.matches.models import Match
 
-        fixtures = self.get_upcoming_fixtures(competition, days)
+        fixtures = self.get_upcoming_fixtures(league_code, days)
         if not fixtures:
             logger.info("No fixtures to sync")
             return 0, 0
@@ -337,9 +390,9 @@ class FootballDataAPIProvider:
             current_season = f"{str(today.year - 1)[2:]}{str(today.year)[2:]}"
 
         with transaction.atomic():
-            for match_data in fixtures:
+            for fixture in fixtures:
                 try:
-                    result = self._sync_match(match_data, current_season)
+                    result = self._sync_fixture(fixture, current_season)
                     if result == 'created':
                         created += 1
                     elif result == 'updated':
@@ -353,14 +406,14 @@ class FootballDataAPIProvider:
 
     def sync_results_to_database(
         self,
-        competition: Optional[str] = None,
+        league_code: Optional[str] = None,
         days: int = 7
     ) -> Tuple[int, int]:
         """
         Sync recent results to database.
 
         Args:
-            competition: Optional competition filter
+            league_code: Optional league filter
             days: Days back to sync
 
         Returns:
@@ -370,7 +423,7 @@ class FootballDataAPIProvider:
         from apps.teams.models import Team
         from apps.matches.models import Match
 
-        results = self.get_recent_results(competition, days)
+        results = self.get_recent_results(league_code, days)
         if not results:
             logger.info("No results to sync")
             return 0, 0
@@ -385,9 +438,9 @@ class FootballDataAPIProvider:
             current_season = f"{str(today.year - 1)[2:]}{str(today.year)[2:]}"
 
         with transaction.atomic():
-            for match_data in results:
+            for fixture in results:
                 try:
-                    result = self._sync_match(match_data, current_season)
+                    result = self._sync_fixture(fixture, current_season)
                     if result == 'created':
                         created += 1
                     elif result == 'updated':
@@ -399,12 +452,12 @@ class FootballDataAPIProvider:
         logger.info(f"Results synced: {created} created, {updated} updated")
         return created, updated
 
-    def _sync_match(self, match_data: Dict, season_code: str) -> Optional[str]:
+    def _sync_fixture(self, fixture: Dict, season_code: str) -> Optional[str]:
         """
-        Sync a single match to the database.
+        Sync a single fixture to the database.
 
         Args:
-            match_data: Match data from API
+            fixture: Fixture data from API
             season_code: Current season code
 
         Returns:
@@ -414,23 +467,25 @@ class FootballDataAPIProvider:
         from apps.teams.models import Team
         from apps.matches.models import Match
 
-        # Get competition info
-        competition = match_data.get('competition', {})
-        comp_code = competition.get('code', '')
+        # Get league info
+        league_data = fixture.get('league', {})
+        api_league_id = league_data.get('id')
 
-        if comp_code not in self.COMPETITIONS:
+        # Find our league code
+        our_league_code = self.ID_TO_CODE.get(api_league_id)
+        if not our_league_code:
+            # League not in our supported list
             return None
 
-        comp_info = self.COMPETITIONS[comp_code]
-        our_league_code = comp_info.get('code', comp_code)
+        league_info = self.LEAGUES[our_league_code]
 
         # Get or create league
         league, _ = League.objects.get_or_create(
             code=our_league_code,
             defaults={
-                'name': comp_info['name'],
-                'country': comp_info['country'],
-                'tier': comp_info['tier'],
+                'name': league_info['name'],
+                'country': league_info['country'],
+                'tier': league_info['tier'],
             }
         )
 
@@ -443,11 +498,12 @@ class FootballDataAPIProvider:
         )
 
         # Get teams
-        home_data = match_data.get('homeTeam', {})
-        away_data = match_data.get('awayTeam', {})
+        teams_data = fixture.get('teams', {})
+        home_data = teams_data.get('home', {})
+        away_data = teams_data.get('away', {})
 
-        home_name = home_data.get('shortName') or home_data.get('name', 'Unknown')
-        away_name = away_data.get('shortName') or away_data.get('name', 'Unknown')
+        home_name = home_data.get('name', 'Unknown')
+        away_name = away_data.get('name', 'Unknown')
 
         home_team, _ = Team.objects.get_or_create(
             name=home_name,
@@ -462,30 +518,41 @@ class FootballDataAPIProvider:
         )
 
         # Parse date and time
-        utc_date = match_data.get('utcDate', '')
-        if utc_date:
-            match_dt = datetime.fromisoformat(utc_date.replace('Z', '+00:00'))
+        fixture_info = fixture.get('fixture', {})
+        timestamp = fixture_info.get('timestamp')
+
+        if timestamp:
+            match_dt = datetime.fromtimestamp(timestamp)
             match_date = match_dt.date()
             kickoff_time = match_dt.time()
         else:
-            return None
+            date_str = fixture_info.get('date', '')
+            if date_str:
+                match_dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                match_date = match_dt.date()
+                kickoff_time = match_dt.time()
+            else:
+                return None
 
-        # Create unique ID
-        api_id = match_data.get('id')
-        match_id = f"api_{api_id}" if api_id else f"{our_league_code}_{season_code}_{match_date}_{home_name}_{away_name}"
+        # Create unique ID using API fixture ID
+        api_id = fixture_info.get('id')
+        match_id = f"apifb_{api_id}" if api_id else f"{our_league_code}_{season_code}_{match_date}_{home_name}_{away_name}"
 
         # Get score if available
-        score = match_data.get('score', {})
-        full_time = score.get('fullTime', {})
-        half_time = score.get('halfTime', {})
+        goals = fixture.get('goals', {})
+        score_data = fixture.get('score', {})
 
-        home_score = full_time.get('home')
-        away_score = full_time.get('away')
-        home_ht = half_time.get('home')
-        away_ht = half_time.get('away')
+        home_score = goals.get('home')
+        away_score = goals.get('away')
+
+        # Halftime score
+        halftime = score_data.get('halftime', {})
+        home_ht = halftime.get('home')
+        away_ht = halftime.get('away')
 
         # Map status
-        api_status = match_data.get('status', 'SCHEDULED')
+        status_data = fixture_info.get('status', {})
+        api_status = status_data.get('short', 'NS')
         our_status = self.STATUS_MAPPING.get(api_status, 'scheduled')
 
         # Determine match status
@@ -502,6 +569,16 @@ class FootballDataAPIProvider:
         else:
             status = Match.Status.SCHEDULED
 
+        # Get matchweek/round
+        round_str = league_data.get('round', '')
+        matchweek = None
+        if round_str:
+            # Extract number from strings like "Regular Season - 15"
+            import re
+            match = re.search(r'\d+', round_str)
+            if match:
+                matchweek = int(match.group())
+
         # Create or update match
         match, match_created = Match.objects.update_or_create(
             fd_match_id=match_id,
@@ -511,7 +588,7 @@ class FootballDataAPIProvider:
                 'away_team': away_team,
                 'match_date': match_date,
                 'kickoff_time': kickoff_time,
-                'matchweek': match_data.get('matchday'),
+                'matchweek': matchweek,
                 'home_score': home_score,
                 'away_score': away_score,
                 'home_halftime_score': home_ht,
@@ -537,20 +614,21 @@ class FootballDataAPIProvider:
 
         updated = 0
 
-        for match_data in live_matches:
+        for fixture in live_matches:
             try:
-                api_id = match_data.get('id')
-                match_id = f"api_{api_id}"
+                fixture_info = fixture.get('fixture', {})
+                api_id = fixture_info.get('id')
+                match_id = f"apifb_{api_id}"
 
-                score = match_data.get('score', {})
-                full_time = score.get('fullTime', {})
+                goals = fixture.get('goals', {})
 
-                Match.objects.filter(fd_match_id=match_id).update(
-                    home_score=full_time.get('home'),
-                    away_score=full_time.get('away'),
+                rows = Match.objects.filter(fd_match_id=match_id).update(
+                    home_score=goals.get('home'),
+                    away_score=goals.get('away'),
                     status=Match.Status.LIVE,
                 )
-                updated += 1
+                if rows > 0:
+                    updated += 1
 
             except Exception as e:
                 logger.error(f"Error updating live match: {e}")
@@ -562,9 +640,17 @@ class FootballDataAPIProvider:
     @classmethod
     def is_configured(cls) -> bool:
         """Check if the API is properly configured."""
-        return bool(getattr(settings, 'FOOTBALL_DATA_API_KEY', None))
+        return bool(getattr(settings, 'API_FOOTBALL_KEY', None))
+
+    @classmethod
+    def get_available_leagues(cls) -> Dict[str, Dict]:
+        """Get list of supported leagues."""
+        return cls.LEAGUES.copy()
+
+    # Alias for backward compatibility
+    COMPETITIONS = LEAGUES
 
     @classmethod
     def get_available_competitions(cls) -> Dict[str, Dict]:
-        """Get list of competitions available in free tier."""
-        return cls.COMPETITIONS.copy()
+        """Get list of supported competitions (alias for get_available_leagues)."""
+        return cls.get_available_leagues()
