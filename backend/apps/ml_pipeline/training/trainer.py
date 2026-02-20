@@ -116,6 +116,7 @@ class ModelTrainer:
         self,
         X: pd.DataFrame,
         y: pd.Series,
+        sample_weights: Optional[np.ndarray] = None,
         tune_hyperparams: bool = False,
         validation_split: float = 0.2
     ) -> Dict[str, Any]:
@@ -125,6 +126,7 @@ class ModelTrainer:
         Args:
             X: Feature DataFrame
             y: Target series (0=home, 1=draw, 2=away)
+            sample_weights: Optional sample weights for weighted training
             tune_hyperparams: Whether to perform hyperparameter tuning
             validation_split: Fraction for validation
 
@@ -135,6 +137,8 @@ class ModelTrainer:
             raise ImportError("xgboost is required for training")
 
         logger.info("Training result prediction model...")
+        if sample_weights is not None:
+            logger.info("Using sample weights for feedback-driven learning")
 
         # Store feature columns
         self.feature_columns = list(X.columns)
@@ -143,11 +147,14 @@ class ModelTrainer:
         X = X.fillna(0)
 
         # Split data (using time-based split for temporal data)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y,
-            test_size=validation_split,
-            shuffle=False  # Preserve temporal order
-        )
+        split_idx = int(len(X) * (1 - validation_split))
+        X_train, X_val = X.iloc[:split_idx], X.iloc[split_idx:]
+        y_train, y_val = y.iloc[:split_idx], y.iloc[split_idx:]
+
+        # Split weights if provided
+        weights_train = None
+        if sample_weights is not None:
+            weights_train = sample_weights[:split_idx]
 
         # Scale features
         X_train_scaled = self.scaler.fit_transform(X_train)
@@ -164,10 +171,11 @@ class ModelTrainer:
             best_params = self._tune_hyperparameters(X_train_scaled, y_train)
             params.update(best_params)
 
-        # Train model
+        # Train model with optional sample weights
         self.result_model = xgb.XGBClassifier(**params)
         self.result_model.fit(
             X_train_scaled, y_train,
+            sample_weight=weights_train,
             eval_set=[(X_val_scaled, y_val)],
             verbose=False
         )
@@ -182,6 +190,7 @@ class ModelTrainer:
             'train_size': len(X_train),
             'val_size': len(X_val),
             'n_features': len(self.feature_columns),
+            'used_sample_weights': sample_weights is not None,
         }
 
         # Class-wise metrics
