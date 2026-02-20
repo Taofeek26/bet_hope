@@ -1,0 +1,54 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Oracle Cloud
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            cd /opt/bet_hope
+
+            echo "Pulling latest changes..."
+            git pull origin main
+
+            echo "Building and deploying containers..."
+            docker compose -f docker-compose.prod.yml up -d --build
+
+            echo "Waiting for services to start..."
+            sleep 10
+
+            echo "Running database migrations..."
+            docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+
+            echo "Collecting static files..."
+            docker compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
+
+            echo "Checking service status..."
+            docker compose -f docker-compose.prod.yml ps
+
+            echo "Deployment completed successfully!"
+
+      - name: Notify on success
+        if: success()
+        run: echo "Deployment to production completed successfully!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "Deployment failed! Check the logs above for details."
