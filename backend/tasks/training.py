@@ -67,7 +67,7 @@ def evaluate_model():
         from django.db.models import Count, Q
 
         # Get active model
-        active_model = ModelVersion.objects.filter(is_active=True).first()
+        active_model = ModelVersion.get_active_version()
         if not active_model:
             return {'status': 'error', 'message': 'No active model found'}
 

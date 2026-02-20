@@ -111,7 +111,7 @@ def calculate_model_metrics():
                 }
 
         # Update active model version with new accuracy
-        active_model = ModelVersion.objects.filter(is_active=True).first()
+        active_model = ModelVersion.get_active_version()
         if active_model:
             active_model.accuracy = overall_accuracy
             active_model.save(update_fields=['accuracy'])

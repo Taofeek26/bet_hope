@@ -527,12 +527,20 @@ class ModelTrainer:
                     self.over25_model = pickle.load(f)
 
             # Load scaler
-            with open(load_dir / 'scaler.pkl', 'rb') as f:
-                self.scaler = pickle.load(f)
+            if (load_dir / 'scaler.pkl').exists():
+                with open(load_dir / 'scaler.pkl', 'rb') as f:
+                    self.scaler = pickle.load(f)
+            else:
+                logger.warning("scaler.pkl not found, using default StandardScaler")
+                self.scaler = StandardScaler()
 
             # Load feature columns
-            with open(load_dir / 'features.json', 'r') as f:
-                self.feature_columns = json.load(f)
+            if (load_dir / 'features.json').exists():
+                with open(load_dir / 'features.json', 'r') as f:
+                    self.feature_columns = json.load(f)
+            else:
+                logger.warning("features.json not found")
+                self.feature_columns = []
 
             logger.info("Models loaded successfully")
             return True

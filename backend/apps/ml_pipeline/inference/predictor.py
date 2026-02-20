@@ -366,7 +366,7 @@ class MatchPredictor:
             match = Match.objects.get(id=match_id)
 
             # Get active model version
-            model_version = ModelVersion.objects.filter(is_active=True).first()
+            model_version = ModelVersion.get_active_version()
 
             Prediction.objects.update_or_create(
                 match=match,
