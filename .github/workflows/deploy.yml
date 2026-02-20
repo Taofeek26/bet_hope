@@ -71,9 +71,13 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          command_timeout: 30m
+          command_timeout: 60m
           script: |
             cd /opt/bet_hope
+
+            echo "=========================================="
+            echo "PHASE 1: Preparation"
+            echo "=========================================="
 
             echo "Stashing local changes..."
             git stash
@@ -84,15 +88,45 @@ jobs:
             echo "Logging in to GitHub Container Registry..."
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            echo "Pulling new images..."
+            echo "=========================================="
+            echo "PHASE 2: Stop all services to free memory"
+            echo "=========================================="
+
+            echo "Checking current memory..."
+            free -h
+
+            echo "Stopping all application containers..."
+            docker compose -f docker-compose.prod.yml stop celery celery-beat backend frontend nginx || true
+
+            echo "Memory after stopping services..."
+            free -h
+
+            echo "Cleaning up unused Docker resources..."
+            docker system prune -f || true
+
+            echo "=========================================="
+            echo "PHASE 3: Pull new images"
+            echo "=========================================="
+
+            echo "Pulling backend image..."
             docker pull ghcr.io/taofeek26/bet-hope-backend:latest
+
+            echo "Pulling frontend image..."
             docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
 
-            echo "Restarting containers..."
+            echo "=========================================="
+            echo "PHASE 4: Start all services"
+            echo "=========================================="
+
+            echo "Starting all containers with new images..."
             docker compose -f docker-compose.prod.yml up -d
 
-            echo "Waiting for services to start..."
-            sleep 10
+            echo "Waiting for services to initialize..."
+            sleep 15
+
+            echo "=========================================="
+            echo "PHASE 5: Post-deployment tasks"
+            echo "=========================================="
 
             echo "Running database migrations..."
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
@@ -100,10 +134,22 @@ jobs:
             echo "Collecting static files..."
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
 
+            echo "=========================================="
+            echo "PHASE 6: Verification"
+            echo "=========================================="
+
             echo "Checking service status..."
             docker compose -f docker-compose.prod.yml ps
 
-            echo "Deployment completed successfully!"
+            echo "Final memory status..."
+            free -h
+
+            echo "Cleaning up old images..."
+            docker image prune -f || true
+
+            echo "=========================================="
+            echo "DEPLOYMENT COMPLETED SUCCESSFULLY!"
+            echo "=========================================="
 
       - name: Notify on success
         if: success()
