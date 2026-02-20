@@ -1,21 +1,88 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, Filter, Calendar, RefreshCw, CheckCircle, Clock, XCircle, Check, X } from 'lucide-react';
+import { TrendingUp, Filter, Calendar, RefreshCw, CheckCircle, Clock, XCircle, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+
+// Date utilities
+function formatDateForAPI(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateDisplay(date: Date, today: Date): string {
+  const diffDays = Math.floor((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  if (diffDays === -1) return 'Yesterday';
+  return `${dayNames[date.getDay()]} ${date.getDate()} ${monthNames[date.getMonth()]}`;
+}
 
 export default function PredictionsPage() {
   const [filter, setFilter] = useState('all');
+  const [selectedDateOffset, setSelectedDateOffset] = useState(0);
 
+  // Calculate dates
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const selectedDate = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + selectedDateOffset);
+    return d;
+  }, [today, selectedDateOffset]);
+
+  const selectedDateStr = formatDateForAPI(selectedDate);
+  const selectedDateLabel = formatDateDisplay(selectedDate, today);
+
+  // Generate date options (3 days back + today + 6 days forward)
+  const dateOptions = useMemo(() => {
+    return Array.from({ length: 10 }, (_, i) => {
+      const offset = i - 3; // -3 to +6
+      const d = new Date(today);
+      d.setDate(d.getDate() + offset);
+      return {
+        offset,
+        date: d,
+        label: formatDateDisplay(d, today),
+        short: offset === 0 ? 'Today' : offset === 1 ? 'Tom' : offset === -1 ? 'Yest' : `${d.getDate()}`,
+      };
+    });
+  }, [today]);
+
+  // Fetch predictions based on selected date
   const { data, isLoading, error, refetch } = useQuery<any>({
-    queryKey: ['predictions', filter],
-    queryFn: () => predictionsApi.getRecent({ days_back: 30, days_forward: 7, include_finished: true }),
+    queryKey: ['predictions', selectedDateStr, filter],
+    queryFn: () => predictionsApi.getAll({
+      date_from: selectedDateStr,
+      date_to: selectedDateStr,
+      min_confidence: filter === 'high' ? 0.7 : undefined,
+    }),
   });
 
-  const predictions = data?.predictions || [];
+  // Filter predictions based on dropdown
+  const predictions = useMemo(() => {
+    let results = data || [];
+
+    if (filter === 'high') {
+      results = results.filter((p: any) => parseFloat(p.confidence_score) >= 0.7);
+    } else if (filter === 'value') {
+      results = results.filter((p: any) => p.is_value_bet === true);
+    }
+
+    return results;
+  }, [data, filter]);
 
   return (
     <>
@@ -24,26 +91,74 @@ export default function PredictionsPage() {
         <p>AI-powered match predictions with confidence scores</p>
       </div>
 
-      {/* Filters */}
+      {/* Date Selector & Filters */}
       <div className="card card-compact mb-6">
         <div className="flex items-center justify-between flex-wrap gap-4">
+          {/* Date Selector */}
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-text-muted" />
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="input select w-40"
+            <Calendar className="w-4 h-4 text-text-muted" />
+            <button
+              onClick={() => setSelectedDateOffset(selectedDateOffset - 1)}
+              disabled={selectedDateOffset <= -3}
+              className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
             >
-              <option value="all">All Matches</option>
-              <option value="high">High Confidence</option>
-              <option value="today">Today Only</option>
-              <option value="value">Value Bets</option>
-            </select>
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex gap-1">
+              {dateOptions.slice(Math.max(0, selectedDateOffset + 3 - 3), Math.max(0, selectedDateOffset + 3 - 3) + 7).map((opt) => (
+                <button
+                  key={opt.offset}
+                  onClick={() => setSelectedDateOffset(opt.offset)}
+                  className={`px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all ${
+                    selectedDateOffset === opt.offset
+                      ? 'bg-brand text-bg'
+                      : 'bg-surface text-text-muted hover:bg-input hover:text-text'
+                  }`}
+                >
+                  {opt.short}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setSelectedDateOffset(selectedDateOffset + 1)}
+              disabled={selectedDateOffset >= 6}
+              className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-          <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
+
+          {/* Filter Dropdown */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-text-muted" />
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="input select w-40"
+              >
+                <option value="all">All Matches</option>
+                <option value="high">High Confidence</option>
+                <option value="value">Value Bets</option>
+              </select>
+            </div>
+            <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Date Label */}
+        <div className="mt-3 pt-3 border-t border-border-dim">
+          <p className="text-sm text-text-muted">
+            Showing predictions for <span className="text-text font-medium">{selectedDateLabel}</span>
+            {predictions.length > 0 && (
+              <span className="ml-2 text-text-sec">({predictions.length} matches)</span>
+            )}
+          </p>
         </div>
       </div>
 
