@@ -28,6 +28,8 @@ urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('admin/', admin.site.urls),
     path('api/v1/', include((api_v1_patterns, 'api'), namespace='api-v1')),
+    # Also serve API at /api/ for frontend compatibility
+    path('api/', include(api_v1_patterns)),
 ]
 
 # Debug toolbar URLs

@@ -120,35 +120,35 @@ export default function HomePage() {
         {/* Daily Picks - 8 columns */}
         <div className="col-span-8">
           <div className="card">
-            <div className="card-header flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <div className="card-icon">
-                  <Target className="w-5 h-5" />
+            <div className="card-header flex-wrap gap-3 sm:gap-4">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="card-icon flex-shrink-0">
+                  <Target className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h2 className="card-title">
+                <div className="min-w-0">
+                  <h2 className="card-title text-sm sm:text-base truncate">
                     {selectedDateOffset === 0 ? "Today's Top Picks" : `Picks for ${selectedDateLabel}`}
                   </h2>
-                  <p className="card-desc">High confidence predictions</p>
+                  <p className="card-desc text-xs sm:text-sm">High confidence predictions</p>
                 </div>
               </div>
 
               {/* Date Selector */}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="date-selector flex items-center gap-2 ml-auto flex-shrink-0">
                 <button
                   onClick={() => setSelectedDateOffset(Math.max(0, selectedDateOffset - 1))}
                   disabled={selectedDateOffset === 0}
-                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50 flex-shrink-0"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
 
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-shrink-0">
                   {dateOptions.map((opt) => (
                     <button
                       key={opt.offset}
                       onClick={() => setSelectedDateOffset(opt.offset)}
-                      className={`relative px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                      className={`relative px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all flex-shrink-0 ${
                         selectedDateOffset === opt.offset
                           ? 'bg-brand text-bg'
                           : opt.hasMatches
@@ -158,7 +158,7 @@ export default function HomePage() {
                     >
                       {opt.short}
                       {opt.hasMatches && (
-                        <span className={`absolute -top-1 -right-1 w-4 h-4 text-[10px] rounded-full flex items-center justify-center ${
+                        <span className={`absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 text-[8px] sm:text-[10px] rounded-full flex items-center justify-center ${
                           selectedDateOffset === opt.offset
                             ? 'bg-bg text-brand'
                             : 'bg-brand text-bg'
@@ -173,7 +173,7 @@ export default function HomePage() {
                 <button
                   onClick={() => setSelectedDateOffset(Math.min(6, selectedDateOffset + 1))}
                   disabled={selectedDateOffset === 6}
-                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50 flex-shrink-0"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

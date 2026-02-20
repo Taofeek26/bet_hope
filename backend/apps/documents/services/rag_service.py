@@ -231,16 +231,14 @@ class RAGService:
             home_team = Team.objects.get(id=home_team_id)
             away_team = Team.objects.get(id=away_team_id)
 
-            # Get current season stats
+            # Get most recent season stats
             home_stats = TeamSeasonStats.objects.filter(
-                team=home_team,
-                season__is_current=True
-            ).first()
+                team=home_team
+            ).order_by('-season__start_date').first()
 
             away_stats = TeamSeasonStats.objects.filter(
-                team=away_team,
-                season__is_current=True
-            ).first()
+                team=away_team
+            ).order_by('-season__start_date').first()
 
             if home_stats:
                 played = home_stats.wins + home_stats.draws + home_stats.losses

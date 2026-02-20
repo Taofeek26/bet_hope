@@ -47,34 +47,34 @@ function PickCard({ pick }: { pick: any }) {
   const match = pick.match;
 
   return (
-    <div className="p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 transition-colors">
+    <div className="p-3 sm:p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 transition-colors">
       {/* Clickable match info section */}
       <Link href={`/matches/${match.id}`} className="block">
         {/* League & Time */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs text-slate-400">{match.league}</span>
-          <span className="text-xs text-slate-400">{match.time || 'TBD'}</span>
+        <div className="flex items-center justify-between mb-2 sm:mb-3">
+          <span className="text-[10px] sm:text-xs text-slate-400 truncate max-w-[60%]">{match.league}</span>
+          <span className="text-[10px] sm:text-xs text-slate-400">{match.time || 'TBD'}</span>
         </div>
 
         {/* Teams */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex-1 flex items-center gap-2">
+        <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2">
+          <div className="flex-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
             {match.home_team_logo ? (
-              <img src={match.home_team_logo} alt={match.home_team} className="w-6 h-6 object-contain" />
+              <img src={match.home_team_logo} alt={match.home_team} className="w-5 h-5 sm:w-6 sm:h-6 object-contain flex-shrink-0" />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-brand/10 flex items-center justify-center text-[10px] sm:text-xs font-bold text-brand flex-shrink-0">
                 {match.home_team?.charAt(0)}
               </div>
             )}
-            <p className="font-medium text-white">{match.home_team}</p>
+            <p className="font-medium text-white text-xs sm:text-sm truncate">{match.home_team}</p>
           </div>
-          <div className="px-4 text-slate-500">vs</div>
-          <div className="flex-1 flex items-center justify-end gap-2">
-            <p className="font-medium text-white">{match.away_team}</p>
+          <div className="px-2 sm:px-4 text-slate-500 text-[10px] sm:text-sm flex-shrink-0">vs</div>
+          <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2 min-w-0">
+            <p className="font-medium text-white text-xs sm:text-sm truncate">{match.away_team}</p>
             {match.away_team_logo ? (
-              <img src={match.away_team_logo} alt={match.away_team} className="w-6 h-6 object-contain" />
+              <img src={match.away_team_logo} alt={match.away_team} className="w-5 h-5 sm:w-6 sm:h-6 object-contain flex-shrink-0" />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-brand/10 flex items-center justify-center text-[10px] sm:text-xs font-bold text-brand flex-shrink-0">
                 {match.away_team?.charAt(0)}
               </div>
             )}
@@ -82,16 +82,18 @@ function PickCard({ pick }: { pick: any }) {
         </div>
 
         {/* Prediction */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
             <Badge variant={pick.risk === 'low' ? 'win' : 'draw'}>
-              {prediction.outcome === 'HOME' || prediction.outcome === 'H'
-                ? match.home_team
-                : prediction.outcome === 'AWAY' || prediction.outcome === 'A'
-                ? match.away_team
-                : 'Draw'}
+              <span className="truncate max-w-[80px] sm:max-w-none">
+                {prediction.outcome === 'HOME' || prediction.outcome === 'H'
+                  ? match.home_team
+                  : prediction.outcome === 'AWAY' || prediction.outcome === 'A'
+                  ? match.away_team
+                  : 'Draw'}
+              </span>
             </Badge>
-            <span className="text-sm text-slate-400">
+            <span className="text-[10px] sm:text-sm text-slate-400 flex-shrink-0">
               {formatProbability(prediction.confidence)}
             </span>
           </div>

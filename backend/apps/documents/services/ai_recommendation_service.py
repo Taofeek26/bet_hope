@@ -67,22 +67,29 @@ class AIRecommendationService:
 
     # Default models per provider
     MODELS = {
-        'openai': 'gpt-4-turbo-preview',
+        'openai': 'gpt-3.5-turbo',  # Using 3.5-turbo for faster response and lower memory usage
         'anthropic': 'claude-3-sonnet-20240229',
         'google': 'gemini-pro',
     }
 
     # System prompts
-    SYSTEM_PROMPT = """You are an expert football analyst AI assistant. Your role is to analyze match predictions and provide detailed, actionable recommendations.
+    SYSTEM_PROMPT = """You are an expert football analyst AI assistant with access to a knowledge base of betting strategies, football news, and historical analysis. Your role is to analyze match predictions and provide detailed, actionable recommendations.
 
-When analyzing a prediction, you should:
+When analyzing a prediction, you MUST:
 1. Evaluate the prediction confidence and probabilities
-2. Consider historical data and team statistics
-3. Identify key factors that support or contradict the prediction
-4. Provide a clear risk assessment
-5. Give actionable recommendations
+2. Consider historical data, team statistics, and head-to-head records
+3. **Reference the provided context documents** - cite specific betting strategies, news insights, or statistical patterns from the knowledge base
+4. Identify key factors that support or contradict the prediction
+5. Provide a clear risk assessment with specific scenarios
+6. Give actionable recommendations backed by the source material
 
-Be objective, data-driven, and clear about uncertainties. Always mention relevant statistics and form when available."""
+IMPORTANT GUIDELINES:
+- Always reference relevant information from the "Relevant Context & Statistics" section when available
+- Cite sources by name (e.g., "According to [Source Name]..." or "The betting strategy guide suggests...")
+- If news or recent events are mentioned in the context, incorporate them into your analysis
+- Connect betting strategies from the documents to the specific match situation
+- Be objective, data-driven, and transparent about uncertainties
+- When recommending a bet, explain which strategies or historical patterns support it"""
 
     def __init__(self, provider: str = 'openai'):
         """
@@ -278,12 +285,31 @@ Be objective, data-driven, and clear about uncertainties. Always mention relevan
 
 
         if context:
-            prompt += f"""## Relevant Context & Statistics
+            prompt += f"""## Relevant Context & Statistics (FROM KNOWLEDGE BASE)
+The following information has been retrieved from our knowledge base of betting strategies, football news, and historical analysis. **You MUST reference this information in your analysis where relevant.**
+
 {context}
 
 """
+            prompt += """## Your Analysis Required
 
-        prompt += """## Your Analysis Required
+**IMPORTANT**: Reference the knowledge base documents above in your analysis. Cite sources by name when making recommendations.
+
+Please provide:
+
+1. **RECOMMENDATION**: Your overall assessment and recommended action. **Cite relevant betting strategies or news from the context** that support your recommendation. Be specific about what you recommend and why.
+
+2. **CONFIDENCE ASSESSMENT**: Evaluate the model's confidence level. Reference any relevant strategies or patterns from the knowledge base. What factors support or undermine this confidence?
+
+3. **RISK ANALYSIS**: Identify potential risks and uncertainties using insights from the context. What could go wrong? What recent news or historical patterns should we be aware of?
+
+4. **KEY FACTORS**: List 3-5 key factors most influential for this prediction. **Include at least one insight from the knowledge base documents.**
+
+5. **SOURCES REFERENCED**: List the knowledge base sources you referenced in your analysis.
+
+Format your response with clear section headers as shown above."""
+        else:
+            prompt += """## Your Analysis Required
 
 Please provide:
 

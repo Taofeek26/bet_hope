@@ -841,6 +841,239 @@
     .main-content-expanded {
       margin-left: 0;
     }
+
+    /* Card header stacks on tablet */
+    .card-header {
+      flex-wrap: wrap;
+    }
+
+    .card-header.flex-wrap {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    /* Date selector container - make scrollable */
+    .date-selector {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-top: 12px;
+    }
+
+    .date-selector::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Match card adjustments */
+    .match-card {
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .match-teams {
+      width: 100%;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .match-team {
+      font-size: 13px;
+    }
+
+    .match-prediction {
+      width: 100%;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-dim);
+    }
+
+    /* Card padding reduction */
+    .card {
+      padding: 16px;
+      border-radius: 12px;
+    }
+
+    .card-compact {
+      padding: 14px;
+    }
+
+    /* Typography scaling */
+    .content-header h1 {
+      font-size: 1.3rem;
+    }
+
+    .content-header p {
+      font-size: 0.8rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+    }
+
+    .stat-card {
+      padding: 14px;
+    }
+
+    /* Button sizing */
+    .btn {
+      padding: 8px 14px;
+      font-size: 12px;
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SMALL PHONE BREAKPOINT (480px)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  @media (max-width: 480px) {
+    .main-content {
+      padding: 16px 12px 50px;
+    }
+
+    /* Stats grid to single column on very small screens */
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .stat-card {
+      padding: 12px;
+    }
+
+    .stat-value {
+      font-size: 1.3rem;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+    }
+
+    /* Typography */
+    .content-header h1 {
+      font-size: 1.2rem;
+    }
+
+    .content-header {
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+    }
+
+    .card-desc {
+      font-size: 0.75rem;
+    }
+
+    /* Card spacing */
+    .card {
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .card-header {
+      margin-bottom: 14px;
+      gap: 10px;
+    }
+
+    .card-icon {
+      width: 34px;
+      height: 34px;
+    }
+
+    /* Navigation tabs */
+    .tab-btn {
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
+    .tab-btn .tab-num {
+      width: 18px;
+      height: 18px;
+      font-size: 10px;
+    }
+
+    /* Match card - compact view */
+    .match-card {
+      padding: 12px;
+      gap: 10px;
+    }
+
+    .match-teams {
+      gap: 6px;
+    }
+
+    .match-team {
+      font-size: 12px;
+      gap: 6px;
+    }
+
+    .match-team img,
+    .match-team > div:first-child {
+      width: 20px;
+      height: 20px;
+    }
+
+    .match-vs {
+      font-size: 10px;
+      padding: 0 4px;
+    }
+
+    /* Badges */
+    .badge {
+      padding: 3px 8px;
+      font-size: 10px;
+    }
+
+    /* Filter controls on matches page */
+    .input-sm {
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
+    /* Quick action buttons */
+    .quick-action,
+    a.flex.items-center.gap-3.p-3 {
+      padding: 10px;
+    }
+
+    /* Date selector buttons */
+    .date-selector .btn,
+    .date-selector button {
+      padding: 4px 8px;
+      font-size: 10px;
+    }
+
+    /* Pick cards spacing */
+    .pick-card,
+    .p-4.rounded-lg {
+      padding: 12px;
+    }
+
+    /* Form elements */
+    .input {
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    /* Tables */
+    .table th,
+    .table td {
+      padding: 10px 12px;
+      font-size: 11px;
+    }
   }
 }
 
