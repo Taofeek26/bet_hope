@@ -525,45 +525,186 @@ curl http://<your-server-ip>/health/    # Health check
 
 ---
 
-## Pushing Changes to Production
+## CI/CD Pipeline (GitHub Actions + GHCR)
 
-### Standard Workflow
+The project uses GitHub Actions for automated deployments. Images are built in GitHub Actions and pushed to GitHub Container Registry (GHCR), then pulled on the server.
 
-After making changes locally:
+### How It Works
+
+```
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Push to main   │────▶│  GitHub Actions  │────▶│  Pull on Server  │
+│                  │     │  Build & Push    │     │  & Restart       │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+                                │
+                                ▼
+                     ┌──────────────────┐
+                     │      GHCR        │
+                     │  Image Registry  │
+                     └──────────────────┘
+```
+
+### Benefits
+
+| Aspect | Old (build on server) | New (GHCR) |
+|--------|----------------------|------------|
+| Deploy time | 15-20 min | 1-2 min |
+| Server memory | High (5GB+ for build) | Low (just pull) |
+| Consistency | Variable | Identical images |
+| Caching | None | Docker layer cache |
+
+### One-Time Setup
+
+#### 1. Create GitHub Personal Access Token (PAT)
+
+1. Go to GitHub → **Settings** → **Developer Settings** → **Personal Access Tokens** → **Tokens (classic)**
+2. Click **Generate new token (classic)**
+3. Name: `GHCR_TOKEN_BET_HOPE`
+4. Select scopes:
+   - `read:packages`
+   - `write:packages`
+5. Click **Generate token** and copy it
+
+#### 2. Add Repository Secrets
+
+Go to your repository → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+
+| Secret Name | Value | Description |
+|-------------|-------|-------------|
+| `SSH_HOST` | `145.241.188.142` | Server IP address |
+| `SSH_USER` | `ubuntu` | SSH username |
+| `SSH_PRIVATE_KEY` | (your private key) | SSH private key for server |
+| `SSH_PORT` | `22` | SSH port (optional) |
+| `GHCR_TOKEN` | (PAT from step 1) | Token for pulling images |
+| `BACKEND_URL` | `https://yourdomain.com` | API URL for frontend |
+
+#### 3. Server Setup (First Time Only)
+
+SSH into your server and configure Docker to pull from GHCR:
 
 ```bash
-# 1. Commit and push changes
-git add .
-git commit -m "Your commit message"
-git push origin main
-
-# 2. SSH into production server
 ssh ubuntu@<your-server-ip>
 
-# 3. Pull and deploy
+# Login to GHCR (use your GitHub username and PAT)
+echo "<your-ghcr-token>" | docker login ghcr.io -u <your-github-username> --password-stdin
+
+# Set environment variables for image names
+cat >> /opt/bet_hope/.env << 'EOF'
+BACKEND_IMAGE=ghcr.io/taofeek26/bet-hope-backend:latest
+FRONTEND_IMAGE=ghcr.io/taofeek26/bet-hope-frontend:latest
+EOF
+```
+
+### Automated Deployment
+
+After setup, deployments are automatic:
+
+```bash
+# Just push to main - GitHub Actions handles the rest
+git add .
+git commit -m "Your changes"
+git push origin main
+
+# GitHub Actions will:
+# 1. Build backend image (~5-10 min, cached)
+# 2. Build frontend image (~2-3 min, cached)
+# 3. Push images to GHCR
+# 4. SSH to server
+# 5. Pull new images
+# 6. Restart containers
+# 7. Run migrations
+```
+
+### Manual Deployment (Alternative)
+
+If you need to deploy manually or GitHub Actions fails:
+
+```bash
+# Option 1: Build locally and transfer (for slow connections)
+# Build images locally for linux/amd64
+docker buildx build --platform linux/amd64 -t bet_hope-backend:latest ./backend --load
+docker buildx build --platform linux/amd64 -t bet_hope-frontend:latest ./frontend --load
+
+# Save to tar
+docker save bet_hope-backend:latest -o backend.tar
+docker save bet_hope-frontend:latest -o frontend.tar
+
+# Transfer to server (use rsync for large files)
+rsync -avz --progress backend.tar ubuntu@<server-ip>:/opt/bet_hope/
+scp frontend.tar ubuntu@<server-ip>:/opt/bet_hope/
+
+# On server: load and restart
+ssh ubuntu@<server-ip>
+cd /opt/bet_hope
+docker load -i backend.tar
+docker load -i frontend.tar
+docker compose -f docker-compose.prod.yml up -d
+rm backend.tar frontend.tar
+
+# Option 2: Pull from GHCR manually
+ssh ubuntu@<server-ip>
 cd /opt/bet_hope
 git pull origin main
-docker compose -f docker-compose.prod.yml up -d --build
-
-# 4. Verify deployment
-docker compose -f docker-compose.prod.yml ps
-curl http://localhost/health/
+docker pull ghcr.io/taofeek26/bet-hope-backend:latest
+docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
+docker compose -f docker-compose.prod.yml up -d
 ```
+
+### Monitoring Deployments
+
+#### Check GitHub Actions Status
+- Go to repository → **Actions** tab
+- View workflow runs and logs
+
+#### Check Server Status
+```bash
+ssh ubuntu@<server-ip>
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f --tail 50
+```
+
+### Troubleshooting CI/CD
+
+#### GitHub Actions Fails to Push to GHCR
+```
+Error: denied: permission_denied
+```
+- Ensure `GITHUB_TOKEN` has `packages: write` permission
+- Check workflow has `permissions: packages: write`
+
+#### Server Can't Pull Images
+```
+Error: unauthorized: authentication required
+```
+```bash
+# Re-login to GHCR on server
+echo "<your-ghcr-token>" | docker login ghcr.io -u <username> --password-stdin
+```
+
+#### SSH Connection Fails
+- Verify `SSH_PRIVATE_KEY` secret is correct (include full key with headers)
+- Check server firewall allows port 22
+- Verify `SSH_USER` has access to `/opt/bet_hope`
+
+---
+
+## Manual Deployment (Legacy)
+
+If not using CI/CD, you can still deploy manually:
 
 ### Quick Deploy Commands
 
 ```bash
-# Backend only (faster)
-git pull && docker compose -f docker-compose.prod.yml up -d --build backend celery celery-beat && docker compose -f docker-compose.prod.yml restart nginx
+# SSH into server
+ssh ubuntu@<your-server-ip>
+cd /opt/bet_hope
 
-# Frontend only
-git pull && docker compose -f docker-compose.prod.yml up -d --build frontend && docker compose -f docker-compose.prod.yml restart nginx
+# Pull and rebuild (slow - builds on server)
+git pull origin main
+docker compose -f docker-compose.prod.yml up -d --build
 
-# Full rebuild
-git pull && docker compose -f docker-compose.prod.yml up -d --build
-
-# Just restart (no rebuild)
-docker compose -f docker-compose.prod.yml restart
+# Or just restart (if images already exist)
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### View Production Logs
@@ -732,9 +873,9 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### Phase 4: Production (In Progress)
 - [x] Docker Compose configuration
+- [x] CI/CD pipeline (GitHub Actions + GHCR)
 - [ ] Real-time updates (WebSocket)
 - [ ] Email notifications
-- [ ] CI/CD pipeline
 
 ---
 

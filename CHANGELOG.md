@@ -2,6 +2,23 @@
 
 All notable changes to the Bet_Hope project are documented here.
 
+## [1.0.3] - 2026-02-20
+
+### CI/CD Improvements
+
+**New Features:**
+- Images now built in GitHub Actions and pushed to GitHub Container Registry (GHCR)
+- Server only pulls pre-built images (no more building on server)
+- Added Docker layer caching for faster builds
+- Healthchecks added for backend, celery, and celery-beat services
+
+**Benefits:**
+- Faster deployments (pull vs build)
+- No memory issues on server during deployment
+- Consistent images across environments
+
+---
+
 ## [1.0.2] - 2026-02-20
 
 ### CI/CD

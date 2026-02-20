@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: Build and Deploy to Production
 
 on:
   push:
@@ -6,15 +6,63 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/bet-hope-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/bet-hope-frontend
+
 jobs:
-  deploy:
-    name: Deploy to Oracle Cloud
+  build-and-push:
+    name: Build and Push Images
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.BACKEND_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Oracle Cloud
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -25,11 +73,18 @@ jobs:
           script: |
             cd /opt/bet_hope
 
-            echo "Pulling latest changes..."
+            echo "Pulling latest code..."
             git pull origin main
 
-            echo "Building and deploying containers..."
-            docker compose -f docker-compose.prod.yml up -d --build
+            echo "Logging in to GitHub Container Registry..."
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "Pulling new images..."
+            docker pull ghcr.io/${{ github.repository_owner }}/bet-hope-backend:latest
+            docker pull ghcr.io/${{ github.repository_owner }}/bet-hope-frontend:latest
+
+            echo "Restarting containers..."
+            docker compose -f docker-compose.prod.yml up -d
 
             echo "Waiting for services to start..."
             sleep 10
