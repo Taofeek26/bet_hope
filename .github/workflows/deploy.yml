@@ -8,8 +8,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/bet-hope-backend
-  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/bet-hope-frontend
+  IMAGE_OWNER: taofeek26
+  BACKEND_IMAGE: ghcr.io/taofeek26/bet-hope-backend
+  FRONTEND_IMAGE: ghcr.io/taofeek26/bet-hope-frontend
 
 jobs:
   build-and-push:
@@ -80,8 +81,8 @@ jobs:
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             echo "Pulling new images..."
-            docker pull ghcr.io/${{ github.repository_owner }}/bet-hope-backend:latest
-            docker pull ghcr.io/${{ github.repository_owner }}/bet-hope-frontend:latest
+            docker pull ghcr.io/taofeek26/bet-hope-backend:latest
+            docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
 
             echo "Restarting containers..."
             docker compose -f docker-compose.prod.yml up -d
