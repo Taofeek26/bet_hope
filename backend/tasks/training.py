@@ -13,19 +13,23 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, max_retries=2, default_retry_delay=600)
 def retrain_model(self):
     """
-    Retrain the ML model with latest data.
+    Retrain the ML model with latest data using feedback-driven learning.
     Runs daily at 5:00 AM UTC (after data sync).
+
+    Uses prediction outcomes to improve accuracy by:
+    - Weighting recent matches higher (time decay)
+    - Emphasizing incorrectly predicted matches (hard negative mining)
     """
-    logger.info("Starting daily model retraining...")
+    logger.info("Starting daily model retraining with feedback learning...")
 
     try:
-        # Train new model version
+        # Train with feedback-driven learning for improved accuracy
         call_command(
-            'train_model',
+            'train_with_feedback',
             verbosity=1
         )
-        logger.info("Model retraining completed successfully")
-        return {'status': 'success', 'message': 'Model retrained'}
+        logger.info("Feedback-driven model retraining completed successfully")
+        return {'status': 'success', 'message': 'Model retrained with feedback learning'}
 
     except Exception as e:
         logger.error(f"Model retraining failed: {e}")
