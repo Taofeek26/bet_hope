@@ -2,6 +2,17 @@
 
 All notable changes to the Bet_Hope project are documented here.
 
+## [1.0.2] - 2026-02-20
+
+### CI/CD
+
+**New Features:**
+- Added GitHub Actions workflow for automatic deployment on push to main
+- Deployment triggers on every push to main branch
+- Supports manual workflow dispatch
+
+---
+
 ## [1.0.1] - 2026-02-18
 
 ### Docker Configuration Fixes
