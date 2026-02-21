@@ -262,6 +262,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                             'date': match.match_date.isoformat(),
                             'time': match.kickoff_time.isoformat() if match.kickoff_time else None,
                         },
+                        'prediction_id': prediction.id,
                         'market': market,
                         'model_probability': float(model_prob),
                         'market_probability': round(implied_prob, 3),
