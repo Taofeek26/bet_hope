@@ -1,0 +1,160 @@
+name: Train ML Model
+
+on:
+  schedule:
+    # Run daily at 5:00 AM UTC (after data sync completes)
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      force_train:
+        description: 'Force training even if no new data'
+        required: false
+        default: 'false'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  export-data:
+    name: Export Training Data from Production
+    runs-on: ubuntu-latest
+    outputs:
+      data_exported: ${{ steps.export.outputs.exported }}
+
+    steps:
+      - name: Export training data from production
+        id: export
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /opt/bet_hope
+
+            echo "Exporting training data..."
+            docker compose -f docker-compose.prod.yml exec -T backend python manage.py export_training_data --output /app/training_data.json
+
+            # Copy to host for transfer
+            docker compose -f docker-compose.prod.yml cp backend:/app/training_data.json ./training_data.json
+
+            echo "exported=true" >> $GITHUB_OUTPUT
+
+      - name: Download training data
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "/opt/bet_hope/training_data.json"
+          target: "."
+          strip_components: 2
+
+      - name: Upload training data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-data
+          path: training_data.json
+          retention-days: 1
+
+  train:
+    name: Train Model
+    needs: export-data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download training data
+        uses: actions/download-artifact@v4
+        with:
+          name: training-data
+          path: backend/
+
+      - name: Train model
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.base
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+
+          # Generate version based on date
+          VERSION=$(date +%Y%m%d_%H%M%S)
+          echo "MODEL_VERSION=$VERSION" >> $GITHUB_ENV
+
+          # Run training with exported data
+          python manage.py train_from_export --input training_data.json --version $VERSION
+
+          # Verify model files were created
+          ls -la models/$VERSION/
+
+      - name: Commit and push model
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+          # Add model files
+          git add -f backend/models/${{ env.MODEL_VERSION }}/*.pkl
+          git add -f backend/models/${{ env.MODEL_VERSION }}/*.json
+
+          # Commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No model changes to commit"
+          else
+            git commit -m "Update ML model to v${{ env.MODEL_VERSION }}
+
+            Trained on $(date +%Y-%m-%d) via GitHub Actions
+
+            Co-Authored-By: GitHub Actions <actions@github.com>"
+
+            git push
+            echo "Model committed and pushed successfully"
+          fi
+
+      - name: Cleanup training data on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -f /opt/bet_hope/training_data.json
+
+  activate-model:
+    name: Activate New Model in Production
+    needs: train
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Activate model on production
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/bet_hope
+
+            echo "Pulling latest code with new model..."
+            git pull origin main
+
+            echo "Restarting backend to load new model..."
+            docker compose -f docker-compose.prod.yml restart backend celery
+
+            echo "Model activation complete!"
