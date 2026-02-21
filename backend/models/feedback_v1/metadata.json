@@ -1,0 +1,15 @@
+{
+  "seasons": [
+    "2526",
+    "2425"
+  ],
+  "leagues": null,
+  "n_samples": 11501,
+  "accuracy": 0.4697957409821817,
+  "log_loss": 1.0432900487200205,
+  "used_feedback_learning": true,
+  "training_type": "feedback_weighted",
+  "version": "feedback_v1",
+  "created_at": "2026-02-20T16:41:42.253203",
+  "n_features": 120
+}

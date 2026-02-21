@@ -349,22 +349,22 @@ class FootballDataProvider:
                     elif isinstance(match_date, pd.Timestamp):
                         match_date = match_date.date()
 
-                    # Create unique identifier
+                    # Create unique identifier for reference
                     match_id = f"{league_code}_{season}_{match_date}_{home_team.fd_name}_{away_team.fd_name}"
 
-                    # Get or create match
+                    # Get or create match using natural key (prevents duplicates)
                     match, match_created = Match.objects.update_or_create(
-                        fd_match_id=match_id,
+                        season=db_season,
+                        home_team=home_team,
+                        away_team=away_team,
+                        match_date=match_date,
                         defaults={
-                            'season': db_season,
-                            'home_team': home_team,
-                            'away_team': away_team,
-                            'match_date': match_date,
                             'home_score': self._safe_int(row.get('FTHG')),
                             'away_score': self._safe_int(row.get('FTAG')),
                             'home_halftime_score': self._safe_int(row.get('HTHG')),
                             'away_halftime_score': self._safe_int(row.get('HTAG')),
                             'status': Match.Status.FINISHED if not pd.isna(row.get('FTHG')) else Match.Status.SCHEDULED,
+                            'fd_match_id': match_id,  # Store for reference
                         }
                     )
 
@@ -614,19 +614,19 @@ class FootballDataProvider:
                         defaults={'name': away_name}
                     )
 
-                    # Create unique ID
+                    # Create unique ID for reference
                     match_id = f"{div}_{current_season}_{match_date}_{home_name}_{away_name}"
 
-                    # Create or update match
+                    # Create or update match using natural key (prevents duplicates)
                     match, match_created = Match.objects.update_or_create(
-                        fd_match_id=match_id,
+                        season=db_season,
+                        home_team=home_team,
+                        away_team=away_team,
+                        match_date=match_date,
                         defaults={
-                            'season': db_season,
-                            'home_team': home_team,
-                            'away_team': away_team,
-                            'match_date': match_date,
                             'kickoff_time': kickoff_time,
                             'status': Match.Status.SCHEDULED,
+                            'fd_match_id': match_id,  # Store for reference
                         }
                     )
 

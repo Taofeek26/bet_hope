@@ -58,6 +58,13 @@ class Match(SyncedModel):
             models.Index(fields=['status']),
             models.Index(fields=['season', 'match_date']),
         ]
+        # Prevent duplicate matches - same teams on same date in same season
+        constraints = [
+            models.UniqueConstraint(
+                fields=['season', 'home_team', 'away_team', 'match_date'],
+                name='unique_match_per_season'
+            )
+        ]
 
     def __str__(self):
         score = f"{self.home_score}-{self.away_score}" if self.home_score is not None else "vs"

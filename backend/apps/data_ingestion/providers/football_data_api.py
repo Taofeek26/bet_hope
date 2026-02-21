@@ -544,25 +544,9 @@ class FootballDataAPIProvider:
             else:
                 return None
 
-        # Create unique ID using API fixture ID
+        # Create API match ID for reference (not used as primary key)
         api_id = fixture_info.get('id')
-        api_match_id = f"apifb_{api_id}" if api_id else None
-
-        # IMPORTANT: First check if a match already exists for these teams on this date
-        # This prevents duplicates when CSV data and API data both exist
-        existing_match = Match.objects.filter(
-            home_team=home_team,
-            away_team=away_team,
-            match_date=match_date,
-            season=db_season
-        ).first()
-
-        if existing_match:
-            # Update existing match (from CSV) with API data
-            match_id = existing_match.fd_match_id
-        else:
-            # No existing match, use API ID or generate one
-            match_id = api_match_id or f"{our_league_code}_{season_code}_{match_date}_{home_name}_{away_name}"
+        api_match_id = f"apifb_{api_id}" if api_id else ""
 
         # Get score if available
         goals = fixture.get('goals', {})
@@ -605,14 +589,13 @@ class FootballDataAPIProvider:
             if match:
                 matchweek = int(match.group())
 
-        # Create or update match
+        # Create or update match using natural key (prevents duplicates)
         match, match_created = Match.objects.update_or_create(
-            fd_match_id=match_id,
+            season=db_season,
+            home_team=home_team,
+            away_team=away_team,
+            match_date=match_date,
             defaults={
-                'season': db_season,
-                'home_team': home_team,
-                'away_team': away_team,
-                'match_date': match_date,
                 'kickoff_time': kickoff_time,
                 'matchweek': matchweek,
                 'home_score': home_score,
@@ -620,6 +603,7 @@ class FootballDataAPIProvider:
                 'home_halftime_score': home_ht,
                 'away_halftime_score': away_ht,
                 'status': status,
+                'fd_match_id': api_match_id,  # Store API ID for reference
             }
         )
 
@@ -643,16 +627,45 @@ class FootballDataAPIProvider:
         for fixture in live_matches:
             try:
                 fixture_info = fixture.get('fixture', {})
-                api_id = fixture_info.get('id')
-                match_id = f"apifb_{api_id}"
-
+                teams_data = fixture.get('teams', {})
                 goals = fixture.get('goals', {})
 
-                rows = Match.objects.filter(fd_match_id=match_id).update(
-                    home_score=goals.get('home'),
-                    away_score=goals.get('away'),
-                    status=Match.Status.LIVE,
-                )
+                # Get match date
+                date_str = fixture_info.get('date')
+                if date_str:
+                    match_dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    match_date = match_dt.date()
+                else:
+                    match_date = date.today()
+
+                # Get team names
+                home_name = teams_data.get('home', {}).get('name', '')
+                away_name = teams_data.get('away', {}).get('name', '')
+
+                # Try to find match by teams and date (more reliable than fd_match_id)
+                from apps.teams.models import Team
+                home_team = Team.objects.filter(name__icontains=home_name.split()[0]).first()
+                away_team = Team.objects.filter(name__icontains=away_name.split()[0]).first()
+
+                if home_team and away_team:
+                    rows = Match.objects.filter(
+                        home_team=home_team,
+                        away_team=away_team,
+                        match_date=match_date
+                    ).update(
+                        home_score=goals.get('home'),
+                        away_score=goals.get('away'),
+                        status=Match.Status.LIVE,
+                    )
+                else:
+                    # Fallback to fd_match_id
+                    api_id = fixture_info.get('id')
+                    rows = Match.objects.filter(fd_match_id=f"apifb_{api_id}").update(
+                        home_score=goals.get('home'),
+                        away_score=goals.get('away'),
+                        status=Match.Status.LIVE,
+                    )
+
                 if rows > 0:
                     updated += 1
 
