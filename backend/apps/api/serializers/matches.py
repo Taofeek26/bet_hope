@@ -72,7 +72,8 @@ class MatchListSerializer(serializers.ModelSerializer):
     away_team_name = serializers.CharField(source='away_team.name', read_only=True)
     home_team_logo = serializers.CharField(source='home_team.logo_url', read_only=True)
     away_team_logo = serializers.CharField(source='away_team.logo_url', read_only=True)
-    league_name = serializers.CharField(source='season.league.name', read_only=True)
+    league_name = serializers.SerializerMethodField()
+    league_country = serializers.CharField(source='season.league.country', read_only=True)
     has_prediction = serializers.SerializerMethodField()
     prediction = serializers.SerializerMethodField()
 
@@ -92,9 +93,16 @@ class MatchListSerializer(serializers.ModelSerializer):
             'away_score',
             'status',
             'league_name',
+            'league_country',
             'has_prediction',
             'prediction',
         ]
+
+    def get_league_name(self, obj) -> str:
+        if obj.season and obj.season.league:
+            league = obj.season.league
+            return f"{league.name} ({league.country})" if league.country else league.name
+        return None
 
     def get_has_prediction(self, obj) -> bool:
         # Check if predictions were prefetched, otherwise query
@@ -125,7 +133,8 @@ class MatchSerializer(serializers.ModelSerializer):
     home_team = TeamSerializer(read_only=True)
     away_team = TeamSerializer(read_only=True)
     season_name = serializers.CharField(source='season.name', read_only=True)
-    league_name = serializers.CharField(source='season.league.name', read_only=True)
+    league_name = serializers.SerializerMethodField()
+    league_country = serializers.CharField(source='season.league.country', read_only=True)
     result = serializers.SerializerMethodField()
 
     class Meta:
@@ -135,6 +144,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'season',
             'season_name',
             'league_name',
+            'league_country',
             'home_team',
             'away_team',
             'match_date',
@@ -146,6 +156,12 @@ class MatchSerializer(serializers.ModelSerializer):
             'status',
             'result',
         ]
+
+    def get_league_name(self, obj) -> str:
+        if obj.season and obj.season.league:
+            league = obj.season.league
+            return f"{league.name} ({league.country})" if league.country else league.name
+        return None
 
     def get_result(self, obj) -> str:
         if obj.status != Match.Status.FINISHED:
@@ -241,7 +257,8 @@ class UpcomingMatchSerializer(serializers.ModelSerializer):
     away_team_name = serializers.CharField(source='away_team.name')
     home_team_logo = serializers.CharField(source='home_team.logo_url')
     away_team_logo = serializers.CharField(source='away_team.logo_url')
-    league_name = serializers.CharField(source='season.league.name')
+    league_name = serializers.SerializerMethodField()
+    league_country = serializers.CharField(source='season.league.country')
     prediction = serializers.SerializerMethodField()
 
     class Meta:
@@ -257,8 +274,15 @@ class UpcomingMatchSerializer(serializers.ModelSerializer):
             'match_date',
             'kickoff_time',
             'league_name',
+            'league_country',
             'prediction',
         ]
+
+    def get_league_name(self, obj) -> str:
+        if obj.season and obj.season.league:
+            league = obj.season.league
+            return f"{league.name} ({league.country})" if league.country else league.name
+        return None
 
     def get_prediction(self, obj):
         from .predictions import PredictionSummarySerializer

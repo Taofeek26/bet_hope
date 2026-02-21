@@ -49,6 +49,11 @@ class PredictionSerializer(serializers.ModelSerializer):
         ]
 
     def get_match(self, obj) -> dict:
+        league = obj.match.season.league if obj.match.season else None
+        league_display = None
+        if league:
+            league_display = f"{league.name} ({league.country})" if league.country else league.name
+
         return {
             'id': obj.match.id,
             'home_team': obj.match.home_team.name,
@@ -57,7 +62,8 @@ class PredictionSerializer(serializers.ModelSerializer):
             'away_team_logo': obj.match.away_team.logo_url,
             'match_date': obj.match.match_date.isoformat(),
             'kickoff_time': obj.match.kickoff_time.strftime('%H:%M') if obj.match.kickoff_time else None,
-            'league': obj.match.season.league.name if obj.match.season else None,
+            'league': league_display,
+            'league_country': league.country if league else None,
             'status': obj.match.status,
         }
 

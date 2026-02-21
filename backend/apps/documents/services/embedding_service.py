@@ -21,11 +21,20 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
+# Lazy loading for sentence_transformers to avoid OOM on low-memory servers
+SENTENCE_TRANSFORMERS_AVAILABLE = None  # Will be set on first use
+_sentence_transformer_model = None
+
+def _check_sentence_transformers():
+    """Lazily check if sentence_transformers is available."""
+    global SENTENCE_TRANSFORMERS_AVAILABLE
+    if SENTENCE_TRANSFORMERS_AVAILABLE is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            SENTENCE_TRANSFORMERS_AVAILABLE = True
+        except ImportError:
+            SENTENCE_TRANSFORMERS_AVAILABLE = False
+    return SENTENCE_TRANSFORMERS_AVAILABLE
 
 
 class EmbeddingService:
@@ -59,7 +68,7 @@ class EmbeddingService:
         if provider == 'auto':
             if OPENAI_AVAILABLE and getattr(settings, 'OPENAI_API_KEY', None):
                 return 'openai'
-            elif SENTENCE_TRANSFORMERS_AVAILABLE:
+            elif _check_sentence_transformers():
                 return 'local'
             else:
                 raise ImportError(
@@ -79,7 +88,8 @@ class EmbeddingService:
     @property
     def local_model(self):
         """Lazy load local model."""
-        if self._local_model is None and SENTENCE_TRANSFORMERS_AVAILABLE:
+        if self._local_model is None and _check_sentence_transformers():
+            from sentence_transformers import SentenceTransformer
             self._local_model = SentenceTransformer(self.LOCAL_MODEL)
         return self._local_model
 

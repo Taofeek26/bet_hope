@@ -434,6 +434,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         picks = []
         for pred in predictions:
             match = pred.match
+            league = match.season.league
+            league_display = f"{league.name} ({league.country})" if league.country else league.name
             picks.append({
                 'match': {
                     'id': match.id,
@@ -441,7 +443,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                     'away_team': match.away_team.name,
                     'home_team_logo': match.home_team.logo_url,
                     'away_team_logo': match.away_team.logo_url,
-                    'league': match.season.league.name,
+                    'league': league_display,
                     'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
                 },
                 'prediction': {
