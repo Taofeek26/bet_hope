@@ -136,42 +136,62 @@ class RAGService:
             List of RetrievalResult objects
         """
         match = prediction.match
+        results = []
 
-        # Build contextual query
-        query_parts = [
-            f"{match.home_team.name} vs {match.away_team.name}",
-            f"match prediction analysis",
-            f"home win probability {float(prediction.home_win_probability):.0%}",
-            f"away win probability {float(prediction.away_win_probability):.0%}",
-        ]
+        # 1. First retrieve general betting strategies/guides (no team filter)
+        strategy_query = "betting strategy value odds probability confidence"
 
-        # Add outcome-specific context
+        # Add confidence-specific query
+        confidence = float(prediction.confidence_score)
+        if confidence > 0.6:
+            strategy_query += " high confidence bet"
+        elif confidence < 0.4:
+            strategy_query += " low confidence risk management"
+
+        strategy_results = self.retrieve(
+            query=strategy_query,
+            top_k=3,
+            min_score=0.2,  # Lower threshold for strategies
+            document_types=['betting_guide', 'strategy'],
+        )
+        results.extend(strategy_results)
+
+        # 2. Retrieve match-specific context
+        match_query = f"{match.home_team.name} vs {match.away_team.name} football match prediction"
+
         if prediction.recommended_outcome == 'HOME':
-            query_parts.append(f"home team advantage {match.home_team.name}")
+            match_query += f" home win {match.home_team.name}"
         elif prediction.recommended_outcome == 'AWAY':
-            query_parts.append(f"away team performance {match.away_team.name}")
+            match_query += f" away win {match.away_team.name}"
         else:
-            query_parts.append("draw prediction factors")
+            match_query += " draw"
 
-        # Add goals context based on predicted scores
+        # Add goals context
         predicted_goals = 0
         if prediction.predicted_home_score and prediction.predicted_away_score:
             predicted_goals = float(prediction.predicted_home_score) + float(prediction.predicted_away_score)
 
         if predicted_goals > 2.5:
-            query_parts.append("high scoring match analysis")
+            match_query += " over goals high scoring"
         else:
-            query_parts.append("low scoring defensive match")
+            match_query += " under goals low scoring"
 
-        query = " ".join(query_parts)
-
-        # Retrieve with team/league context
-        return self.retrieve(
-            query=query,
-            top_k=top_k,
-            min_score=0.3,
-            team_ids=[match.home_team_id, match.away_team_id],
+        match_results = self.retrieve(
+            query=match_query,
+            top_k=top_k - 3,
+            min_score=0.2,
         )
+        results.extend(match_results)
+
+        # 3. Deduplicate by chunk_id and sort by score
+        seen_chunks = set()
+        unique_results = []
+        for r in sorted(results, key=lambda x: x.score, reverse=True):
+            if r.chunk_id not in seen_chunks:
+                seen_chunks.add(r.chunk_id)
+                unique_results.append(r)
+
+        return unique_results[:top_k]
 
     def build_context(
         self,

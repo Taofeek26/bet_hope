@@ -507,25 +507,9 @@ class FootballDataAPIProvider:
         home_logo = home_data.get('logo', '')
         away_logo = away_data.get('logo', '')
 
-        home_team, home_created = Team.objects.get_or_create(
-            name=home_name,
-            league=league,
-            defaults={'fd_name': home_name, 'logo_url': home_logo}
-        )
-        # Update logo if not set
-        if not home_created and not home_team.logo_url and home_logo:
-            home_team.logo_url = home_logo
-            home_team.save(update_fields=['logo_url'])
-
-        away_team, away_created = Team.objects.get_or_create(
-            name=away_name,
-            league=league,
-            defaults={'fd_name': away_name, 'logo_url': away_logo}
-        )
-        # Update logo if not set
-        if not away_created and not away_team.logo_url and away_logo:
-            away_team.logo_url = away_logo
-            away_team.save(update_fields=['logo_url'])
+        # Find or create teams (matching existing teams from historical data)
+        home_team = self._find_or_create_team(home_name, league, home_logo)
+        away_team = self._find_or_create_team(away_name, league, away_logo)
 
         # Parse date and time
         fixture_info = fixture.get('fixture', {})
@@ -609,6 +593,116 @@ class FootballDataAPIProvider:
 
         return 'created' if match_created else 'updated'
 
+    def _normalize_team_name(self, name: str) -> str:
+        """
+        Normalize team name for matching.
+        Removes accents, converts to lowercase, handles common abbreviations.
+        """
+        import unicodedata
+        import re
+
+        if not name:
+            return ''
+
+        # Remove accents (é → e, ü → u, etc.)
+        normalized = unicodedata.normalize('NFKD', name)
+        normalized = ''.join(c for c in normalized if not unicodedata.combining(c))
+
+        # Lowercase
+        normalized = normalized.lower().strip()
+
+        # Common abbreviations mapping
+        abbreviations = {
+            ' fc': '',
+            ' cf': '',
+            ' sc': '',
+            ' ac': '',
+            ' afc': '',
+            ' utd': ' united',
+            ' united': ' united',
+            ' city': ' city',
+            ' town': ' town',
+            ' weds': ' wednesday',
+            ' wednesday': ' wednesday',
+            ' albion': ' albion',
+            ' rovers': ' rovers',
+            ' wanderers': ' wanderers',
+            ' athletic': ' athletic',
+            ' hotspur': ' hotspur',
+        }
+
+        for abbrev, full in abbreviations.items():
+            normalized = normalized.replace(abbrev, full)
+
+        # Remove extra spaces
+        normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+        return normalized
+
+    def _find_or_create_team(self, api_name: str, league, logo_url: str = ''):
+        """
+        Find existing team or create new one.
+        Tries multiple matching strategies to avoid duplicates.
+
+        Args:
+            api_name: Team name from API
+            league: League model instance
+            logo_url: Team logo URL
+
+        Returns:
+            Team model instance
+        """
+        from apps.teams.models import Team
+
+        # 1. Try exact match by name
+        team = Team.objects.filter(name=api_name, league=league).first()
+        if team:
+            # Update logo if we have one and team doesn't
+            if logo_url and not team.logo_url:
+                team.logo_url = logo_url
+                team.save(update_fields=['logo_url'])
+            return team
+
+        # 2. Try exact match by fd_name (from CSV historical data)
+        team = Team.objects.filter(fd_name=api_name, league=league).first()
+        if team:
+            # Update name to API name and add logo
+            team.name = api_name
+            if logo_url and not team.logo_url:
+                team.logo_url = logo_url
+            team.save(update_fields=['name', 'logo_url'])
+            return team
+
+        # 3. Try normalized name matching against all teams in league
+        normalized_api = self._normalize_team_name(api_name)
+
+        for existing_team in Team.objects.filter(league=league):
+            # Check normalized name
+            if self._normalize_team_name(existing_team.name) == normalized_api:
+                if logo_url and not existing_team.logo_url:
+                    existing_team.logo_url = logo_url
+                    existing_team.save(update_fields=['logo_url'])
+                return existing_team
+
+            # Check normalized fd_name
+            if existing_team.fd_name and self._normalize_team_name(existing_team.fd_name) == normalized_api:
+                # Update name to API name
+                existing_team.name = api_name
+                if logo_url and not existing_team.logo_url:
+                    existing_team.logo_url = logo_url
+                existing_team.save(update_fields=['name', 'logo_url'])
+                return existing_team
+
+        # 4. No match found - create new team
+        team = Team.objects.create(
+            name=api_name,
+            fd_name=api_name,
+            league=league,
+            logo_url=logo_url,
+        )
+        logger.info(f"Created new team: {api_name} in {league.name}")
+        return team
+
     def sync_live_matches(self) -> int:
         """
         Update live match scores in database.
@@ -617,6 +711,7 @@ class FootballDataAPIProvider:
             Number of matches updated
         """
         from apps.matches.models import Match
+        from apps.teams.models import Team
 
         live_matches = self.get_live_matches()
         if not live_matches:
@@ -642,10 +737,25 @@ class FootballDataAPIProvider:
                 home_name = teams_data.get('home', {}).get('name', '')
                 away_name = teams_data.get('away', {}).get('name', '')
 
-                # Try to find match by teams and date (more reliable than fd_match_id)
-                from apps.teams.models import Team
-                home_team = Team.objects.filter(name__icontains=home_name.split()[0]).first()
-                away_team = Team.objects.filter(name__icontains=away_name.split()[0]).first()
+                # Use normalized matching to find teams
+                normalized_home = self._normalize_team_name(home_name)
+                normalized_away = self._normalize_team_name(away_name)
+
+                home_team = None
+                away_team = None
+
+                for team in Team.objects.all():
+                    if self._normalize_team_name(team.name) == normalized_home:
+                        home_team = team
+                    elif team.fd_name and self._normalize_team_name(team.fd_name) == normalized_home:
+                        home_team = team
+                    if self._normalize_team_name(team.name) == normalized_away:
+                        away_team = team
+                    elif team.fd_name and self._normalize_team_name(team.fd_name) == normalized_away:
+                        away_team = team
+
+                    if home_team and away_team:
+                        break
 
                 if home_team and away_team:
                     rows = Match.objects.filter(
@@ -753,24 +863,33 @@ class FootballDataAPIProvider:
                     stadium_capacity = venue.get('capacity')
                     city = venue.get('city', '')
 
-                    team, team_created = Team.objects.update_or_create(
-                        name=team_name,
-                        league=league,
-                        defaults={
-                            'fd_name': team_name,
-                            'logo_url': team_logo,
-                            'code': team_code or '',
-                            'founded': team_founded,
-                            'stadium': stadium,
-                            'stadium_capacity': stadium_capacity,
-                            'city': city,
-                        }
-                    )
+                    # Use smart matching to find existing team
+                    existing_team = self._find_or_create_team(team_name, league, team_logo)
 
-                    if team_created:
-                        created += 1
-                    else:
+                    # Update additional fields
+                    team_updated = False
+                    if team_code and not existing_team.code:
+                        existing_team.code = team_code
+                        team_updated = True
+                    if team_founded and not existing_team.founded:
+                        existing_team.founded = team_founded
+                        team_updated = True
+                    if stadium and not existing_team.stadium:
+                        existing_team.stadium = stadium
+                        team_updated = True
+                    if stadium_capacity and not existing_team.stadium_capacity:
+                        existing_team.stadium_capacity = stadium_capacity
+                        team_updated = True
+                    if city and not existing_team.city:
+                        existing_team.city = city
+                        team_updated = True
+
+                    if team_updated:
+                        existing_team.save()
                         updated += 1
+                    else:
+                        # Count as created only if it was actually new (check via pk)
+                        created += 1
 
                 logger.info(f"Synced teams for {code}: {created} created, {updated} updated")
 

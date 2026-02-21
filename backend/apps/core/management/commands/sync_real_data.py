@@ -124,15 +124,23 @@ class Command(BaseCommand):
             self.stdout.write(f'  Total created: {total_created}')
             self.stdout.write(f'  Total updated: {total_updated}')
 
-        # Sync upcoming fixtures from Football-Data.co.uk
+        # Sync upcoming fixtures from API (single source of truth for fixtures)
         if sync_fixtures or fixtures_only:
             self.stdout.write('')
-            self.stdout.write('Syncing upcoming fixtures from Football-Data.co.uk...')
-            fixtures_created, fixtures_updated = provider.sync_fixtures()
-            self.stdout.write(
-                self.style.SUCCESS(f'Fixtures: {fixtures_created} created, {fixtures_updated} updated')
-            )
-            total_created += fixtures_created
+            self.stdout.write('Syncing upcoming fixtures from API-Football...')
+            from apps.data_ingestion.providers.football_data_api import FootballDataAPIProvider
+
+            if FootballDataAPIProvider.is_configured():
+                api_provider = FootballDataAPIProvider()
+                fixtures_created, fixtures_updated = api_provider.sync_fixtures_to_database(days=14)
+                self.stdout.write(
+                    self.style.SUCCESS(f'Fixtures: {fixtures_created} created, {fixtures_updated} updated')
+                )
+                total_created += fixtures_created
+            else:
+                self.stdout.write(
+                    self.style.WARNING('API_FOOTBALL_KEY not configured. Skipping fixture sync.')
+                )
 
         # Generate predictions for upcoming matches
         self.stdout.write('')

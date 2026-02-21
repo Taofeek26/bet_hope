@@ -73,23 +73,35 @@ class AIRecommendationService:
     }
 
     # System prompts
-    SYSTEM_PROMPT = """You are an expert football analyst AI assistant with access to a knowledge base of betting strategies, football news, and historical analysis. Your role is to analyze match predictions and provide detailed, actionable recommendations.
+    SYSTEM_PROMPT = """You are an expert football betting analyst. Your role is to provide CONCISE, actionable betting recommendations.
 
-When analyzing a prediction, you MUST:
-1. Evaluate the prediction confidence and probabilities
-2. Consider historical data, team statistics, and head-to-head records
-3. **Reference the provided context documents** - cite specific betting strategies, news insights, or statistical patterns from the knowledge base
-4. Identify key factors that support or contradict the prediction
-5. Provide a clear risk assessment with specific scenarios
-6. Give actionable recommendations backed by the source material
+RESPONSE FORMAT (follow exactly):
+```
+📊 BET RECOMMENDATION
+━━━━━━━━━━━━━━━━━━━━
+🎯 Pick: [HOME/DRAW/AWAY or specific bet]
+💰 Stake: [1-5 units based on confidence]
+📈 Confidence: [LOW/MEDIUM/HIGH]
 
-IMPORTANT GUIDELINES:
-- Always reference relevant information from the "Relevant Context & Statistics" section when available
-- Cite sources by name (e.g., "According to [Source Name]..." or "The betting strategy guide suggests...")
-- If news or recent events are mentioned in the context, incorporate them into your analysis
-- Connect betting strategies from the documents to the specific match situation
-- Be objective, data-driven, and transparent about uncertainties
-- When recommending a bet, explain which strategies or historical patterns support it"""
+📋 QUICK ANALYSIS
+• [Key point 1 - reference model prediction]
+• [Key point 2 - reference document insight]
+• [Key point 3 - risk factor]
+
+📚 SOURCES USED
+• [Document name]: [Brief insight used]
+• Model: [prediction value referenced]
+
+⚠️ RISK: [One sentence risk warning]
+```
+
+RULES:
+- Be CONCISE - max 150 words total
+- ALWAYS cite at least one document from the knowledge base
+- Reference specific prediction values (probabilities, confidence %)
+- State the AI model and prediction strength used
+- Use betting terminology (value bet, odds, stake sizing)
+- No lengthy paragraphs - bullet points only"""
 
     def __init__(self, provider: str = 'openai'):
         """
@@ -285,43 +297,30 @@ IMPORTANT GUIDELINES:
 
 
         if context:
-            prompt += f"""## Relevant Context & Statistics (FROM KNOWLEDGE BASE)
-The following information has been retrieved from our knowledge base of betting strategies, football news, and historical analysis. **You MUST reference this information in your analysis where relevant.**
-
+            prompt += f"""## 📚 KNOWLEDGE BASE DOCUMENTS
 {context}
 
-"""
-            prompt += """## Your Analysis Required
+---
 
-**IMPORTANT**: Reference the knowledge base documents above in your analysis. Cite sources by name when making recommendations.
+## TASK
+Generate a betting recommendation using the EXACT format from your system prompt.
 
-Please provide:
-
-1. **RECOMMENDATION**: Your overall assessment and recommended action. **Cite relevant betting strategies or news from the context** that support your recommendation. Be specific about what you recommend and why.
-
-2. **CONFIDENCE ASSESSMENT**: Evaluate the model's confidence level. Reference any relevant strategies or patterns from the knowledge base. What factors support or undermine this confidence?
-
-3. **RISK ANALYSIS**: Identify potential risks and uncertainties using insights from the context. What could go wrong? What recent news or historical patterns should we be aware of?
-
-4. **KEY FACTORS**: List 3-5 key factors most influential for this prediction. **Include at least one insight from the knowledge base documents.**
-
-5. **SOURCES REFERENCED**: List the knowledge base sources you referenced in your analysis.
-
-Format your response with clear section headers as shown above."""
+REQUIREMENTS:
+1. Reference at least ONE document from the knowledge base above
+2. Cite the model prediction values: {float(prediction.confidence_score)*100:.1f}% confidence, {prediction.prediction_strength} strength
+3. State you're using {prediction.model_type} model v{prediction.model_version}
+4. Keep response under 150 words
+5. Use the betting format template EXACTLY"""
         else:
-            prompt += """## Your Analysis Required
+            prompt += f"""## TASK
+Generate a betting recommendation using the EXACT format from your system prompt.
 
-Please provide:
-
-1. **RECOMMENDATION**: Your overall assessment and recommended action based on the prediction. Be specific about what you recommend and why.
-
-2. **CONFIDENCE ASSESSMENT**: Evaluate the model's confidence level. Is it justified based on the available data? What factors support or undermine this confidence?
-
-3. **RISK ANALYSIS**: Identify potential risks and uncertainties. What could go wrong? What scenarios could invalidate the prediction?
-
-4. **KEY FACTORS**: List 3-5 key factors that are most influential for this prediction (as a bullet list).
-
-Format your response with clear section headers as shown above."""
+REQUIREMENTS:
+1. Reference the model prediction values: {float(prediction.confidence_score)*100:.1f}% confidence, {prediction.prediction_strength} strength
+2. State you're using {prediction.model_type} model v{prediction.model_version}
+3. Keep response under 150 words
+4. Use the betting format template EXACTLY
+5. Note: No knowledge base documents available for this match"""
 
         return prompt
 
@@ -391,57 +390,121 @@ Format your response with clear section headers as shown above."""
             'key_factors': [],
         }
 
+        # Remove code block markers
+        content = content.replace('```', '').strip()
+
+        # For the new betting format, parse differently
+        lines = content.split('\n')
+
+        # Extract bet recommendation section
+        bet_lines = []
+        analysis_lines = []
+        sources_lines = []
+        risk_line = ''
+
         current_section = None
-        current_content = []
 
-        for line in content.split('\n'):
-            line_lower = line.lower().strip()
+        for line in lines:
+            line_stripped = line.strip()
 
-            # Check for section headers
-            if 'recommendation' in line_lower and ('**' in line or '#' in line):
-                if current_section and current_content:
-                    sections[current_section] = '\n'.join(current_content).strip()
-                current_section = 'recommendation'
-                current_content = []
-            elif 'confidence' in line_lower and ('**' in line or '#' in line):
-                if current_section and current_content:
-                    sections[current_section] = '\n'.join(current_content).strip()
-                current_section = 'confidence_assessment'
-                current_content = []
-            elif 'risk' in line_lower and ('**' in line or '#' in line):
-                if current_section and current_content:
-                    sections[current_section] = '\n'.join(current_content).strip()
-                current_section = 'risk_analysis'
-                current_content = []
-            elif 'key factor' in line_lower and ('**' in line or '#' in line):
-                if current_section and current_content:
-                    sections[current_section] = '\n'.join(current_content).strip()
-                current_section = 'key_factors'
-                current_content = []
-            elif current_section:
-                current_content.append(line)
+            # Skip empty lines and decorative lines
+            if not line_stripped or line_stripped.startswith('━'):
+                continue
 
-        # Save last section
-        if current_section and current_content:
-            sections[current_section] = '\n'.join(current_content).strip()
+            # Detect sections by emoji or keywords
+            if 'BET RECOMMENDATION' in line:
+                current_section = 'bet'
+            elif 'QUICK ANALYSIS' in line:
+                current_section = 'analysis'
+            elif 'SOURCES' in line:
+                current_section = 'sources'
+            elif '⚠️' in line or 'RISK:' in line:
+                current_section = 'risk'
+                # Extract risk text from same line
+                risk_text = line_stripped.replace('⚠️', '').replace('RISK:', '').strip()
+                if risk_text:
+                    risk_line = risk_text
+            elif current_section == 'bet' and ('🎯' in line or '💰' in line or '📈' in line or 'Pick:' in line or 'Stake:' in line or 'Confidence:' in line):
+                bet_lines.append(line_stripped)
+            elif current_section == 'analysis' and (line_stripped.startswith('•') or line_stripped.startswith('-')):
+                analysis_lines.append(line_stripped.lstrip('•- '))
+            elif current_section == 'sources' and (line_stripped.startswith('•') or line_stripped.startswith('-')):
+                sources_lines.append(line_stripped.lstrip('•- '))
+            elif current_section == 'risk' and line_stripped and not risk_line:
+                risk_line = line_stripped
 
-        # Parse key factors as list
-        if isinstance(sections['key_factors'], str):
-            factors = []
-            for line in sections['key_factors'].split('\n'):
-                line = line.strip()
-                if line.startswith(('-', '*', '•', '1', '2', '3', '4', '5')):
-                    # Clean up bullet points
-                    factor = line.lstrip('-*•0123456789. ').strip()
-                    if factor:
-                        factors.append(factor)
-            sections['key_factors'] = factors[:5]
+        # Build recommendation from bet section (formatted nicely)
+        if bet_lines:
+            recommendation = "📊 BET RECOMMENDATION\n" + '\n'.join(bet_lines)
+        else:
+            recommendation = content[:500]
+
+        # Build confidence from sources (references model)
+        if sources_lines:
+            confidence = "📚 Sources:\n• " + '\n• '.join(sources_lines)
+        else:
+            confidence = ''
+
+        # Key factors from analysis
+        key_factors = analysis_lines[:5] if analysis_lines else []
+
+        # Risk analysis
+        risk_analysis = f"⚠️ {risk_line}" if risk_line else ''
+
+        # Fallback parsing for old format
+        if not bet_lines:
+            current_section = None
+            current_content = []
+
+            for line in lines:
+                line_lower = line.lower().strip()
+
+                if 'recommendation' in line_lower and ('**' in line or '#' in line):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = 'recommendation'
+                    current_content = []
+                elif 'confidence' in line_lower and ('**' in line or '#' in line):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = 'confidence_assessment'
+                    current_content = []
+                elif 'risk' in line_lower and ('**' in line or '#' in line):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = 'risk_analysis'
+                    current_content = []
+                elif 'key factor' in line_lower and ('**' in line or '#' in line):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = 'key_factors'
+                    current_content = []
+                elif current_section:
+                    current_content.append(line)
+
+            if current_section and current_content:
+                sections[current_section] = '\n'.join(current_content).strip()
+
+            if isinstance(sections['key_factors'], str):
+                factors = []
+                for line in sections['key_factors'].split('\n'):
+                    line = line.strip()
+                    if line.startswith(('-', '*', '•', '1', '2', '3', '4', '5')):
+                        factor = line.lstrip('-*•0123456789. ').strip()
+                        if factor:
+                            factors.append(factor)
+                sections['key_factors'] = factors[:5]
+
+            recommendation = sections['recommendation'] or content[:500]
+            confidence = sections['confidence_assessment']
+            risk_analysis = sections['risk_analysis']
+            key_factors = sections['key_factors']
 
         return AIResponse(
-            recommendation=sections['recommendation'] or content[:500],
-            confidence_assessment=sections['confidence_assessment'],
-            risk_analysis=sections['risk_analysis'],
-            key_factors=sections['key_factors'],
+            recommendation=recommendation,
+            confidence_assessment=confidence,
+            risk_analysis=risk_analysis,
+            key_factors=key_factors,
             tokens_used=0,
             provider=self.provider,
             model=self.MODELS[self.provider],
