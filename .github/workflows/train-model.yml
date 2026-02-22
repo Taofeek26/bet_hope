@@ -18,8 +18,6 @@ jobs:
   export-data:
     name: Export Training Data from Production
     runs-on: ubuntu-latest
-    outputs:
-      data_exported: ${{ steps.export.outputs.exported }}
 
     steps:
       - name: Export training data from production
@@ -39,7 +37,7 @@ jobs:
             # Copy to host for transfer
             docker compose -f docker-compose.prod.yml cp backend:/app/training_data.json ./training_data.json
 
-            echo "exported=true" >> $GITHUB_OUTPUT
+            echo "Export complete!"
 
       - name: Download training data
         uses: appleboy/scp-action@v0.1.7
