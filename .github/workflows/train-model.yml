@@ -96,7 +96,7 @@ jobs:
           echo "MODEL_VERSION=$VERSION" >> $GITHUB_ENV
 
           # Run training with exported data
-          python manage.py train_from_export --input training_data.json --version $VERSION
+          python manage.py train_from_export --input training_data.json --model-version $VERSION
 
           # Verify model files were created
           ls -la models/$VERSION/

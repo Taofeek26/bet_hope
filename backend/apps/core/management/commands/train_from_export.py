@@ -19,7 +19,7 @@ class Command(BaseCommand):
             help='Input JSON file with training data',
         )
         parser.add_argument(
-            '--version',
+            '--model-version',
             type=str,
             default=None,
             help='Model version (default: timestamp)',
@@ -34,7 +34,7 @@ class Command(BaseCommand):
         import joblib
 
         input_path = options['input']
-        version = options['version'] or datetime.now().strftime('%Y%m%d_%H%M%S')
+        version = options['model_version'] or datetime.now().strftime('%Y%m%d_%H%M%S')
 
         self.stdout.write(f'Loading training data from {input_path}...')
 
