@@ -160,6 +160,7 @@ class Command(BaseCommand):
 
     def _engineer_features(self, df):
         """Engineer features from match data."""
+        import pandas as pd
         features = pd.DataFrame()
 
         # Parse home_stats and away_stats from dict columns
