@@ -86,7 +86,7 @@ class Command(BaseCommand):
                     'losses': home_stats.losses,
                     'goals_for': home_stats.goals_for,
                     'goals_against': home_stats.goals_against,
-                    'form': home_stats.form_string,
+                    'form': home_stats.form,
                 }
 
             if away_stats:
@@ -96,7 +96,7 @@ class Command(BaseCommand):
                     'losses': away_stats.losses,
                     'goals_for': away_stats.goals_for,
                     'goals_against': away_stats.goals_against,
-                    'form': away_stats.form_string,
+                    'form': away_stats.form,
                 }
 
             # Add odds if available
