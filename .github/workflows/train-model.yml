@@ -40,14 +40,13 @@ jobs:
             echo "Export complete!"
 
       - name: Download training data
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 145.241.188.142
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "/opt/bet_hope/training_data.json"
-          target: "."
-          strip_components: 2
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 145.241.188.142 >> ~/.ssh/known_hosts
+          scp -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@145.241.188.142:/opt/bet_hope/training_data.json ./training_data.json
+          rm ~/.ssh/id_rsa
 
       - name: Upload training data artifact
         uses: actions/upload-artifact@v4
