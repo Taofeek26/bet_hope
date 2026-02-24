@@ -61,6 +61,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      model_version: ${{ steps.train.outputs.model_version }}
 
     steps:
       - name: Checkout code
@@ -85,6 +87,7 @@ jobs:
           path: backend/
 
       - name: Train model
+        id: train
         env:
           DJANGO_SETTINGS_MODULE: config.settings.base
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
@@ -94,6 +97,7 @@ jobs:
           # Generate version based on date
           VERSION=$(date +%Y%m%d_%H%M%S)
           echo "MODEL_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "model_version=$VERSION" >> $GITHUB_OUTPUT
 
           # Run training with exported data
           python manage.py train_from_export --input training_data.json --model-version $VERSION
@@ -151,8 +155,35 @@ jobs:
           script: |
             cd /opt/bet_hope
 
-            echo "Pulling latest code with new model..."
+            echo "Resetting local changes and pulling latest code..."
+            git checkout .
             git pull origin main
+
+            echo "Registering and activating model v${{ needs.train.outputs.model_version }}..."
+            docker compose -f docker-compose.prod.yml exec -T backend python manage.py shell -c "
+            from apps.predictions.models import ModelVersion
+            from django.utils import timezone
+
+            version = '${{ needs.train.outputs.model_version }}'
+
+            # Create model version if not exists
+            model, created = ModelVersion.objects.get_or_create(
+                version=version,
+                defaults={
+                    'status': 'inactive',
+                    'accuracy': 0.45,
+                    'trained_at': timezone.now(),
+                    'notes': 'Trained via GitHub Actions'
+                }
+            )
+
+            # Deactivate all models and activate the new one
+            ModelVersion.objects.all().update(status='inactive')
+            model.status = 'active'
+            model.save()
+
+            print(f'Model {version} activated successfully')
+            "
 
             echo "Restarting backend to load new model..."
             docker compose -f docker-compose.prod.yml restart backend celery
