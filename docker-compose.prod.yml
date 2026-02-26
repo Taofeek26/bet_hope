@@ -68,7 +68,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: celery -A config worker -l info --concurrency=2
+    command: celery -A config worker -l info --concurrency=2 -Q default,data_sync,predictions,analytics,ml,documents
 
   celery-beat:
     image: ${BACKEND_IMAGE:-ghcr.io/taofeek26/bet-hope-backend:latest}
