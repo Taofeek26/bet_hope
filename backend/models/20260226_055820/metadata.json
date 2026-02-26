@@ -1,0 +1,36 @@
+{
+  "version": "20260226_055820",
+  "trained_at": "2026-02-26T05:58:25.941078",
+  "training_samples": 25980,
+  "test_samples": 6496,
+  "features": [
+    "home_wins",
+    "home_draws",
+    "home_losses",
+    "home_goals_for",
+    "home_goals_against",
+    "home_ppg",
+    "home_goals_per_game",
+    "home_conceded_per_game",
+    "home_goal_diff",
+    "away_wins",
+    "away_draws",
+    "away_losses",
+    "away_goals_for",
+    "away_goals_against",
+    "away_ppg",
+    "away_goals_per_game",
+    "away_conceded_per_game",
+    "away_goal_diff",
+    "odds_home",
+    "odds_draw",
+    "odds_away",
+    "implied_home",
+    "implied_draw",
+    "implied_away"
+  ],
+  "metrics": {
+    "result_accuracy": 0.5,
+    "over25_accuracy": 0.5726600985221675
+  }
+}
