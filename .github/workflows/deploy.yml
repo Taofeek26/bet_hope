@@ -138,11 +138,27 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
 
             echo "=========================================="
-            echo "PHASE 6: Verification"
+            echo "PHASE 6: Restart Nginx (refresh backend IP)"
+            echo "=========================================="
+
+            echo "Waiting for backend to be fully ready..."
+            sleep 10
+
+            echo "Restarting nginx to refresh upstream DNS..."
+            docker compose -f docker-compose.prod.yml restart nginx
+
+            echo "Waiting for nginx to start..."
+            sleep 5
+
+            echo "=========================================="
+            echo "PHASE 7: Verification"
             echo "=========================================="
 
             echo "Checking service status..."
             docker compose -f docker-compose.prod.yml ps
+
+            echo "Testing health endpoint..."
+            curl -sf http://localhost:80/health/ && echo " - Health check PASSED" || echo " - Health check FAILED"
 
             echo "Final memory status..."
             free -h
