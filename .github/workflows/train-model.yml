@@ -1,55 +1,55 @@
-name: Train ML Model
+# GitHub Actions — Train ML Model on AWS
+# Replaces: .github/workflows/train-model.yml (Oracle)
+#
+# Flow: SSH to EC2 → export training data → download → train on GH runner
+#       → commit model to repo → SSH to EC2 → activate model
+
+name: Train ML Model (AWS)
 
 on:
   schedule:
-    # Run daily at 5:00 AM UTC (after data sync completes)
     - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
       force_train:
-        description: 'Force training even if no new data'
-        required: false
+        description: 'Force training'
         default: 'false'
+        required: false
 
 env:
   PYTHON_VERSION: '3.11'
 
 jobs:
   export-data:
-    name: Export Training Data from Production
+    name: Export Training Data from EC2
     runs-on: ubuntu-latest
-
     steps:
-      - name: Export training data from production
-        id: export
+      - name: Export data from production
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 145.241.188.142
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
             cd /opt/bet_hope
-
-            echo "Exporting training data..."
-            docker compose -f docker-compose.prod.yml exec -T backend python manage.py export_training_data --output /app/training_data.json
-
-            # Copy to host for transfer
-            docker compose -f docker-compose.prod.yml cp backend:/app/training_data.json ./training_data.json
-
-            echo "Export complete!"
+            docker compose -f docker-compose.prod.yml exec -T backend \
+              python manage.py export_training_data --output /app/training_data.json
+            docker compose -f docker-compose.prod.yml cp \
+              backend:/app/training_data.json ./training_data.json
+            echo "Export complete: $(wc -c < training_data.json) bytes"
 
       - name: Download training data
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 145.241.188.142 >> ~/.ssh/known_hosts
-          scp -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@145.241.188.142:/opt/bet_hope/training_data.json ./training_data.json
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          scp ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/bet_hope/training_data.json ./training_data.json
           rm ~/.ssh/id_rsa
+          echo "Downloaded: $(wc -c < training_data.json) bytes"
 
-      - name: Upload training data artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: training-data
           path: training_data.json
@@ -63,13 +63,10 @@ jobs:
       contents: write
     outputs:
       model_version: ${{ steps.train.outputs.model_version }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -80,8 +77,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Download training data
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: training-data
           path: backend/
@@ -93,99 +89,90 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: |
           cd backend
-
-          # Generate version based on date
           VERSION=$(date +%Y%m%d_%H%M%S)
-          echo "MODEL_VERSION=$VERSION" >> $GITHUB_ENV
           echo "model_version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Run training with exported data
-          python manage.py train_from_export --input training_data.json --model-version $VERSION
+          python manage.py train_from_export \
+            --input training_data.json \
+            --model-version $VERSION
 
-          # Verify model files were created
+          echo "Model artifacts:"
           ls -la models/$VERSION/
 
-      - name: Commit and push model
+      - name: Commit model to repo
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
+          git config user.name "ML Trainer Bot"
+          git config user.email "ml@github-actions.local"
 
-          # Add model files
-          git add -f backend/models/${{ env.MODEL_VERSION }}/*.pkl
-          git add -f backend/models/${{ env.MODEL_VERSION }}/*.json
+          git add -f backend/models/${{ steps.train.outputs.model_version }}/*.pkl
+          git add -f backend/models/${{ steps.train.outputs.model_version }}/*.json
 
-          # Commit if there are changes
           if git diff --staged --quiet; then
             echo "No model changes to commit"
           else
-            git commit -m "Update ML model to v${{ env.MODEL_VERSION }}
+            git commit -m "chore(ml): update model v${{ steps.train.outputs.model_version }}
 
-            Trained on $(date +%Y-%m-%d) via GitHub Actions
+          Trained $(date +%Y-%m-%d) via GitHub Actions (AWS)"
 
-            Co-Authored-By: GitHub Actions <actions@github.com>"
-
-            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+            git remote set-url origin \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
             git push
-            echo "Model committed and pushed successfully"
+            echo "Model pushed to repo"
           fi
 
-      - name: Cleanup training data on server
+      - name: Cleanup EC2 data
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 145.241.188.142
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            rm -f /opt/bet_hope/training_data.json
+          script: rm -f /opt/bet_hope/training_data.json
 
-  activate-model:
-    name: Activate New Model in Production
+  activate:
+    name: Activate Model on EC2
     needs: train
     runs-on: ubuntu-latest
-
     steps:
-      - name: Activate model on production
+      - name: Activate on production
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 145.241.188.142
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd /opt/bet_hope
 
-            echo "Resetting local changes and pulling latest code..."
-            git checkout .
+            echo "=== Pull latest model ==="
+            git stash
             git pull origin main
 
-            echo "Registering and activating model v${{ needs.train.outputs.model_version }}..."
+            echo "=== Activate model v${{ needs.train.outputs.model_version }} ==="
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py shell -c "
             from apps.predictions.models import ModelVersion
             from django.utils import timezone
 
             version = '${{ needs.train.outputs.model_version }}'
 
-            # Create model version if not exists
             model, created = ModelVersion.objects.get_or_create(
                 version=version,
                 defaults={
                     'status': 'inactive',
                     'accuracy': 0.45,
                     'trained_at': timezone.now(),
-                    'notes': 'Trained via GitHub Actions'
+                    'notes': 'Trained via GitHub Actions (AWS)'
                 }
             )
 
-            # Deactivate all models and activate the new one
             ModelVersion.objects.all().update(status='inactive')
             model.status = 'active'
             model.save()
 
-            print(f'Model {version} activated successfully')
+            print(f'Model {version} activated')
             "
 
-            echo "Restarting backend to load new model..."
+            echo "=== Restart services ==="
             docker compose -f docker-compose.prod.yml restart backend celery
-
-            echo "Model activation complete!"
+            echo "Done!"
