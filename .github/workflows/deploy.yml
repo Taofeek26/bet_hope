@@ -94,8 +94,12 @@ jobs:
             grep -q DJANGO_ENV backend/.env.prod || echo DJANGO_ENV=production >> backend/.env.prod
 
             echo '=== Start services ==='
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
             sleep 15
+
+            echo '=== Setup DB ==='
+            docker compose -f docker-compose.prod.yml exec -T db psql -U bet_hope -d bet_hope -c 'CREATE EXTENSION IF NOT EXISTS vector;' || true
 
             echo '=== Migrate & collectstatic ==='
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
