@@ -89,6 +89,9 @@ jobs:
             docker pull ghcr.io/taofeek26/bet-hope-backend:latest
             docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
 
+            echo '=== Fix env ==='
+            grep -q ALLOWED_HOSTS backend/.env.prod || echo DJANGO_ALLOWED_HOSTS=* >> backend/.env.prod
+
             echo '=== Start services ==='
             docker compose -f docker-compose.prod.yml up -d
             sleep 15
