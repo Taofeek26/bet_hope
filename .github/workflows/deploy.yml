@@ -91,6 +91,7 @@ jobs:
 
             echo '=== Fix env ==='
             grep -q ALLOWED_HOSTS backend/.env.prod || echo DJANGO_ALLOWED_HOSTS=* >> backend/.env.prod
+            grep -q DJANGO_ENV backend/.env.prod || echo DJANGO_ENV=production >> backend/.env.prod
 
             echo '=== Start services ==='
             docker compose -f docker-compose.prod.yml up -d
