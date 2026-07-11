@@ -66,49 +66,49 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          script_stop: true
-          script: |
-            set -e
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Deploy
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
+
+          $SSH "set -e
             cd /opt/bet_hope
-
-            echo "=== Pull latest code ==="
+            echo '=== Pull latest code ==='
             git stash
             git pull origin main
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            echo "=== Stop services (free memory) ==="
+            echo '=== Stop services ==='
             free -h
             docker compose -f docker-compose.prod.yml stop backend celery celery-beat frontend nginx || true
             docker system prune -f || true
 
-            echo "=== Pull new images ==="
-            docker pull ${{ env.BACKEND_IMAGE }}:latest
-            docker pull ${{ env.FRONTEND_IMAGE }}:latest
+            echo '=== Pull new images ==='
+            docker pull ghcr.io/taofeek26/bet-hope-backend:latest
+            docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
 
-            echo "=== Start services ==="
+            echo '=== Start services ==='
             docker compose -f docker-compose.prod.yml up -d
             sleep 15
 
-            echo "=== Migrate & collect static ==="
+            echo '=== Migrate & collectstatic ==='
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
             docker compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
 
-            echo "=== Restart nginx ==="
+            echo '=== Restart nginx ==='
             docker compose -f docker-compose.prod.yml restart nginx
             sleep 5
 
-            echo "=== Verify ==="
+            echo '=== Verify ==='
             docker compose -f docker-compose.prod.yml ps
-            curl -sf http://localhost/health/ && echo "HEALTH OK" || echo "HEALTH FAIL"
+            curl -sf http://localhost/health/ && echo 'HEALTH OK' || echo 'HEALTH FAIL'
 
-            echo "=== Cleanup ==="
+            echo '=== Cleanup ==='
             docker image prune -f
             free -h
+          "
