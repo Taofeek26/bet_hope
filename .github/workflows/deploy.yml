@@ -79,9 +79,6 @@ jobs:
 
           $SSH "set -e
             cd /opt/bet_hope
-            echo '=== Pull latest code ==='
-            git stash
-            git pull origin main
 
             echo '=== Stop services ==='
             free -h
