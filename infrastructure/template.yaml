@@ -1,0 +1,351 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Bet_Hope Minimal Deployment - EC2 (t4g.small) + Docker Compose.
+  No RDS. No ElastiCache. No ALB. No NAT Gateway.
+  ~$22/mo on-demand. Free-tier eligible (first 12 months).
+  Deploy: sam build && sam deploy --guided
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 KeyPair for SSH access
+
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.small, t3.medium, t4g.small, t4g.medium]
+
+  VolumeSize:
+    Type: Number
+    Default: 30
+    MinValue: 20
+    MaxValue: 200
+
+  GitHubRepo:
+    Type: String
+    Default: taofeek26/bet-hope
+
+  DomainName:
+    Type: String
+    Default: ""
+
+  HostedZoneId:
+    Type: String
+    Default: ""
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref DomainName, ""]]
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Bet_Hope public app - SSH HTTP HTTPS
+      GroupName: !Sub ${AWS::StackName}-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-sg
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-ec2-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt StaticBucket.Arn
+                  - !Sub ${StaticBucket.Arn}/*
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${AWS::StackName}-profile
+      Roles:
+        - !Ref InstanceRole
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -ex
+          exec > /var/log/user-data.log 2>&1
+          apt-get update -y
+          apt-get install -y curl git unzip ca-certificates
+          curl -fsSL https://get.docker.com | sh
+          usermod -aG docker ubuntu
+          apt-get install -y docker-compose-v2
+          fallocate -l 2G /swapfile
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
+          echo '/swapfile none swap sw 0 0' >> /etc/fstab
+          mkdir -p /opt/bet_hope
+          chown ubuntu:ubuntu /opt/bet_hope
+          su - ubuntu -c "git clone https://github.com/${GitHubRepo}.git /opt/bet_hope || (cd /opt/bet_hope && git stash && git pull origin main)"
+          cat > /opt/bet_hope/backend/.env.prod << 'EOF'
+          DJANGO_SECRET_KEY=CHANGE_ME
+          DJANGO_DEBUG=False
+          DJANGO_ALLOWED_HOSTS=*
+          DB_PASSWORD=CHANGE_ME
+          OPENAI_API_KEY=
+          API_FOOTBALL_KEY=
+          FOOTBALL_DATA_ORG_KEY=
+          SENTRY_DSN=
+          EOF
+          chown ubuntu:ubuntu /opt/bet_hope/backend/.env.prod
+          echo "Setup complete. Public IP: $(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ec2
+
+  EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Instance
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-eip
+
+  StaticBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-static-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-static
+
+  StaticBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub ${StaticBucket.Arn}/*
+
+  DNSRecord:
+    Condition: HasDomain
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      TTL: 300
+      ResourceRecords:
+        - !Ref EIP
+
+# ==========================================================================
+  # LAMBDA FUNCTIONS — ML tasks (cost: ~$0.50/mo total)
+  # ==========================================================================
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: S3ModelAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - s3:DeleteObject
+                Resource:
+                  - !GetAtt ModelBucket.Arn
+                  - !Sub ${ModelBucket.Arn}/*
+
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-ml-tasks
+      PackageType: Image
+      ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/bet-hope-lambda:latest
+      MemorySize: 2048
+      Timeout: 600
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          DATABASE_URL: postgres://bet_hope:***@${Instance.PrivateIp}:5432/bet_hope
+          REDIS_URL: !Sub redis://${Instance.PrivateIp}:6379/0
+          CELERY_BROKER_URL: !Sub redis://${Instance.PrivateIp}:6379/0
+          S3_MODEL_BUCKET: !Ref ModelBucket
+          DJANGO_ALLOWED_HOSTS: "*"
+          DJANGO_DEBUG: "False"
+      Events:
+        SyncData:
+          Type: HttpApi
+          Properties:
+            Path: /tasks/sync
+            Method: POST
+            ApiId: !Ref HttpApi
+        TrainModel:
+          Type: HttpApi
+          Properties:
+            Path: /tasks/train
+            Method: POST
+            ApiId: !Ref HttpApi
+        GeneratePredict:
+          Type: HttpApi
+          Properties:
+            Path: /tasks/predict
+            Method: POST
+            ApiId: !Ref HttpApi
+        ExportData:
+          Type: HttpApi
+          Properties:
+            Path: /tasks/export
+            Method: POST
+            ApiId: !Ref HttpApi
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            Path: /health
+            Method: GET
+            ApiId: !Ref HttpApi
+
+  # ==========================================================================
+  # HTTP API (API Gateway v2 — $1/million requests, cheaper than REST)
+  # ==========================================================================
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowMethods: ["GET", "POST", "OPTIONS"]
+        AllowHeaders: ["*"]
+
+  # ==========================================================================
+  # S3 — ML model storage
+  # ==========================================================================
+  ModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-models-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 90
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-models
+
+  # ==========================================================================
+  # SECURITY GROUP UPDATE — allow Lambda to reach EC2 PostgreSQL
+  # ==========================================================================
+  LambdaSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      CidrIp: 10.0.0.0/8
+
+Outputs:
+  PublicIP:
+    Description: EC2 public IP
+    Value: !Ref EIP
+  SSH:
+    Description: SSH command
+    Value: !Sub "ssh -i ${KeyPairName}.pem ubuntu@${EIP}"
+  AppURL:
+    Description: App URL
+    Value: !Sub "http://${EIP}/"
+  S3Bucket:
+    Description: S3 bucket
+    Value: !Ref StaticBucket
+  LambdaURL:
+    Description: Lambda API endpoint
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  ModelBucket:
+    Description: S3 bucket for ML models
+    Value: !Ref ModelBucket

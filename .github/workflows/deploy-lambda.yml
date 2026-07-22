@@ -1,0 +1,54 @@
+# Deploy Lambda function to AWS
+name: Deploy Lambda ML Tasks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/Dockerfile.lambda'
+      - 'backend/lambda_handler.py'
+      - 'backend/requirements-lambda.txt'
+      - 'backend/config/settings/lambda_settings.py'
+      - 'backend/apps/**'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: bet-hope-lambda
+  FUNCTION_NAME: bet-hope-ml-tasks
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Lambda
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Lambda image
+        run: |
+          cd backend
+          docker build -f Dockerfile.lambda -t $ECR_REPO:latest .
+          docker tag $ECR_REPO:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          docker tag $ECR_REPO:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:${{ github.sha }}
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:${{ github.sha }}
+
+      - name: Update Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name $FUNCTION_NAME \
+            --image-uri ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest \
+            --region $AWS_REGION || echo "Lambda not yet deployed (first run — use SAM deploy)"
