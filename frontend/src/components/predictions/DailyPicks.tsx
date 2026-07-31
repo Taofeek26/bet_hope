@@ -47,7 +47,8 @@ function PickCard({ pick }: { pick: any }) {
   const match = pick.match;
 
   return (
-    <div className="p-3 sm:p-4 rounded-lg bg-surface/50 hover:bg-surface/70 transition-colors">
+    <div className="blueprint elev-sm hover:bg-surface/70 transition-colors">
+      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
       {/* Clickable match info section */}
       <Link href={`/matches/${match.id}`} className="block">
         {/* League & Time */}

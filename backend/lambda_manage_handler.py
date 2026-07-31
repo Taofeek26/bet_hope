@@ -19,12 +19,36 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 os.environ.setdefault("DJANGO_ENV", "production")
 
 
+def _get_task_run(task_id):
+    """
+    Load the TaskRun row for a UI-triggered invocation (see
+    apps/api/views/tasks.py). Only imports Django/the ORM when a task_id is
+    actually present, so EventBridge-scheduled invocations (no task_id)
+    don't pay for django.setup() just to touch the database.
+    """
+    import django
+    django.setup()
+    from apps.core.models import TaskRun
+    try:
+        return TaskRun.objects.get(id=task_id)
+    except TaskRun.DoesNotExist:
+        return None
+
+
 def handler(event, context):
     command = event.get("command", "migrate")
     args = event.get("args", [])
+    task_id = event.get("task_id")
     timeout = min(context.get_remaining_time_in_millis() / 1000 - 5, 850) if context else 600
 
+    task = _get_task_run(task_id) if task_id else None
     start = datetime.utcnow()
+    if task:
+        from apps.core.models import TaskRun
+        task.status = TaskRun.Status.RUNNING
+        task.started_at = start
+        task.save(update_fields=["status", "started_at", "updated_at"])
+
     try:
         result = subprocess.run(
             [sys.executable, "manage.py", command] + list(args),
@@ -59,6 +83,14 @@ def handler(event, context):
             "error": f"Command exceeded {timeout:.0f}s — try a smaller scope (fewer --seasons/--leagues)",
             "duration_seconds": round(duration, 1),
         }
+
+    if task:
+        from apps.core.models import TaskRun
+        task.status = output["status"]
+        task.finished_at = datetime.utcnow()
+        task.log_tail = (output.get("stdout", "") + "\n" + output.get("stderr", ""))[-8000:]
+        task.error = output.get("error", "") if output["status"] != "success" else ""
+        task.save(update_fields=["status", "finished_at", "log_tail", "error", "updated_at"])
 
     print(json.dumps({k: v for k, v in output.items() if k != "stdout"}))
     return output

@@ -350,4 +350,55 @@ export const documentsApi = {
   },
 };
 
+// Auth endpoints
+export const authApi = {
+  login: async (username: string, password: string) => {
+    const { data } = await api.post<{ access: string; refresh: string }>('/auth/token/', {
+      username,
+      password,
+    });
+    return data;
+  },
+};
+
+// Admin task-runner endpoints — trigger sync/train/predict management
+// commands and poll their progress. Backed by TaskRun rows in Postgres
+// (not Celery — there's no broker in this deployment), so polling survives
+// a closed/reopened browser tab as long as the task id is remembered
+// (see AdminTasksPanel, which persists it in localStorage).
+export type TaskRunStatus = 'pending' | 'running' | 'success' | 'error' | 'timeout';
+
+export interface TaskRun {
+  id: string;
+  command: string;
+  command_display: string;
+  args: string[];
+  status: TaskRunStatus;
+  status_display: string;
+  triggered_by: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  log_tail: string;
+  error: string;
+}
+
+export const adminTasksApi = {
+  trigger: async (command: string, args: string[] = []) => {
+    const { data } = await api.post<TaskRun>('/admin-tasks/', { command, args });
+    return data;
+  },
+
+  getStatus: async (id: string) => {
+    const { data } = await api.get<TaskRun>(`/admin-tasks/${id}/`);
+    return data;
+  },
+
+  list: async () => {
+    const { data } = await api.get<TaskRun[]>('/admin-tasks/');
+    return data;
+  },
+};
+
 export default api;

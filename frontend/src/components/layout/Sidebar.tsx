@@ -15,6 +15,7 @@ import {
   Target,
   ChevronLeft,
   ChevronRight,
+  Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -31,6 +32,7 @@ const navItems = [
 ];
 
 const bottomItems = [
+  { href: '/admin', icon: Terminal, label: 'Admin' },
   { href: '/settings', icon: Settings, label: 'Settings' },
   { href: '/help', icon: HelpCircle, label: 'Help' },
 ];

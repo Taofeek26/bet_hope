@@ -4,6 +4,7 @@ from .teams import TeamViewSet
 from .matches import MatchViewSet
 from .predictions import PredictionViewSet
 from .sync import DataSyncViewSet
+from .tasks import TaskRunViewSet
 
 __all__ = [
     'LeagueViewSet',
@@ -12,4 +13,5 @@ __all__ = [
     'MatchViewSet',
     'PredictionViewSet',
     'DataSyncViewSet',
+    'TaskRunViewSet',
 ]

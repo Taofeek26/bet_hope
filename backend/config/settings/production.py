@@ -94,3 +94,10 @@ if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
     ML_ARTIFACTS_DIR = _TMP / 'ml' / 'artifacts'
     for _dir in (MEDIA_ROOT, RAW_DATA_DIR, PROCESSED_DATA_DIR, ML_ARTIFACTS_DIR):
         _dir.mkdir(parents=True, exist_ok=True)
+
+# Name of the sibling Lambda function (ManageFunction in template.yaml) that
+# runs long management commands. WebFunction has a 29s API Gateway timeout,
+# far too short for train_model/sync_real_data — the admin task-runner
+# invokes ManageFunction asynchronously instead and tracks progress via the
+# TaskRun model rather than blocking the request.
+MANAGE_FUNCTION_NAME = os.getenv('MANAGE_FUNCTION_NAME', '')

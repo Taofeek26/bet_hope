@@ -124,84 +124,35 @@ class Command(BaseCommand):
             self.stdout.write(f'  Total created: {total_created}')
             self.stdout.write(f'  Total updated: {total_updated}')
 
-        # Sync upcoming fixtures from API (single source of truth for fixtures)
+        # Sync upcoming fixtures. Football-Data.org is used here (not
+        # API-Football) because API-Football's free tier rejects the
+        # current season outright ("Free plans do not have access to this
+        # season, try from 2022 to 2024") — it can only ever backfill
+        # already-finished seasons, never real upcoming fixtures.
         if sync_fixtures or fixtures_only:
             self.stdout.write('')
-            self.stdout.write('Syncing upcoming fixtures from API-Football...')
-            from apps.data_ingestion.providers.football_data_api import FootballDataAPIProvider
+            self.stdout.write('Syncing upcoming fixtures from Football-Data.org...')
+            from apps.data_ingestion.providers.football_data_org import FootballDataOrgProvider
 
-            if FootballDataAPIProvider.is_configured():
-                api_provider = FootballDataAPIProvider()
-                fixtures_created, fixtures_updated = api_provider.sync_fixtures_to_database(days=14)
+            if FootballDataOrgProvider.is_configured():
+                org_provider = FootballDataOrgProvider()
+                fixtures_created, fixtures_updated = org_provider.sync_fixtures_to_database(days=14)
                 self.stdout.write(
                     self.style.SUCCESS(f'Fixtures: {fixtures_created} created, {fixtures_updated} updated')
                 )
                 total_created += fixtures_created
             else:
                 self.stdout.write(
-                    self.style.WARNING('API_FOOTBALL_KEY not configured. Skipping fixture sync.')
+                    self.style.WARNING('FOOTBALL_DATA_ORG_KEY not configured. Skipping fixture sync.')
                 )
 
-        # Generate predictions for upcoming matches
+        # Generate predictions for upcoming matches using the real trained
+        # model (falls back to a labeled statistical estimate on its own if
+        # no model is active — see generate_predictions.py). This used to
+        # be a local random-number generator mislabeled as 'xgboost'
+        # output; that silently filled the database with fake predictions
+        # on every scheduled run.
         self.stdout.write('')
         self.stdout.write('Generating predictions for matches without results...')
-        self._generate_predictions()
-
-    def _generate_predictions(self):
-        """Generate predictions for matches that don't have scores yet."""
-        from apps.matches.models import Match
-        from apps.predictions.models import Prediction
-        from decimal import Decimal
-        import random
-
-        # Get matches without predictions
-        matches_without_predictions = Match.objects.filter(
-            predictions__isnull=True
-        ).select_related('home_team', 'away_team', 'season')
-
-        created = 0
-        for match in matches_without_predictions:
-            # Generate realistic probabilities
-            is_high_conf = random.random() < 0.3
-
-            if is_high_conf:
-                dominant = random.uniform(0.55, 0.75)
-                remaining = 1 - dominant
-                second = remaining * random.uniform(0.4, 0.6)
-                third = remaining - second
-                outcomes = [dominant, second, third]
-                random.shuffle(outcomes)
-                home_prob, draw_prob, away_prob = outcomes
-            else:
-                home_prob = round(random.uniform(0.25, 0.50), 5)
-                away_prob = round(random.uniform(0.20, 0.45), 5)
-                draw_prob = round(1 - home_prob - away_prob, 5)
-
-                if draw_prob < 0.15:
-                    draw_prob = 0.20
-                    total = home_prob + away_prob + draw_prob
-                    home_prob = round(home_prob / total, 5)
-                    away_prob = round(away_prob / total, 5)
-                    draw_prob = round(1 - home_prob - away_prob, 5)
-
-            confidence = max(home_prob, draw_prob, away_prob)
-
-            Prediction.objects.create(
-                match=match,
-                model_version='v1.0.0',
-                home_win_probability=Decimal(str(home_prob)),
-                draw_probability=Decimal(str(draw_prob)),
-                away_win_probability=Decimal(str(away_prob)),
-                predicted_home_score=Decimal(str(round(random.uniform(0.8, 2.5), 2))),
-                predicted_away_score=Decimal(str(round(random.uniform(0.5, 2.0), 2))),
-                confidence_score=Decimal(str(round(confidence, 4))),
-                model_type='xgboost',
-                key_factors=[
-                    {'factor': 'Home advantage', 'impact': 'positive'},
-                    {'factor': 'Recent form', 'impact': 'neutral'},
-                    {'factor': 'Head to head', 'impact': 'positive'},
-                ],
-            )
-            created += 1
-
-        self.stdout.write(self.style.SUCCESS(f'Created {created} predictions'))
+        from django.core.management import call_command
+        call_command('generate_predictions', upcoming=True, days=14)

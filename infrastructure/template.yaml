@@ -344,6 +344,23 @@ Resources:
                   - !Sub ${StaticBucket.Arn}/*
                   - !GetAtt ModelBucket.Arn
                   - !Sub ${ModelBucket.Arn}/*
+        # Lets WebFunction (the Django/API Gateway side) kick off ManageFunction
+        # asynchronously for the UI-triggered task runner — see
+        # apps/api/views/tasks.py. Both functions share this role, so this also
+        # grants ManageFunction self-invoke, which it never actually calls.
+        # ARN is built by naming convention (not !GetAtt ManageFunction.Arn)
+        # because both functions use this same role — a GetAtt here would
+        # create Role -> ManageFunction -> Role, a circular dependency CFN
+        # rejects outright.
+        - PolicyName: InvokeManageFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-manage
 
   WebFunction:
     Type: AWS::Serverless::Function
@@ -376,6 +393,7 @@ Resources:
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           DEFAULT_AI_PROVIDER: openai
+          MANAGE_FUNCTION_NAME: !Ref ManageFunction
       Events:
         Root:
           Type: Api

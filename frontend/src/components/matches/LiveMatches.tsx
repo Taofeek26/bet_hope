@@ -42,7 +42,11 @@ export function LiveMatches() {
 function LiveMatchCard({ match }: { match: any }) {
   return (
     <Link href={`/matches/${match.id}`}>
-      <div className="p-4 rounded-lg bg-surface/50 hover:bg-surface transition-colors cursor-pointer border border-red-500/20">
+      <div className="blueprint elev-sm hover:bg-surface transition-colors cursor-pointer" style={{ borderColor: 'rgba(239,68,68,0.3)' }}>
+        <i className="corner tl" style={{ borderColor: '#ef4444' }} />
+        <i className="corner tr" style={{ borderColor: '#ef4444' }} />
+        <i className="corner bl" style={{ borderColor: '#ef4444' }} />
+        <i className="corner br" style={{ borderColor: '#ef4444' }} />
         {/* League */}
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs text-text-secondary">
