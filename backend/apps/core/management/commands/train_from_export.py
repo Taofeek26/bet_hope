@@ -122,8 +122,9 @@ class Command(BaseCommand):
         over25_accuracy = over25_model.score(X_test_scaled, y_test_over25)
         self.stdout.write(f'  Over 2.5 accuracy: {over25_accuracy:.4f}')
 
-        # Save models
-        model_dir = os.path.join(settings.BASE_DIR, 'models', version)
+        # Save models — BASE_DIR (/var/task) is read-only on Lambda
+        base = '/tmp' if os.getenv('AWS_LAMBDA_FUNCTION_NAME') else settings.BASE_DIR
+        model_dir = os.path.join(base, 'models', version)
         os.makedirs(model_dir, exist_ok=True)
 
         joblib.dump(scaler, os.path.join(model_dir, 'scaler.pkl'))

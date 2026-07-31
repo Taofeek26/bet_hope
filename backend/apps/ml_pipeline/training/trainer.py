@@ -105,7 +105,8 @@ class ModelTrainer:
             model_dir: Directory to save trained models
             use_gpu: Whether to use GPU for training
         """
-        self.model_dir = model_dir or Path(settings.BASE_DIR) / 'models'
+        default_base = Path('/tmp') if os.getenv('AWS_LAMBDA_FUNCTION_NAME') else Path(settings.BASE_DIR)
+        self.model_dir = model_dir or default_base / 'models'
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
         self.use_gpu = use_gpu
