@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Trophy, MapPin, Calendar, ChevronRight, RefreshCw } from 'lucide-react';
 import { leaguesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { MetricPlate } from '@/components/ui/MetricPlate';
 import Link from 'next/link';
 
 export default function LeaguesPage() {
@@ -37,25 +38,8 @@ export default function LeaguesPage() {
         <p>Browse all supported leagues and competitions</p>
       </div>
 
-      {/* Stats */}
-      <div className="stats-grid mb-6">
-        <div className="stat-card">
-          <div className="stat-value">{leagues.length || 20}</div>
-          <div className="stat-label">Leagues</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">10+</div>
-          <div className="stat-label">Countries</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">500+</div>
-          <div className="stat-label">Teams</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">10</div>
-          <div className="stat-label">Years Data</div>
-        </div>
-      </div>
+      {/* Stats — every value derived from the actual leagues response, no placeholders */}
+      <LeaguesMetricPlate leagues={leagues} />
 
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -125,3 +109,21 @@ function LeagueCard({ league }: { league: any }) {
   );
 }
 
+
+function LeaguesMetricPlate({ leagues }: { leagues: any[] }) {
+  const countries = new Set(leagues.map((l) => l.country).filter(Boolean)).size;
+  const teams = leagues.reduce((sum, l) => sum + (l.teams_count || 0), 0);
+  const predictions = leagues.reduce((sum, l) => sum + (l.predictions_count || 0), 0);
+
+  return (
+    <MetricPlate
+      title="League coverage"
+      rows={[
+        { metric: 'Leagues tracked', value: String(leagues.length), remark: 'Synced from data providers' },
+        { metric: 'Countries', value: String(countries), remark: 'Across tracked leagues' },
+        { metric: 'Teams', value: String(teams), remark: 'With historical stats' },
+        { metric: 'Predictions made', value: predictions.toLocaleString(), remark: 'Across all leagues' },
+      ]}
+    />
+  );
+}

@@ -17,6 +17,7 @@ import { LiveMatches } from '@/components/matches/LiveMatches';
 import { PredictionStats } from '@/components/predictions/PredictionStats';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useDailyPicks, useLiveMatches, useValueBets, usePredictionStats, useWeeklyAvailability } from '@/hooks/useApi';
+import { MetricPlate } from '@/components/ui/MetricPlate';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -48,40 +49,16 @@ function DashboardStats() {
   const liveCount = liveMatches?.count ?? 0;
   const valueBetsCount = valueBets?.total ?? '--';
 
-  const rows = [
-    { num: '01', metric: 'Accuracy rate', value: accuracy, remark: 'Trailing 30 days' },
-    { num: '02', metric: 'Predictions today', value: String(predictionsToday), remark: 'Across all leagues' },
-    { num: '03', metric: 'Live matches', value: String(liveCount), remark: 'Updating in real time' },
-    { num: '04', metric: 'Value bets found', value: String(valueBetsCount), remark: 'Edge over market odds' },
-  ];
-
   return (
-    <div className="blueprint plate">
-      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-      <div className="metric-plate-header">
-        <span>Model performance — live</span>
-      </div>
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-border text-left text-xs text-text-muted">
-            <th className="px-5 py-2 font-normal">No.</th>
-            <th className="px-5 py-2 font-normal">Metric</th>
-            <th className="px-5 py-2 font-normal">Value</th>
-            <th className="px-5 py-2 font-normal">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.num} className="border-b border-border-dim last:border-b-0">
-              <td className="px-5 py-3 metric-row-num">{row.num}</td>
-              <td className="px-5 py-3">{row.metric}</td>
-              <td className="px-5 py-3 metric-row-value">{row.value}</td>
-              <td className="px-5 py-3 metric-row-remark">{row.remark}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <MetricPlate
+      title="Model performance — live"
+      rows={[
+        { metric: 'Accuracy rate', value: accuracy, remark: 'Trailing 30 days' },
+        { metric: 'Predictions today', value: String(predictionsToday), remark: 'Across all leagues' },
+        { metric: 'Live matches', value: String(liveCount), remark: 'Updating in real time' },
+        { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Edge over market odds' },
+      ]}
+    />
   );
 }
 

@@ -205,7 +205,8 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min(index, 8) * 0.03 }}
-      className={`card card-compact ${isFinished ? hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : 'border-l-4 border-l-text-muted/30' : ''}`}>
+      className={`blueprint elev-sm ${isFinished ? hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : 'border-l-4 border-l-text-muted/30' : ''}`}>
+      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={`card-icon w-10 h-10 ${isFinished ? (hasVerification ? (isCorrect ? 'bg-green-500/20' : 'bg-red-500/20') : 'bg-surface-alt') : ''}`}>

@@ -5,6 +5,7 @@ import { BarChart3, TrendingUp, Target, Percent, RefreshCw } from 'lucide-react'
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AccuracyBarChart } from '@/components/analytics/AccuracyBarChart';
+import { MetricPlate } from '@/components/ui/MetricPlate';
 
 interface StatsData {
   period: string;
@@ -52,25 +53,17 @@ export default function AnalyticsPage() {
         </div>
       ) : !hasData ? (
         <>
-          {/* Show stats grid with placeholders */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-value">--</div>
-              <div className="stat-label">Overall Accuracy</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">0</div>
-              <div className="stat-label">Total Predictions</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">--</div>
-              <div className="stat-label">High Confidence</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">--</div>
-              <div className="stat-label">ROI</div>
-            </div>
-          </div>
+          {/* No predictions have been verified in the selected window yet — an
+              accurate empty state, not a placeholder to disguise. */}
+          <MetricPlate
+            title="Overall record — last 30 days"
+            rows={[
+              { metric: 'Overall accuracy', value: '--', remark: 'No verified predictions yet' },
+              { metric: 'Total predictions', value: '0', remark: 'In this window' },
+              { metric: 'High confidence accuracy', value: '--', remark: 'No verified predictions yet' },
+              { metric: 'Correct predictions', value: '--', remark: 'No verified predictions yet' },
+            ]}
+          />
 
           <div className="card text-center py-12 mt-6">
             <div className="card-icon w-16 h-16 mx-auto mb-4">
@@ -85,26 +78,19 @@ export default function AnalyticsPage() {
       ) : (
         <>
           {/* Overview Stats */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-value">{(data.accuracy * 100).toFixed(1)}%</div>
-              <div className="stat-label">Overall Accuracy</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{data.total_predictions}</div>
-              <div className="stat-label">Total Predictions</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">
-                {highConfidence ? `${(highConfidence.accuracy * 100).toFixed(1)}%` : '--'}
-              </div>
-              <div className="stat-label">High Confidence Accuracy</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{data.correct_predictions}</div>
-              <div className="stat-label">Correct Predictions</div>
-            </div>
-          </div>
+          <MetricPlate
+            title={`Overall record — ${data.period}`}
+            rows={[
+              { metric: 'Overall accuracy', value: `${(data.accuracy * 100).toFixed(1)}%`, remark: data.period },
+              { metric: 'Total predictions', value: String(data.total_predictions), remark: 'Verified against results' },
+              {
+                metric: 'High confidence accuracy',
+                value: highConfidence ? `${(highConfidence.accuracy * 100).toFixed(1)}%` : '--',
+                remark: highConfidence ? `${highConfidence.total} predictions` : 'No high-confidence picks yet',
+              },
+              { metric: 'Correct predictions', value: String(data.correct_predictions), remark: 'Out of total verified' },
+            ]}
+          />
 
           <div className="content-grid">
             {/* Accuracy by Outcome */}
