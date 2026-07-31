@@ -110,54 +110,6 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-sg
 
-  # Dedicated SG for the VPC-attached ML Lambda (train/predict/export).
-  # No ingress needed — Lambda only initiates outbound connections to
-  # Postgres/Redis on the EC2 box; default egress-allow-all covers that.
-  LambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: ML Lambda (train/predict/export) - egress only
-      GroupName: !Sub ${AWS::StackName}-lambda-sg
-      VpcId: !Ref LambdaVpcId
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-lambda-sg
-
-  # Allow the ML Lambda (and only the ML Lambda, via SG reference — not a
-  # CIDR) to reach Postgres/Redis on the EC2 box. Postgres itself is never
-  # exposed to the internet.
-  SecurityGroupIngressPostgresFromLambda:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: 5432
-      ToPort: 5432
-      SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
-      Description: Postgres from ML Lambda
-
-  SecurityGroupIngressRedisFromLambda:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: 6379
-      ToPort: 6379
-      SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
-      Description: Redis from ML Lambda
-
-  # Free Gateway endpoint so the VPC-attached Lambda can reach the model
-  # S3 bucket without a NAT Gateway (Gateway endpoints, unlike Interface
-  # endpoints, have no hourly or per-GB charge).
-  S3VpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref LambdaVpcId
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
-      VpcEndpointType: Gateway
-      RouteTableIds:
-        - !Ref LambdaRouteTableId
-
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -217,7 +169,11 @@ Resources:
           apt-get install -y curl git unzip ca-certificates
           curl -fsSL https://get.docker.com | sh
           usermod -aG docker ubuntu
-          apt-get install -y docker-compose-v2
+          # get.docker.com's script already installs docker-compose-plugin
+          # (provides `docker compose`) — a separate `apt-get install
+          # docker-compose-v2` here conflicts with it (same file, different
+          # package) and halts this script under set -ex before anything
+          # past this line runs.
           fallocate -l 2G /swapfile
           chmod 600 /swapfile
           mkswap /swapfile
@@ -300,99 +256,15 @@ Resources:
 # ==========================================================================
   # LAMBDA FUNCTIONS — ML tasks (cost: ~$0.50/mo total)
   # ==========================================================================
-  LambdaRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub ${AWS::StackName}-lambda-role
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-      Policies:
-        - PolicyName: S3ModelAccess
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:ListBucket
-                  - s3:DeleteObject
-                Resource:
-                  - !GetAtt ModelBucket.Arn
-                  - !Sub ${ModelBucket.Arn}/*
-
-  MLLayer:
-    Type: AWS::Serverless::LayerVersion
-    Metadata:
-      BuildMethod: makefile
-    Properties:
-      LayerName: !Sub ${AWS::StackName}-ml-layer
-      ContentUri: ../backend/ml-layer/
-      CompatibleRuntimes:
-        - python3.13
-
-  # Runs train/predict/export — needs Postgres, so it's VPC-attached (see
-  # LambdaSecurityGroup) and therefore has NO internet access. That's fine:
-  # none of these three tasks call external APIs, only Postgres + S3 (via
-  # the free Gateway endpoint above).
-  LambdaFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-ml-tasks
-      Handler: lambda_handler.handler
-      Runtime: python3.13
-      CodeUri: ../backend/lambda-code/
-      MemorySize: 2048
-      Timeout: 600
-      Role: !GetAtt LambdaRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds:
-          - !Ref LambdaSubnetId
-      Environment:
-        Variables:
-          DATABASE_URL: !Sub postgres://bet_hope:${DBPassword}@${Instance.PrivateIp}:5432/bet_hope
-          REDIS_URL: !Sub redis://${Instance.PrivateIp}:6379/0
-          CELERY_BROKER_URL: !Sub redis://${Instance.PrivateIp}:6379/0
-          S3_MODEL_BUCKET: !Ref ModelBucket
-          DJANGO_ALLOWED_HOSTS: "*"
-          DJANGO_DEBUG: "False"
-          PYTHONPATH: /var/task:/opt/python
-          TASKS_API_KEY: !Ref TasksApiKey
-      Events:
-        TrainModel:
-          Type: HttpApi
-          Properties:
-            Path: /tasks/train
-            Method: POST
-            ApiId: !Ref HttpApi
-        GeneratePredict:
-          Type: HttpApi
-          Properties:
-            Path: /tasks/predict
-            Method: POST
-            ApiId: !Ref HttpApi
-        ExportData:
-          Type: HttpApi
-          Properties:
-            Path: /tasks/export
-            Method: POST
-            ApiId: !Ref HttpApi
-        HealthCheck:
-          Type: HttpApi
-          Properties:
-            Path: /health
-            Method: GET
-            ApiId: !Ref HttpApi
+  # NOTE: train/predict/export are NOT deployed here. The full ML stack
+  # (numpy+pandas+scikit-learn+scipy+xgboost) is ~350MB unzipped on its
+  # own — over Lambda's 250MB unzipped zip/layer limit even before adding
+  # Django. That combination needs a container-image Lambda (up to 10GB)
+  # instead, which needs Docker to build — see docs/AWS_MINIMAL_DEPLOYMENT.md
+  # for the follow-up. In the meantime, training/prediction still run on
+  # EC2 via Celery beat (config/celery.py), so the app works without this.
+  # LambdaVpcId/LambdaSubnetId/LambdaRouteTableId params are kept, unused,
+  # for that follow-up (LambdaVpcId is also used by SecurityGroup below).
 
   # Handles /tasks/sync only. Deliberately NOT VPC-attached — sync_real_data
   # needs real internet access (API-Football, Football-Data.org), which a
@@ -447,6 +319,12 @@ Resources:
           Properties:
             Path: /tasks/sync
             Method: POST
+            ApiId: !Ref HttpApi
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            Path: /health
+            Method: GET
             ApiId: !Ref HttpApi
 
   # ==========================================================================
