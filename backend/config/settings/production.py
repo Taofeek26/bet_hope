@@ -52,12 +52,31 @@ if SENTRY_DSN:
         environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
     )
 
-# Logging
-LOGGING['handlers']['file'] = {
-    'class': 'logging.handlers.RotatingFileHandler',
-    'filename': '/app/logs/django.log',
-    'maxBytes': 1024 * 1024 * 10,  # 10 MB
-    'backupCount': 5,
-    'formatter': 'verbose',
-}
-LOGGING['root']['handlers'] = ['console', 'file']
+# Logging — skip the file handler entirely on Lambda: /app is read-only
+# there (only /tmp is writable), and CloudWatch Logs already captures
+# stdout/stderr from every invocation, so a log file adds nothing.
+if not os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+    LOGGING['handlers']['file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': '/app/logs/django.log',
+        'maxBytes': 1024 * 1024 * 10,  # 10 MB
+        'backupCount': 5,
+        'formatter': 'verbose',
+    }
+    LOGGING['root']['handlers'] = ['console', 'file']
+
+# No standalone Redis/ElastiCache in the Lambda architecture (no NAT-free
+# way to justify its cost here) — cache falls back to per-instance memory
+# (a correctness no-op, not a functionality requirement) and any .delay()
+# calls run synchronously in-process instead of publishing to a broker
+# that doesn't exist. Scheduled jobs (train/predict/sync) run as direct
+# EventBridge-triggered Lambda invocations instead of Celery beat — see
+# infrastructure/template.yaml.
+if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True

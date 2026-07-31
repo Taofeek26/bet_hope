@@ -1,0 +1,21 @@
+# Lambda container image for the Django web app (API Gateway REST proxy)
+# and the management-command runner (migrate/sync/train/predict/export) —
+# same image, different Lambda functions override the CMD (see
+# infrastructure/template.yaml). Built by .github/workflows/deploy-lambda-web.yml
+# since this sandbox has no local Docker.
+FROM public.ecr.aws/lambda/python:3.13
+
+RUN dnf install -y postgresql-devel gcc gcc-c++ && dnf clean all
+
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . ${LAMBDA_TASK_ROOT}/
+
+# Bake static files into the image at build time (Lambda's filesystem is
+# read-only at runtime except /tmp) — dummy env vars are enough since this
+# only copies files, no DB access.
+ENV DJANGO_ENV=production DJANGO_SECRET_KEY=build-time-only-not-used-at-runtime
+RUN python manage.py collectstatic --noinput
+
+CMD ["lambda_web_handler.handler"]

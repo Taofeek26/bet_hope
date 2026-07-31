@@ -196,3 +196,5 @@ logs/
 .cache/
 *.cache
 .hermes/
+infrastructure/DEPLOY_SECRETS.local.txt
+infrastructure/EC2_ENV_PROD.local.txt

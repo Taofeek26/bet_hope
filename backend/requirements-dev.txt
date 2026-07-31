@@ -1,0 +1,43 @@
+# Dev-only tools — never installed in production/Lambda images.
+# Install alongside requirements.txt for local development:
+#   pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+
+# =============================================================================
+# TESTING
+# =============================================================================
+pytest>=7.4.0
+pytest-django>=4.7.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.1
+factory-boy>=3.3.0
+faker>=20.0.0
+pytest-xdist>=3.5.0
+
+# =============================================================================
+# CODE QUALITY
+# =============================================================================
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.0
+pre-commit>=3.6.0
+django-stubs>=4.2.0
+djangorestframework-stubs>=3.14.0
+types-requests>=2.31.0
+pandas-stubs>=2.1.0
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+mkdocstrings>=0.24.0
+
+# =============================================================================
+# DEVELOPMENT
+# =============================================================================
+ipython>=8.18.0
+django-debug-toolbar>=4.2.0
+watchfiles>=0.21.0
+flower>=2.0.1

@@ -2,211 +2,271 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
 Description: >
-  Bet_Hope Minimal Deployment - EC2 (t4g.small) + Docker Compose.
-  No RDS. No ElastiCache. No ALB. No NAT Gateway.
-  ~$22/mo on-demand. Free-tier eligible (first 12 months).
+  Bet_Hope Fully Serverless Deployment — Lambda (container image, Django
+  via apig-wsgi) + API Gateway REST + RDS Postgres + NAT Gateway.
+  Replaces the earlier EC2/Docker Compose approach. Real monthly cost
+  (~$50-70/mo: RDS db.t4g.micro + NAT Gateway + Lambda + API Gateway) —
+  a deliberate tradeoff, not the cheapest possible option; see
+  docs/AWS_COST_ESTIMATOR.md for the comparison against the EC2 approach.
   Deploy: sam build && sam deploy --guided
 
 Parameters:
-  KeyPairName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: EC2 KeyPair for SSH access
-
-  InstanceType:
+  ImageUri:
     Type: String
-    Default: t3.medium
-    AllowedValues: [t3.medium, t3.small]
+    Description: >
+      ECR image URI for the Django Lambda (built by
+      .github/workflows/deploy-lambda-web.yml). Must exist before this
+      stack can create/update the Lambda functions.
 
-  VolumeSize:
-    Type: Number
-    Default: 30
-    MinValue: 20
-    MaxValue: 200
-
-  GitHubRepo:
+  DBUsername:
     Type: String
-    Default: Taofeek26/bet_hope
-
-  DomainName:
-    Type: String
-    Default: ""
-
-  HostedZoneId:
-    Type: String
-    Default: ""
-
-  LatestAmiId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+    Default: bet_hope
 
   DBPassword:
     Type: String
     NoEcho: true
     MinLength: 12
-    Description: >
-      Postgres password, shared by the EC2 Docker Compose stack and the
-      VPC-attached ML Lambda. Pass with --parameter-overrides at deploy
-      time — do not let `sam deploy --guided` save this into a committed
-      samconfig.toml.
+    Description: RDS Postgres password. Pass with --parameter-overrides, never --guided-saved.
 
-  TasksApiKey:
+  DjangoSecretKey:
     Type: String
     NoEcho: true
-    MinLength: 20
-    Description: >
-      Shared secret required (as an X-Api-Key header) to call the
-      /tasks/* Lambda endpoints, which are otherwise unauthenticated on
-      the public internet. Generate with e.g. `openssl rand -hex 32`.
+    MinLength: 32
+    Description: Django SECRET_KEY for production. Generate with `openssl rand -hex 32`.
 
-  LambdaVpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: >
-      VPC the ML Lambda (train/predict/export) will run in, so it can
-      reach Postgres on the EC2 instance privately without a NAT Gateway.
-      Use the same VPC your EC2 instance launches into (your account's
-      default VPC unless you changed it).
-
-  LambdaSubnetId:
-    Type: AWS::EC2::Subnet::Id
-    Description: Any subnet within LambdaVpcId for the ML Lambda's ENI.
-
-  LambdaRouteTableId:
+  CorsAllowedOrigins:
     Type: String
-    AllowedPattern: ^rtb-[a-f0-9]+$
-    Description: >
-      Route table ID (e.g. rtb-xxxxxxxx) associated with LambdaSubnetId —
-      used to attach a free S3 Gateway VPC Endpoint so the VPC-attached
-      Lambda can still reach the model S3 bucket without a NAT Gateway.
-      (Not AWS::EC2::RouteTable::Id — CloudFormation has no such
-      SSM-backed parameter type.)
+    Default: ""
+    Description: Comma-separated exact origins allowed to call the API (e.g. your Vercel URL).
 
-Conditions:
-  HasDomain: !Not [!Equals [!Ref DomainName, ""]]
+  CorsAllowedOriginRegexes:
+    Type: String
+    Default: ""
+    Description: Comma-separated regexes for dynamic origins (e.g. Vercel preview URLs).
+
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  ApiFootballKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  FootballDataOrgKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
 
 Resources:
-  SecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  # ==========================================================================
+  # NETWORKING — dedicated VPC (not the account default) so we control
+  # exactly which subnets are public (IGW) vs private (NAT), since Lambda
+  # needs both RDS access (private) and internet access (via NAT) at once.
+  # ==========================================================================
+  VPC:
+    Type: AWS::EC2::VPC
     Properties:
-      GroupDescription: Bet_Hope public app - SSH HTTP HTTPS
-      GroupName: !Sub ${AWS::StackName}-sg
-      VpcId: !Ref LambdaVpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-          Description: SSH
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-          Description: HTTP
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Sub ${AWS::StackName}-sg
+          Value: !Sub ${AWS::StackName}-vpc
 
-  InstanceRole:
-    Type: AWS::IAM::Role
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
     Properties:
-      RoleName: !Sub ${AWS::StackName}-ec2-role
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      Policies:
-        - PolicyName: S3Access
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:ListBucket
-                Resource:
-                  - !GetAtt StaticBucket.Arn
-                  - !Sub ${StaticBucket.Arn}/*
-
-  InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      InstanceProfileName: !Sub ${AWS::StackName}-profile
-      Roles:
-        - !Ref InstanceRole
-
-  Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: !Ref InstanceType
-      ImageId: !Ref LatestAmiId
-      KeyName: !Ref KeyPairName
-      IamInstanceProfile: !Ref InstanceProfile
-      SecurityGroupIds:
-        - !Ref SecurityGroup
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: !Ref VolumeSize
-            VolumeType: gp3
-            DeleteOnTermination: true
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -ex
-          exec > /var/log/user-data.log 2>&1
-          apt-get update -y
-          apt-get install -y curl git unzip ca-certificates
-          curl -fsSL https://get.docker.com | sh
-          usermod -aG docker ubuntu
-          # get.docker.com's script already installs docker-compose-plugin
-          # (provides `docker compose`) — a separate `apt-get install
-          # docker-compose-v2` here conflicts with it (same file, different
-          # package) and halts this script under set -ex before anything
-          # past this line runs.
-          fallocate -l 2G /swapfile
-          chmod 600 /swapfile
-          mkswap /swapfile
-          swapon /swapfile
-          echo '/swapfile none swap sw 0 0' >> /etc/fstab
-          mkdir -p /opt/bet_hope
-          chown ubuntu:ubuntu /opt/bet_hope
-          su - ubuntu -c "git clone https://github.com/${GitHubRepo}.git /opt/bet_hope || (cd /opt/bet_hope && git stash && git pull origin main)"
-          cat > /opt/bet_hope/backend/.env.prod << 'EOF'
-          DJANGO_SECRET_KEY=CHANGE_ME
-          DJANGO_DEBUG=False
-          DJANGO_ALLOWED_HOSTS=*
-          DB_PASSWORD=${DBPassword}
-          OPENAI_API_KEY=
-          API_FOOTBALL_KEY=
-          FOOTBALL_DATA_ORG_KEY=
-          SENTRY_DSN=
-          EOF
-          chown ubuntu:ubuntu /opt/bet_hope/backend/.env.prod
-          echo "Setup complete. Public IP: $(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
       Tags:
         - Key: Name
-          Value: !Sub ${AWS::StackName}-ec2
+          Value: !Sub ${AWS::StackName}-igw
 
-  EIP:
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-2
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  NatEIP:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
-      InstanceId: !Ref Instance
+
+  # Single NAT Gateway (not one per AZ) — the standard cost-saving choice
+  # for a low-traffic app; ~$32/mo either way, doubling it for HA isn't
+  # worth it here.
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
       Tags:
         - Key: Name
-          Value: !Sub ${AWS::StackName}-eip
+          Value: !Sub ${AWS::StackName}-nat
 
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-rt
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Django Lambda functions - egress only
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-lambda-sg
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS Postgres - only from Lambda
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-rds-sg
+
+  # ==========================================================================
+  # DATABASE
+  # ==========================================================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for RDS
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: "16.11"
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: "20"
+      StorageType: gp3
+      DBName: bet_hope
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db
+
+  # ==========================================================================
+  # S3 — static/media + ML model storage
+  # ==========================================================================
   StaticBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -221,11 +281,6 @@ Resources:
           - ObjectOwnership: ObjectWriter
       VersioningConfiguration:
         Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          - Id: ExpireOldVersions
-            Status: Enabled
-            NoncurrentVersionExpirationInDays: 30
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-static
@@ -242,106 +297,6 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub ${StaticBucket.Arn}/*
 
-  DNSRecord:
-    Condition: HasDomain
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: !Ref DomainName
-      Type: A
-      TTL: 300
-      ResourceRecords:
-        - !Ref EIP
-
-# ==========================================================================
-  # LAMBDA FUNCTIONS — ML tasks (cost: ~$0.50/mo total)
-  # ==========================================================================
-  # NOTE: train/predict/export are NOT deployed here. The full ML stack
-  # (numpy+pandas+scikit-learn+scipy+xgboost) is ~350MB unzipped on its
-  # own — over Lambda's 250MB unzipped zip/layer limit even before adding
-  # Django. That combination needs a container-image Lambda (up to 10GB)
-  # instead, which needs Docker to build — see docs/AWS_MINIMAL_DEPLOYMENT.md
-  # for the follow-up. In the meantime, training/prediction still run on
-  # EC2 via Celery beat (config/celery.py), so the app works without this.
-  # LambdaVpcId/LambdaSubnetId/LambdaRouteTableId params are kept, unused,
-  # for that follow-up (LambdaVpcId is also used by SecurityGroup below).
-
-  # Handles /tasks/sync only. Deliberately NOT VPC-attached — sync_real_data
-  # needs real internet access (API-Football, Football-Data.org), which a
-  # NAT-less VPC Lambda can't reach. Instead of connecting to Postgres
-  # itself, it dispatches the sync command to the EC2 box via SSM (free,
-  # instance already has AmazonSSMManagedInstanceCore), where Django has a
-  # local DB connection and the instance's own internet access.
-  SyncDispatcherRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub ${AWS::StackName}-sync-dispatcher-role
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: SSMDispatchToInstance
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: ssm:SendCommand
-                Resource:
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}
-                  - !Sub arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript
-              - Effect: Allow
-                Action: ssm:GetCommandInvocation
-                Resource: "*"
-
-  SyncDispatcherFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-sync-dispatcher
-      Handler: handler.handler
-      Runtime: python3.13
-      CodeUri: ../backend/lambda-sync/
-      MemorySize: 256
-      Timeout: 600
-      Role: !GetAtt SyncDispatcherRole.Arn
-      Environment:
-        Variables:
-          INSTANCE_ID: !Ref Instance
-          TASKS_API_KEY: !Ref TasksApiKey
-      Events:
-        SyncData:
-          Type: HttpApi
-          Properties:
-            Path: /tasks/sync
-            Method: POST
-            ApiId: !Ref HttpApi
-        HealthCheck:
-          Type: HttpApi
-          Properties:
-            Path: /health
-            Method: GET
-            ApiId: !Ref HttpApi
-
-  # ==========================================================================
-  # HTTP API (API Gateway v2 — $1/million requests, cheaper than REST)
-  # ==========================================================================
-  HttpApi:
-    Type: AWS::Serverless::HttpApi
-    Properties:
-      StageName: prod
-      CorsConfiguration:
-        AllowOrigins: ["*"]
-        AllowMethods: ["GET", "POST", "OPTIONS"]
-        AllowHeaders: ["*"]
-
-  # ==========================================================================
-  # S3 — ML model storage
-  # ==========================================================================
   ModelBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -357,22 +312,198 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-models
 
+  # ==========================================================================
+  # LAMBDA — Django web (API Gateway REST proxy) + management commands
+  # ==========================================================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt StaticBucket.Arn
+                  - !Sub ${StaticBucket.Arn}/*
+                  - !GetAtt ModelBucket.Arn
+                  - !Sub ${ModelBucket.Arn}/*
+
+  WebFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-web
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: ["lambda_web_handler.handler"]
+      MemorySize: 1024
+      Timeout: 29
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          DJANGO_ENV: production
+          DJANGO_SECRET_KEY: !Ref DjangoSecretKey
+          DJANGO_ALLOWED_HOSTS: "*"
+          DATABASE_URL: !Sub postgres://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:5432/bet_hope
+          CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
+          CORS_ALLOWED_ORIGIN_REGEXES: !Ref CorsAllowedOriginRegexes
+          S3_MODEL_BUCKET: !Ref ModelBucket
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          API_FOOTBALL_KEY: !Ref ApiFootballKey
+          FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DEFAULT_AI_PROVIDER: openai
+      Events:
+        Root:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /
+            Method: ANY
+        Proxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /{proxy+}
+            Method: ANY
+
+  # Runs migrate/sync_real_data/train_model/generate_predictions/
+  # export_training_data/sync_injuries/generate_news_signals — same image
+  # as WebFunction, invoked directly (aws lambda invoke) or via the
+  # EventBridge rules below, never through API Gateway. Longer timeout
+  # since training can take a while; not on the 29s API Gateway clock.
+  ManageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-manage
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: ["lambda_manage_handler.handler"]
+      MemorySize: 2048
+      Timeout: 900
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          DJANGO_ENV: production
+          DJANGO_SECRET_KEY: !Ref DjangoSecretKey
+          DJANGO_ALLOWED_HOSTS: "*"
+          DATABASE_URL: !Sub postgres://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:5432/bet_hope
+          CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
+          CORS_ALLOWED_ORIGIN_REGEXES: !Ref CorsAllowedOriginRegexes
+          S3_MODEL_BUCKET: !Ref ModelBucket
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          API_FOOTBALL_KEY: !Ref ApiFootballKey
+          FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DEFAULT_AI_PROVIDER: openai
+
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Requested-With'"
+        AllowOrigin: "'*'"
+
+  # ==========================================================================
+  # SCHEDULED JOBS — replaces Celery beat (no broker in this architecture)
+  # ==========================================================================
+  SyncDataSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Daily data sync (fixtures/results)
+      ScheduleExpression: rate(1 day)
+      Targets:
+        - Arn: !GetAtt ManageFunction.Arn
+          Id: SyncData
+          Input: '{"command": "sync_real_data", "args": ["--fixtures"]}'
+
+  SyncDataPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ManageFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SyncDataSchedule.Arn
+
+  TrainModelSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Nightly model retraining, 5am UTC
+      ScheduleExpression: cron(0 5 * * ? *)
+      Targets:
+        - Arn: !GetAtt ManageFunction.Arn
+          Id: TrainModel
+          Input: '{"command": "train_model", "args": []}'
+
+  TrainModelPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ManageFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt TrainModelSchedule.Arn
+
+  GeneratePredictionsSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Refresh predictions every 6 hours
+      ScheduleExpression: rate(6 hours)
+      Targets:
+        - Arn: !GetAtt ManageFunction.Arn
+          Id: GeneratePredictions
+          Input: '{"command": "generate_predictions", "args": []}'
+
+  GeneratePredictionsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ManageFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GeneratePredictionsSchedule.Arn
+
 Outputs:
-  PublicIP:
-    Description: EC2 public IP
-    Value: !Ref EIP
-  SSH:
-    Description: SSH command
-    Value: !Sub "ssh -i ${KeyPairName}.pem ubuntu@${EIP}"
-  AppURL:
-    Description: App URL
-    Value: !Sub "http://${EIP}/"
-  S3Bucket:
-    Description: S3 bucket
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+  DBEndpoint:
+    Description: RDS endpoint
+    Value: !GetAtt DBInstance.Endpoint.Address
+  StaticBucket:
     Value: !Ref StaticBucket
-  LambdaURL:
-    Description: Lambda API endpoint
-    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   ModelBucket:
-    Description: S3 bucket for ML models
     Value: !Ref ModelBucket
+  ManageFunctionName:
+    Description: Invoke with `aws lambda invoke --function-name <this> --payload '{"command":"migrate"}' out.json`
+    Value: !Ref ManageFunction

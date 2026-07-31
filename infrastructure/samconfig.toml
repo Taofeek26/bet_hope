@@ -1,5 +1,9 @@
 version = 0.1
 
+# NoEcho secrets (DBPassword, DjangoSecretKey, OpenAIApiKey, ApiFootballKey,
+# FootballDataOrgKey, AnthropicApiKey) and the ImageUri (changes every
+# deploy) are intentionally NOT stored here — pass them explicitly via
+# --parameter-overrides at deploy time. See docs/AWS_MINIMAL_DEPLOYMENT.md.
 [default.deploy.parameters]
 stack_name = "bet-hope"
 s3_bucket = ""
@@ -8,4 +12,3 @@ region = "us-east-1"
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 confirm_changeset = false
 disable_rollback = false
-parameter_overrides = "KeyPairName=bet-hope-key InstanceType=t3.medium VolumeSize=30 GitHubRepo=Taofeek26/bet_hope"

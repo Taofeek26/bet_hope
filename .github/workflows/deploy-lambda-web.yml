@@ -1,0 +1,54 @@
+# Builds the Django web app as a Lambda container image and pushes to
+# ECR. The image is used by both the API-Gateway-fronted web Lambda and
+# the management-command Lambda (see infrastructure/template.yaml) —
+# same image, different function-level CMD override.
+#
+# Requires GitHub Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# (dedicated bet-hope-ci IAM user, ECR push only).
+
+name: Build and Push Lambda Web Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-lambda-web.yml"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: bet-hope-web
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image-uri: ${{ steps.build.outputs.image-uri }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          IMAGE_URI="$REGISTRY/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+          LATEST_URI="$REGISTRY/${{ env.ECR_REPOSITORY }}:latest"
+          docker build -f backend/Dockerfile.lambda-web -t "$IMAGE_URI" -t "$LATEST_URI" backend
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+          echo "image-uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"

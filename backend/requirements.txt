@@ -1,13 +1,12 @@
 # Bet_Hope Requirements
 # Django + Python AI Football Prediction Platform
 #
-# Used by: Docker Compose / EC2 deployment (the full Django app: web,
-# Celery worker, Celery beat) — see docker-compose.prod.yml.
+# Production runtime deps only — see requirements-dev.txt for
+# testing/linting/docs tooling, never installed here.
 #
-# NOT used by the Lambda ML functions — those get their dependencies from
-# backend/ml-layer/requirements.txt via a Lambda Layer instead, so the
-# zip-based Lambda function code (backend/lambda-code/) stays small and
-# fast to cold-start. See infrastructure/template.yaml + backend/lambda-code/.
+# Used by: the Django web app container, whether running on EC2 (Docker
+# Compose) or as a Lambda container image (backend/Dockerfile.lambda-web)
+# behind API Gateway REST — see infrastructure/template.yaml.
 
 # =============================================================================
 # CORE DJANGO
@@ -39,7 +38,6 @@ celery>=5.3.4
 django-celery-beat>=2.5.0
 django-celery-results>=2.5.1
 redis>=5.0.1
-flower>=2.0.1  # Celery monitoring
 
 # =============================================================================
 # MACHINE LEARNING
@@ -119,49 +117,16 @@ structlog>=23.2.0
 python-json-logger>=2.0.7
 
 # =============================================================================
-# TESTING
-# =============================================================================
-pytest>=7.4.0
-pytest-django>=4.7.0
-pytest-cov>=4.1.0
-pytest-asyncio>=0.21.1
-factory-boy>=3.3.0
-faker>=20.0.0
-httpx>=0.25.0  # For async test client
-pytest-xdist>=3.5.0  # Parallel test execution
-
-# =============================================================================
-# CODE QUALITY
-# =============================================================================
-black>=23.11.0
-isort>=5.12.0
-flake8>=6.1.0
-mypy>=1.7.0
-pre-commit>=3.6.0
-
-# Type stubs
-django-stubs>=4.2.0
-djangorestframework-stubs>=3.14.0
-types-requests>=2.31.0
-pandas-stubs>=2.1.0
-
-# =============================================================================
 # PRODUCTION
 # =============================================================================
 gunicorn>=21.2.0
 uvicorn>=0.24.0
 whitenoise>=6.6.0  # Static file serving
 
-# =============================================================================
-# DOCUMENTATION
-# =============================================================================
-mkdocs>=1.5.0
-mkdocs-material>=9.5.0
-mkdocstrings>=0.24.0
+# WSGI-to-Lambda adapter — translates API Gateway REST proxy events into
+# WSGI calls against the Django app. Only exercised by
+# backend/lambda_web_handler.py, harmless/unused on EC2.
+apig-wsgi>=2.18.0
 
-# =============================================================================
-# DEVELOPMENT
-# =============================================================================
-ipython>=8.18.0
-django-debug-toolbar>=4.2.0
-watchfiles>=0.21.0  # File watching for development
+# Dev/test/docs tooling (pytest, mypy, black, mkdocs, etc) lives in
+# requirements-dev.txt — never installed in the production/Lambda image.
