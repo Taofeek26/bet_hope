@@ -25,7 +25,7 @@ Parameters:
 
   GitHubRepo:
     Type: String
-    Default: taofeek26/bet-hope
+    Default: Taofeek26/bet_hope
 
   DomainName:
     Type: String
