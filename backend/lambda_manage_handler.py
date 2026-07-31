@@ -22,25 +22,43 @@ os.environ.setdefault("DJANGO_ENV", "production")
 def handler(event, context):
     command = event.get("command", "migrate")
     args = event.get("args", [])
+    timeout = min(context.get_remaining_time_in_millis() / 1000 - 5, 850) if context else 600
 
     start = datetime.utcnow()
-    result = subprocess.run(
-        [sys.executable, "manage.py", command] + list(args),
-        capture_output=True,
-        text=True,
-        timeout=min(context.get_remaining_time_in_millis() / 1000 - 5, 850) if context else 600,
-        cwd="/var/task",
-        env={**os.environ, "PYTHONUNBUFFERED": "1"},
-    )
-    duration = (datetime.utcnow() - start).total_seconds()
+    try:
+        result = subprocess.run(
+            [sys.executable, "manage.py", command] + list(args),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd="/var/task",
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        duration = (datetime.utcnow() - start).total_seconds()
+        output = {
+            "status": "success" if result.returncode == 0 else "error",
+            "command": command,
+            "exit_code": result.returncode,
+            "stdout": result.stdout[-4000:],
+            "stderr": result.stderr[-2000:],
+            "duration_seconds": round(duration, 1),
+        }
+    except subprocess.TimeoutExpired as e:
+        # Left uncaught, this crashes the whole invocation as an unhandled
+        # Lambda error with a raw traceback instead of a clean response —
+        # this scope of management command (too many matches/leagues for
+        # the per-match feature-extraction queries to finish in time) is a
+        # real, recurring case, not an edge case worth ignoring.
+        duration = (datetime.utcnow() - start).total_seconds()
+        output = {
+            "status": "timeout",
+            "command": command,
+            "exit_code": None,
+            "stdout": (e.stdout or "")[-4000:] if isinstance(e.stdout, str) else "",
+            "stderr": (e.stderr or "")[-2000:] if isinstance(e.stderr, str) else "",
+            "error": f"Command exceeded {timeout:.0f}s — try a smaller scope (fewer --seasons/--leagues)",
+            "duration_seconds": round(duration, 1),
+        }
 
-    output = {
-        "status": "success" if result.returncode == 0 else "error",
-        "command": command,
-        "exit_code": result.returncode,
-        "stdout": result.stdout[-4000:],
-        "stderr": result.stderr[-2000:],
-        "duration_seconds": round(duration, 1),
-    }
     print(json.dumps({k: v for k, v in output.items() if k != "stdout"}))
     return output
