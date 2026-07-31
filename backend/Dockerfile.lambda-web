@@ -14,8 +14,12 @@ COPY . ${LAMBDA_TASK_ROOT}/
 
 # Bake static files into the image at build time (Lambda's filesystem is
 # read-only at runtime except /tmp) — dummy env vars are enough since this
-# only copies files, no DB access.
-ENV DJANGO_ENV=production DJANGO_SECRET_KEY=build-time-only-not-used-at-runtime
+# only copies files, no DB access. AWS_LAMBDA_FUNCTION_NAME is normally
+# set by the Lambda runtime itself, not at build time — set it here too so
+# production.py's file-vs-console logging check takes the same branch
+# during collectstatic as it will at runtime (skip the file handler;
+# there's no /app/logs directory in this image).
+ENV DJANGO_ENV=production DJANGO_SECRET_KEY=build-time-only-not-used-at-runtime AWS_LAMBDA_FUNCTION_NAME=build
 RUN python manage.py collectstatic --noinput
 
 CMD ["lambda_web_handler.handler"]
