@@ -51,16 +51,21 @@ xgboost>=2.0.2
 joblib>=1.3.2
 scipy>=1.11.4
 
-# Optional: Deep Learning (uncomment if needed)
-# torch>=2.1.0
-# pytorch-lightning>=2.1.0
-
 # Hyperparameter tuning
 optuna>=3.4.0
 
 # =============================================================================
 # AI / NLP
 # =============================================================================
+# sentence-transformers pulls in torch as a hard dependency. Without this,
+# pip installs PyPI's default Linux torch wheel, which bundles the full
+# CUDA stack (nvidia-cublas/cudnn/nvshmem/etc, several GB) even though
+# nothing in this deployment (EC2, Lambda) has a GPU — embeddings run on
+# CPU only. This pulls the CPU-only build instead, which has no CUDA deps
+# at all. Must come before sentence-transformers so pip resolves torch
+# from here first. See: https://pytorch.org/get-started/locally/
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.1.0
 sentence-transformers>=2.2.2
 transformers>=4.35.0
 huggingface-hub>=0.19.0
