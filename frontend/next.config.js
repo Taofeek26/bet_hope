@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // 'standalone' output is for self-hosted Docker deployments (produces
+  // a server.js you run yourself) — it's incompatible with Vercel's own
+  // serverless build output and causes every route to 404. Now that the
+  // frontend only deploys to Vercel, this must stay unset.
   images: {
     remotePatterns: [
       {
