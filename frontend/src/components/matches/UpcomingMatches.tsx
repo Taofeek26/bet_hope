@@ -4,13 +4,12 @@ import { useUpcomingMatches } from '@/hooks/useApi';
 import { Card, CardHeader, CardBody, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { ProbabilityBar } from '@/components/ui/ProbabilityBar';
 import { formatDate, formatTime, formatRelativeDate } from '@/lib/utils';
 import { Calendar, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
 export function UpcomingMatches() {
-  const { data, isLoading, error } = useUpcomingMatches();
+  const { data, isLoading, error, refetch } = useUpcomingMatches();
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -18,9 +17,14 @@ export function UpcomingMatches() {
     return (
       <Card>
         <CardBody>
-          <p className="text-text-muted text-center py-8">
-            Unable to load upcoming matches. Connect the backend to see data.
-          </p>
+          <div className="text-center py-8">
+            <p className="text-text-muted mb-4">
+              Unable to load upcoming matches. Connect the backend to see data.
+            </p>
+            <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
+              Try Again
+            </button>
+          </div>
         </CardBody>
       </Card>
     );
@@ -37,7 +41,7 @@ export function UpcomingMatches() {
           </div>
           <div>
             <CardTitle>Upcoming Matches</CardTitle>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-text-secondary">
               {data.total_matches} matches in next 7 days
             </p>
           </div>
@@ -62,7 +66,7 @@ export function UpcomingMatches() {
             ))}
           </div>
         ) : (
-          <p className="text-slate-400 text-center py-8">
+          <p className="text-text-secondary text-center py-8">
             No upcoming matches scheduled.
           </p>
         )}
@@ -74,17 +78,17 @@ export function UpcomingMatches() {
 function DateSection({ date, matches }: { date: string; matches: any[] }) {
   return (
     <div>
-      <h3 className="text-xs sm:text-sm font-medium text-slate-300 mb-2 sm:mb-3 flex items-center gap-1 sm:gap-2 flex-wrap">
+      <h3 className="text-xs sm:text-sm font-medium text-text-secondary mb-2 sm:mb-3 flex items-center gap-1 sm:gap-2 flex-wrap">
         <span>{formatRelativeDate(date)}</span>
-        <span className="text-slate-500 hidden sm:inline">-</span>
-        <span className="text-slate-500 text-[10px] sm:text-sm">{formatDate(date, 'EEEE, MMM d')}</span>
+        <span className="text-text-muted hidden sm:inline">-</span>
+        <span className="text-text-muted text-[10px] sm:text-sm">{formatDate(date, 'EEEE, MMM d')}</span>
       </h3>
       <div className="space-y-2 sm:space-y-3">
         {matches.slice(0, 5).map((match: any) => (
           <MatchRow key={match.id} match={match} />
         ))}
         {matches.length > 5 && (
-          <p className="text-xs sm:text-sm text-slate-500 pl-2">
+          <p className="text-xs sm:text-sm text-text-muted pl-2">
             +{matches.length - 5} more matches
           </p>
         )}
@@ -98,14 +102,14 @@ function MatchRow({ match }: { match: any }) {
 
   return (
     <Link href={`/matches/${match.id}`}>
-      <div className="p-2 sm:p-3 rounded-lg bg-slate-800/30 hover:bg-slate-800/50 transition-colors cursor-pointer relative">
+      <div className="p-2 sm:p-3 rounded-lg bg-surface/30 hover:bg-surface/50 transition-colors cursor-pointer relative">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
           {/* Time & League - row on mobile */}
           <div className="flex items-center justify-between sm:block sm:w-14 sm:text-center">
-            <span className="text-[10px] sm:text-sm text-slate-400">
+            <span className="text-[10px] sm:text-sm text-text-secondary">
               {formatTime(match.kickoff_time) || 'TBD'}
             </span>
-            <span className="text-[10px] text-slate-500 sm:hidden">{match.league_name}</span>
+            <span className="text-[10px] text-text-muted sm:hidden">{match.league_name}</span>
           </div>
 
           {/* Teams */}
@@ -123,7 +127,7 @@ function MatchRow({ match }: { match: any }) {
                   {match.home_team_name}
                 </span>
               </div>
-              <span className="text-[10px] sm:text-xs text-slate-500 mx-1 sm:mx-2 flex-shrink-0">vs</span>
+              <span className="text-[10px] sm:text-xs text-text-muted mx-1 sm:mx-2 flex-shrink-0">vs</span>
               <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 justify-end">
                 <span className="text-xs sm:text-sm font-medium text-white truncate">
                   {match.away_team_name}
@@ -137,7 +141,7 @@ function MatchRow({ match }: { match: any }) {
                 )}
               </div>
             </div>
-            <span className="text-[10px] sm:text-xs text-slate-500 hidden sm:block">{match.league_name}</span>
+            <span className="text-[10px] sm:text-xs text-text-muted hidden sm:block">{match.league_name}</span>
           </div>
 
           {/* Prediction indicator */}

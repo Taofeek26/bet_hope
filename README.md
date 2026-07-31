@@ -161,15 +161,19 @@ npm run dev
 | Language | TypeScript |
 | Styling | Tailwind CSS |
 | State | Zustand / React Query |
-| Charts | Recharts / Chart.js |
+| Charts | Recharts |
+| Animation | Framer Motion |
 
 ### Infrastructure
 
 | Component | Technology |
 |-----------|------------|
+| Frontend hosting | Vercel |
+| Backend hosting | AWS EC2 (Docker Compose) |
+| ML tasks | AWS Lambda + API Gateway (SAM) |
 | Containers | Docker + Docker Compose |
 | Web Server | Nginx + Gunicorn |
-| Monitoring | Prometheus + Grafana |
+| CI/CD | GitHub Actions + GHCR |
 
 ---
 
@@ -288,20 +292,23 @@ docs(readme): update installation steps
 
 ## Environment Variables
 
+Full, current reference lists live in `backend/.env.example` and
+`frontend/.env.example` (copy to `.env`/`.env.local`) — the essentials:
+
 ### Backend (`backend/.env`)
 
 ```bash
 DJANGO_SECRET_KEY=your-secret-key
 DATABASE_URL=postgres://user:pass@localhost:5432/bet_hope
 REDIS_URL=redis://localhost:6379/0
-FOOTBALL_DATA_API_KEY=your-key
+FOOTBALL_DATA_ORG_KEY=your-key
+API_FOOTBALL_KEY=your-key
 ```
 
 ### Frontend (`frontend/.env.local`)
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
 ```
 
 ---
@@ -406,448 +413,158 @@ docker compose ps
 
 ---
 
-## Production Deployment (Oracle Cloud)
+## Production Deployment (AWS + Vercel)
 
-### Architecture (Production)
+The app is split across three targets, chosen to stay cheap and avoid a
+NAT Gateway (see [`docs/AWS_COST_ESTIMATOR.md`](docs/AWS_COST_ESTIMATOR.md)
+for the full cost reasoning):
+
+| Component | Where | Why |
+|-----------|-------|-----|
+| Frontend (Next.js) | Vercel | Zero-config for Next.js, free tier covers most hobby traffic |
+| Backend (Django + Postgres + Redis + Celery) | AWS EC2 (Docker Compose) | Needs a persistent DB connection; cheapest way to run Postgres/Redis without RDS/ElastiCache |
+| ML tasks (train/predict/export/sync) | AWS Lambda + API Gateway | Genuinely serverless, ~$0.50-1/mo, no idle cost |
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         NGINX (Port 80/443)                      │
-│                    Reverse Proxy & Load Balancer                 │
-└─────────────────────┬───────────────────────┬───────────────────┘
-                      │                       │
-          ┌───────────▼───────────┐ ┌────────▼────────┐
-          │    Next.js Frontend   │ │  Django Backend │
-          │       (Port 3000)     │ │   (Port 8000)   │
-          └───────────────────────┘ └────────┬────────┘
-                                             │
-                    ┌────────────────────────┼────────────────────────┐
-                    │                        │                        │
-          ┌─────────▼─────────┐   ┌─────────▼─────────┐   ┌─────────▼─────────┐
-          │ PostgreSQL+pgvector│   │      Redis        │   │   Celery Workers  │
-          │     (Port 5432)    │   │   (Port 6379)     │   │   (Background)    │
-          └────────────────────┘   └───────────────────┘   └───────────────────┘
+┌─────────────────────┐        ┌──────────────────────────────────────────┐
+│       Vercel         │        │              AWS (us-east-1)              │
+│   Next.js Frontend   │        │                                            │
+│                       │  HTTP  │  ┌──────────────────────────────────────┐ │
+│  api.yourdomain.com ─┼───────▶│  │  EC2 (t3.medium) — Docker Compose     │ │
+│  or *.vercel.app      │        │  │  nginx → Django (Gunicorn) + Celery   │ │
+└───────────────────────┘        │  │  Postgres (pgvector) + Redis          │ │
+                                  │  └──────────────────┬───────────────────┘ │
+                                  │                      │ private VPC        │
+                                  │  ┌───────────────────▼──────────────────┐ │
+                                  │  │  Lambda (VPC-attached, no NAT)        │ │
+                                  │  │  train / predict / export             │ │
+                                  │  └────────────────────────────────────────┘ │
+                                  │  ┌────────────────────────────────────────┐ │
+                                  │  │  Lambda (no VPC, has internet)         │ │
+                                  │  │  sync → dispatches to EC2 via SSM      │ │
+                                  │  └────────────────────────────────────────┘ │
+                                  │  API Gateway (HTTP API) fronts both Lambdas │
+                                  └────────────────────────────────────────────┘
 ```
 
-### Services (Production)
+No RDS, no ElastiCache, no ALB, no NAT Gateway anywhere in this setup.
 
-| Service | Port | Description |
-|---------|------|-------------|
-| nginx | 80/443 | Reverse proxy, SSL termination |
-| frontend | 3000 | Next.js app (SSG/SSR) |
-| backend | 8000 | Django API + Gunicorn |
-| celery | - | Background workers (2 concurrent) |
-| celery-beat | - | Task scheduler |
-| db | 5432 | PostgreSQL 15 + pgvector |
-| redis | 6379 | Cache & message broker |
+### 1. Backend + ML infrastructure (AWS, via SAM)
 
-### Server Requirements
-
-- **OS**: Ubuntu 22.04 LTS
-- **RAM**: 1GB minimum (with 2GB swap)
-- **Storage**: 20GB+
-- **Ports**: 80, 443, 22 (SSH)
-
-### Initial Server Setup
+Everything AWS-side is defined in [`infrastructure/template.yaml`](infrastructure/template.yaml)
+and deployed with the AWS SAM CLI — never hand-edit resources in the console.
 
 ```bash
-# SSH into your server
-ssh ubuntu@<your-server-ip>
+cd infrastructure
+sam build
 
-# Update system
-sudo apt update && sudo apt upgrade -y
+# First deploy — generates DBPassword and TasksApiKey yourself first:
+#   openssl rand -hex 32   (run twice, once for each)
+# Find your default VPC/subnet/route table:
+#   aws ec2 describe-vpcs --filters Name=is-default,Values=true
+#   aws ec2 describe-subnets --filters Name=default-for-az,Values=true
+#   aws ec2 describe-route-tables
 
-# Install Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-
-# Install Docker Compose
-sudo apt install docker-compose-plugin -y
-
-# Create swap (required for 1GB RAM servers)
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# Logout and login again for docker group to take effect
-exit
+sam deploy --guided \
+  --parameter-overrides \
+    KeyPairName=your-ec2-keypair \
+    DBPassword=<generated-above> \
+    TasksApiKey=<generated-above> \
+    LambdaVpcId=vpc-xxxxxxxx \
+    LambdaSubnetId=subnet-xxxxxxxx \
+    LambdaRouteTableId=rtb-xxxxxxxx
 ```
 
-### First-Time Deployment
+**Important:** `DBPassword` and `TasksApiKey` are `NoEcho` parameters — when
+`sam deploy --guided` asks to save arguments to `samconfig.toml`, decline
+(or manually strip them afterward). `samconfig.toml` is committed to this
+repo for the non-secret parameters only.
+
+This provisions the EC2 instance, S3 buckets, and both Lambda functions.
+First boot takes a few minutes; SSH in and check `/var/log/user-data.log`
+if something looks wrong. See [`docs/AWS_MINIMAL_DEPLOYMENT.md`](docs/AWS_MINIMAL_DEPLOYMENT.md)
+for the detailed walkthrough (DNS, first-time `.env.prod` setup, etc).
+
+### 2. Backend app deploys (GitHub Actions)
+
+Once the EC2 instance exists, application code deploys via
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) on every push
+to `main`: builds the Django image, pushes to GHCR, SSHes into EC2, and
+runs `docker compose up -d --force-recreate` + migrations. Requires these
+GitHub Secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`.
+
+Model training runs separately via
+[`.github/workflows/train-model.yml`](.github/workflows/train-model.yml)
+(nightly cron) — exports data from EC2, trains on the GitHub Actions
+runner, commits the resulting model files, then activates the new version.
+
+### 3. Frontend (Vercel)
+
+1. Import the repo in the [Vercel dashboard](https://vercel.com/new) with
+   root directory set to `frontend/`.
+2. Set environment variables: `NEXT_PUBLIC_API_URL` (your EC2 API URL,
+   e.g. `http://<elastic-ip>/api` or `https://api.yourdomain.com/api`),
+   `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_APP_URL`.
+3. Push to `main` — Vercel deploys automatically from there on, including
+   preview deployments per branch/PR.
+4. Back on the EC2 side, set `CORS_ALLOWED_ORIGINS` in `backend/.env.prod`
+   to your actual Vercel URL(s), and `CORS_ALLOWED_ORIGIN_REGEXES` if you
+   want Vercel's preview-deployment URLs to work too (see `.env.prod.example`).
+
+### Calling the Lambda `/tasks/*` endpoints
+
+All four routes (`/tasks/train`, `/tasks/predict`, `/tasks/export`,
+`/tasks/sync`) require an `X-Api-Key` header matching the `TasksApiKey`
+parameter you deployed with — they're on a public API Gateway URL with no
+other auth:
 
 ```bash
-# SSH back into server
-ssh ubuntu@<your-server-ip>
-
-# Clone repository
-git clone <repository-url> /opt/bet_hope
-cd /opt/bet_hope
-
-# Create production environment file
-cat > backend/.env.prod << 'EOF'
-DJANGO_SETTINGS_MODULE=config.settings.production
-SECRET_KEY=<generate-a-secure-random-key>
-DEBUG=false
-DJANGO_ALLOWED_HOSTS=<your-server-ip>,yourdomain.com,localhost,127.0.0.1
-
-DATABASE_URL=postgres://bet_hope:secure_password_change_me@db:5432/bet_hope
-DB_PASSWORD=secure_password_change_me
-REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=redis://redis:6379/0
-
-ML_MODEL_PATH=/app/ml/artifacts
-PYTORCH_ENABLE_MPS_FALLBACK=1
-
-# API Keys (add your keys)
-API_FOOTBALL_KEY=your_api_key
-OPENAI_API_KEY=your_openai_key
-EOF
-
-# Start production containers
-docker compose -f docker-compose.prod.yml up -d --build
-
-# Enable pgvector extension (first time only)
-docker compose -f docker-compose.prod.yml exec db psql -U bet_hope -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-# Restart backend to run migrations
-docker compose -f docker-compose.prod.yml restart backend celery celery-beat
-
-# Verify all services are running
-docker compose -f docker-compose.prod.yml ps
-
-# Test endpoints
-curl http://<your-server-ip>/           # Frontend
-curl http://<your-server-ip>/api/       # Backend API
-curl http://<your-server-ip>/health/    # Health check
+curl -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/tasks/train \
+  -H "X-Api-Key: <your-tasks-api-key>"
 ```
 
----
-
-## CI/CD Pipeline (GitHub Actions + GHCR)
-
-The project uses GitHub Actions for automated deployments. Images are built in GitHub Actions and pushed to GitHub Container Registry (GHCR), then pulled on the server.
-
-### How It Works
-
-```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Push to main   │────▶│  GitHub Actions  │────▶│  Pull on Server  │
-│                  │     │  Build & Push    │     │  & Restart       │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
-                                │
-                                ▼
-                     ┌──────────────────┐
-                     │      GHCR        │
-                     │  Image Registry  │
-                     └──────────────────┘
-```
-
-### Benefits
-
-| Aspect | Old (build on server) | New (GHCR) |
-|--------|----------------------|------------|
-| Deploy time | 15-20 min | 1-2 min |
-| Server memory | High (5GB+ for build) | Low (just pull) |
-| Consistency | Variable | Identical images |
-| Caching | None | Docker layer cache |
-
-### One-Time Setup
-
-#### 1. Create GitHub Personal Access Token (PAT)
-
-1. Go to GitHub → **Settings** → **Developer Settings** → **Personal Access Tokens** → **Tokens (classic)**
-2. Click **Generate new token (classic)**
-3. Name: `GHCR_TOKEN_BET_HOPE`
-4. Select scopes:
-   - `read:packages`
-   - `write:packages`
-5. Click **Generate token** and copy it
-
-#### 2. Add Repository Secrets
-
-Go to your repository → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-
-| Secret Name | Value | Description |
-|-------------|-------|-------------|
-| `SSH_HOST` | `145.241.188.142` | Server IP address |
-| `SSH_USER` | `ubuntu` | SSH username |
-| `SSH_PRIVATE_KEY` | (your private key) | SSH private key for server |
-| `SSH_PORT` | `22` | SSH port (optional) |
-| `GHCR_TOKEN` | (PAT from step 1) | Token for pulling images |
-| `BACKEND_URL` | `https://yourdomain.com` | API URL for frontend |
-
-#### 3. Server Setup (First Time Only)
-
-SSH into your server and configure Docker to pull from GHCR:
+### Local development
 
 ```bash
-ssh ubuntu@<your-server-ip>
-
-# Login to GHCR (use your GitHub username and PAT)
-echo "<your-ghcr-token>" | docker login ghcr.io -u <your-github-username> --password-stdin
-
-# Set environment variables for image names
-cat >> /opt/bet_hope/.env << 'EOF'
-BACKEND_IMAGE=ghcr.io/taofeek26/bet-hope-backend:latest
-FRONTEND_IMAGE=ghcr.io/taofeek26/bet-hope-frontend:latest
-EOF
+docker compose up -d
+docker compose exec backend python manage.py migrate
 ```
 
-### Automated Deployment
+See [Quick Start](#quick-start) above for the full local setup.
 
-After setup, deployments are automatic:
+### Troubleshooting
 
+**502 Bad Gateway** — check `docker compose -f docker-compose.prod.yml ps`
+on the EC2 box; usually means the `backend` container crashed on boot
+(check `docker compose logs backend`).
+
+**400 Bad Request / DisallowedHost** — `DJANGO_ALLOWED_HOSTS` in
+`backend/.env.prod` doesn't include the host you're hitting.
+
+**CORS errors from the Vercel frontend** — `CORS_ALLOWED_ORIGINS` in
+`backend/.env.prod` doesn't include your exact Vercel URL (must match
+scheme + host exactly, no trailing slash).
+
+**`relation "vector" does not exist` / pgvector errors** — the extension
+wasn't created; run:
 ```bash
-# Just push to main - GitHub Actions handles the rest
-git add .
-git commit -m "Your changes"
-git push origin main
-
-# GitHub Actions will:
-# 1. Build backend image (~5-10 min, cached)
-# 2. Build frontend image (~2-3 min, cached)
-# 3. Push images to GHCR
-# 4. SSH to server
-# 5. Pull new images
-# 6. Restart containers
-# 7. Run migrations
+docker compose -f docker-compose.prod.yml exec db psql -U bet_hope -d bet_hope -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-### Manual Deployment (Alternative)
+**Lambda can't reach Postgres** — confirm `LambdaVpcId`/`LambdaSubnetId`
+match the VPC your EC2 instance actually launched into (usually your
+account's default VPC), and that `DBPassword` matches `DB_PASSWORD` in
+`backend/.env.prod` on the EC2 box.
 
-If you need to deploy manually or GitHub Actions fails:
+**`sam build` fails compiling pandas/numpy from source** — this means pip
+resolved a version with no prebuilt wheel for the Lambda's Python version.
+The Makefile in `backend/ml-layer/` pins `--python-version 3.13` for
+exactly this reason; don't bump the Lambda runtime without checking
+`pip download --platform manylinux2014_x86_64 --python-version <version>
+--implementation cp --only-binary=:all: pandas numpy scikit-learn xgboost`
+succeeds first (scientific Python packages lag several months behind new
+CPython releases for prebuilt Linux wheels).
 
-```bash
-# Option 1: Build locally and transfer (for slow connections)
-# Build images locally for linux/amd64
-docker buildx build --platform linux/amd64 -t bet_hope-backend:latest ./backend --load
-docker buildx build --platform linux/amd64 -t bet_hope-frontend:latest ./frontend --load
-
-# Save to tar
-docker save bet_hope-backend:latest -o backend.tar
-docker save bet_hope-frontend:latest -o frontend.tar
-
-# Transfer to server (use rsync for large files)
-rsync -avz --progress backend.tar ubuntu@<server-ip>:/opt/bet_hope/
-scp frontend.tar ubuntu@<server-ip>:/opt/bet_hope/
-
-# On server: load and restart
-ssh ubuntu@<server-ip>
-cd /opt/bet_hope
-docker load -i backend.tar
-docker load -i frontend.tar
-docker compose -f docker-compose.prod.yml up -d
-rm backend.tar frontend.tar
-
-# Option 2: Pull from GHCR manually
-ssh ubuntu@<server-ip>
-cd /opt/bet_hope
-git pull origin main
-docker pull ghcr.io/taofeek26/bet-hope-backend:latest
-docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
-docker compose -f docker-compose.prod.yml up -d
-```
-
-### Monitoring Deployments
-
-#### Check GitHub Actions Status
-- Go to repository → **Actions** tab
-- View workflow runs and logs
-
-#### Check Server Status
-```bash
-ssh ubuntu@<server-ip>
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f --tail 50
-```
-
-### Troubleshooting CI/CD
-
-#### GitHub Actions Fails to Push to GHCR
-```
-Error: denied: permission_denied
-```
-- Ensure `GITHUB_TOKEN` has `packages: write` permission
-- Check workflow has `permissions: packages: write`
-
-#### Server Can't Pull Images
-```
-Error: unauthorized: authentication required
-```
-```bash
-# Re-login to GHCR on server
-echo "<your-ghcr-token>" | docker login ghcr.io -u <username> --password-stdin
-```
-
-#### SSH Connection Fails
-- Verify `SSH_PRIVATE_KEY` secret is correct (include full key with headers)
-- Check server firewall allows port 22
-- Verify `SSH_USER` has access to `/opt/bet_hope`
-
----
-
-## Manual Deployment (Legacy)
-
-If not using CI/CD, you can still deploy manually:
-
-### Quick Deploy Commands
-
-```bash
-# SSH into server
-ssh ubuntu@<your-server-ip>
-cd /opt/bet_hope
-
-# Pull and rebuild (slow - builds on server)
-git pull origin main
-docker compose -f docker-compose.prod.yml up -d --build
-
-# Or just restart (if images already exist)
-docker compose -f docker-compose.prod.yml up -d
-```
-
-### View Production Logs
-
-```bash
-# All services
-docker compose -f docker-compose.prod.yml logs -f
-
-# Specific service
-docker compose -f docker-compose.prod.yml logs -f backend
-docker compose -f docker-compose.prod.yml logs -f celery
-docker compose -f docker-compose.prod.yml logs -f nginx
-
-# Last 100 lines
-docker compose -f docker-compose.prod.yml logs --tail 100 backend
-```
-
----
-
-## Production Operations
-
-### Create Admin User
-
-```bash
-docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
-```
-
-### Seed Initial Data
-
-```bash
-# Seed leagues
-docker compose -f docker-compose.prod.yml exec backend python manage.py seed_leagues
-
-# Backfill historical data
-docker compose -f docker-compose.prod.yml exec backend python manage.py backfill_historical --seasons 3
-```
-
-### Run Database Migrations
-
-```bash
-docker compose -f docker-compose.prod.yml exec backend python manage.py migrate
-```
-
-### Access Django Shell
-
-```bash
-docker compose -f docker-compose.prod.yml exec backend python manage.py shell
-```
-
-### Access Database
-
-```bash
-docker compose -f docker-compose.prod.yml exec db psql -U bet_hope
-```
-
----
-
-## Troubleshooting Production
-
-### 502 Bad Gateway
-Nginx can't reach backend (usually after container recreation):
-```bash
-docker compose -f docker-compose.prod.yml restart nginx
-```
-
-### 400 Bad Request (ALLOWED_HOSTS)
-```bash
-# Check current setting
-docker compose -f docker-compose.prod.yml exec backend env | grep ALLOWED
-
-# Fix: Update backend/.env.prod
-DJANGO_ALLOWED_HOSTS=<your-server-ip>,yourdomain.com,localhost
-
-# Restart
-docker compose -f docker-compose.prod.yml restart backend celery celery-beat
-```
-
-### 301 Redirect Loop (SSL not configured)
-```bash
-# Ensure these are in backend/.env.prod:
-SECURE_SSL_REDIRECT=false
-SESSION_COOKIE_SECURE=false
-CSRF_COOKIE_SECURE=false
-
-# Restart
-docker compose -f docker-compose.prod.yml restart backend
-```
-
-### pgvector Extension Missing
-```bash
-# Error: type "vector" does not exist
-docker compose -f docker-compose.prod.yml exec db psql -U bet_hope -c "CREATE EXTENSION IF NOT EXISTS vector;"
-docker compose -f docker-compose.prod.yml restart backend
-```
-
-### Out of Memory
-```bash
-# Check swap
-free -h
-
-# Enable swap if needed
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-```
-
-### Container Won't Start
-```bash
-docker compose -f docker-compose.prod.yml logs <service-name>
-```
-
----
-
-## SSL/HTTPS Setup
-
-### Using Let's Encrypt
-
-```bash
-# Install certbot
-sudo apt install certbot -y
-
-# Stop nginx temporarily
-docker compose -f docker-compose.prod.yml stop nginx
-
-# Get certificate
-sudo certbot certonly --standalone -d yourdomain.com
-
-# Copy certificates
-sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem nginx/ssl/
-sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem nginx/ssl/
-sudo chown $USER:$USER nginx/ssl/*.pem
-
-# Update nginx.conf (uncomment SSL server block)
-# Update backend/.env.prod:
-SECURE_SSL_REDIRECT=true
-SESSION_COOKIE_SECURE=true
-CSRF_COOKIE_SECURE=true
-SECURE_HSTS_SECONDS=31536000
-
-# Restart
-docker compose -f docker-compose.prod.yml up -d
-```
 
 ---
 
@@ -871,9 +588,10 @@ docker compose -f docker-compose.prod.yml up -d
 - [x] RAG-enhanced recommendations
 - [x] AI analysis UI component
 
-### Phase 4: Production (In Progress)
+### Phase 4: Production ✅
 - [x] Docker Compose configuration
 - [x] CI/CD pipeline (GitHub Actions + GHCR)
+- [x] AWS EC2 + Lambda + Vercel deployment
 - [ ] Real-time updates (WebSocket)
 - [ ] Email notifications
 
@@ -891,11 +609,11 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## License
 
-Proprietary - All rights reserved.
+MIT — see [LICENSE](LICENSE).
 
 ---
 
 ## Contact
 
-For questions, open an issue or contact the development team.
+For questions or bug reports, open an issue on GitHub.
 

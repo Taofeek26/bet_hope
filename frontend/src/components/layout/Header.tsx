@@ -12,13 +12,13 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-background-secondary/80 backdrop-blur-sm border-b border-slate-700/50">
+    <header className="sticky top-0 z-40 bg-background-secondary/80 backdrop-blur-sm border-b border-border/50">
       <div className="flex items-center justify-between h-16 px-4">
         {/* Left */}
         <div className="flex items-center gap-4">
           <button
             onClick={toggleSidebar}
-            className="lg:hidden p-2 rounded-lg hover:bg-slate-700 text-slate-400"
+            className="lg:hidden p-2 rounded-lg hover:bg-surface text-text-secondary"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -36,11 +36,11 @@ export function Header() {
         {/* Center - Search */}
         <div className="flex-1 max-w-xl mx-4 hidden md:block">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
             <input
               type="text"
               placeholder="Search teams, matches..."
-              className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full pl-10 pr-4 py-2 rounded-lg bg-surface border border-border text-white placeholder-text-muted focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
           </div>
         </div>
@@ -50,7 +50,7 @@ export function Header() {
           {/* Mobile search toggle */}
           <button
             onClick={() => setSearchOpen(!searchOpen)}
-            className="md:hidden p-2 rounded-lg hover:bg-slate-700 text-slate-400"
+            className="md:hidden p-2 rounded-lg hover:bg-surface text-text-secondary"
           >
             <Search className="w-5 h-5" />
           </button>
@@ -59,13 +59,13 @@ export function Header() {
           <TaskStatusIndicator />
 
           {/* Notifications */}
-          <button className="relative p-2 rounded-lg hover:bg-slate-700 text-slate-400">
+          <button className="relative p-2 rounded-lg hover:bg-surface text-text-secondary">
             <Bell className="w-5 h-5" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
           </button>
 
           {/* User menu */}
-          <button className="p-2 rounded-lg hover:bg-slate-700 text-slate-400">
+          <button className="p-2 rounded-lg hover:bg-surface text-text-secondary">
             <User className="w-5 h-5" />
           </button>
         </div>
@@ -73,11 +73,11 @@ export function Header() {
 
       {/* Mobile search dropdown */}
       {searchOpen && (
-        <div className="md:hidden p-4 border-t border-slate-700/50">
+        <div className="md:hidden p-4 border-t border-border/50">
           <input
             type="text"
             placeholder="Search teams, matches..."
-            className="w-full px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-400 focus:border-primary-500 focus:outline-none"
+            className="w-full px-4 py-2 rounded-lg bg-surface border border-border text-white placeholder-text-muted focus:border-primary-500 focus:outline-none"
             autoFocus
           />
         </div>

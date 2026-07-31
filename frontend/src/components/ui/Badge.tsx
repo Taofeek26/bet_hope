@@ -7,12 +7,12 @@ interface BadgeProps {
 }
 
 const variantClasses = {
-  default: 'bg-slate-700 text-slate-200',
+  default: 'bg-surface text-text',
   win: 'bg-green-500/20 text-green-400',
   draw: 'bg-yellow-500/20 text-yellow-400',
   loss: 'bg-red-500/20 text-red-400',
   live: 'bg-red-500 text-white animate-pulse',
-  outline: 'border border-slate-600 text-slate-300',
+  outline: 'border border-border-bright text-text-secondary',
 };
 
 export function Badge({ children, variant = 'default', className }: BadgeProps) {

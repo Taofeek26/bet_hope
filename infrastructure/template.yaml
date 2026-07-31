@@ -14,8 +14,8 @@ Parameters:
 
   InstanceType:
     Type: String
-    Default: t3.small
-    AllowedValues: [t3.small, t3.medium, t4g.small, t4g.medium]
+    Default: t3.medium
+    AllowedValues: [t3.medium, t3.small]
 
   VolumeSize:
     Type: Number
@@ -39,6 +39,47 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
 
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: >
+      Postgres password, shared by the EC2 Docker Compose stack and the
+      VPC-attached ML Lambda. Pass with --parameter-overrides at deploy
+      time — do not let `sam deploy --guided` save this into a committed
+      samconfig.toml.
+
+  TasksApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: >
+      Shared secret required (as an X-Api-Key header) to call the
+      /tasks/* Lambda endpoints, which are otherwise unauthenticated on
+      the public internet. Generate with e.g. `openssl rand -hex 32`.
+
+  LambdaVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: >
+      VPC the ML Lambda (train/predict/export) will run in, so it can
+      reach Postgres on the EC2 instance privately without a NAT Gateway.
+      Use the same VPC your EC2 instance launches into (your account's
+      default VPC unless you changed it).
+
+  LambdaSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Any subnet within LambdaVpcId for the ML Lambda's ENI.
+
+  LambdaRouteTableId:
+    Type: String
+    AllowedPattern: ^rtb-[a-f0-9]+$
+    Description: >
+      Route table ID (e.g. rtb-xxxxxxxx) associated with LambdaSubnetId —
+      used to attach a free S3 Gateway VPC Endpoint so the VPC-attached
+      Lambda can still reach the model S3 bucket without a NAT Gateway.
+      (Not AWS::EC2::RouteTable::Id — CloudFormation has no such
+      SSM-backed parameter type.)
+
 Conditions:
   HasDomain: !Not [!Equals [!Ref DomainName, ""]]
 
@@ -48,6 +89,7 @@ Resources:
     Properties:
       GroupDescription: Bet_Hope public app - SSH HTTP HTTPS
       GroupName: !Sub ${AWS::StackName}-sg
+      VpcId: !Ref LambdaVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -67,6 +109,54 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-sg
+
+  # Dedicated SG for the VPC-attached ML Lambda (train/predict/export).
+  # No ingress needed — Lambda only initiates outbound connections to
+  # Postgres/Redis on the EC2 box; default egress-allow-all covers that.
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ML Lambda (train/predict/export) - egress only
+      GroupName: !Sub ${AWS::StackName}-lambda-sg
+      VpcId: !Ref LambdaVpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-lambda-sg
+
+  # Allow the ML Lambda (and only the ML Lambda, via SG reference — not a
+  # CIDR) to reach Postgres/Redis on the EC2 box. Postgres itself is never
+  # exposed to the internet.
+  SecurityGroupIngressPostgresFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
+      Description: Postgres from ML Lambda
+
+  SecurityGroupIngressRedisFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
+      Description: Redis from ML Lambda
+
+  # Free Gateway endpoint so the VPC-attached Lambda can reach the model
+  # S3 bucket without a NAT Gateway (Gateway endpoints, unlike Interface
+  # endpoints, have no hourly or per-GB charge).
+  S3VpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LambdaVpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref LambdaRouteTableId
 
   InstanceRole:
     Type: AWS::IAM::Role
@@ -140,7 +230,7 @@ Resources:
           DJANGO_SECRET_KEY=CHANGE_ME
           DJANGO_DEBUG=False
           DJANGO_ALLOWED_HOSTS=*
-          DB_PASSWORD=CHANGE_ME
+          DB_PASSWORD=${DBPassword}
           OPENAI_API_KEY=
           API_FOOTBALL_KEY=
           FOOTBALL_DATA_ORG_KEY=
@@ -239,30 +329,46 @@ Resources:
                   - !GetAtt ModelBucket.Arn
                   - !Sub ${ModelBucket.Arn}/*
 
+  MLLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      LayerName: !Sub ${AWS::StackName}-ml-layer
+      ContentUri: ../backend/ml-layer/
+      CompatibleRuntimes:
+        - python3.13
+
+  # Runs train/predict/export — needs Postgres, so it's VPC-attached (see
+  # LambdaSecurityGroup) and therefore has NO internet access. That's fine:
+  # none of these three tasks call external APIs, only Postgres + S3 (via
+  # the free Gateway endpoint above).
   LambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-ml-tasks
-      PackageType: Image
-      ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/bet-hope-lambda:latest
+      Handler: lambda_handler.handler
+      Runtime: python3.13
+      CodeUri: ../backend/lambda-code/
       MemorySize: 2048
       Timeout: 600
       Role: !GetAtt LambdaRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref LambdaSubnetId
       Environment:
         Variables:
-          DATABASE_URL: postgres://bet_hope:***@${Instance.PrivateIp}:5432/bet_hope
+          DATABASE_URL: !Sub postgres://bet_hope:${DBPassword}@${Instance.PrivateIp}:5432/bet_hope
           REDIS_URL: !Sub redis://${Instance.PrivateIp}:6379/0
           CELERY_BROKER_URL: !Sub redis://${Instance.PrivateIp}:6379/0
           S3_MODEL_BUCKET: !Ref ModelBucket
           DJANGO_ALLOWED_HOSTS: "*"
           DJANGO_DEBUG: "False"
+          PYTHONPATH: /var/task:/opt/python
+          TASKS_API_KEY: !Ref TasksApiKey
       Events:
-        SyncData:
-          Type: HttpApi
-          Properties:
-            Path: /tasks/sync
-            Method: POST
-            ApiId: !Ref HttpApi
         TrainModel:
           Type: HttpApi
           Properties:
@@ -286,6 +392,61 @@ Resources:
           Properties:
             Path: /health
             Method: GET
+            ApiId: !Ref HttpApi
+
+  # Handles /tasks/sync only. Deliberately NOT VPC-attached — sync_real_data
+  # needs real internet access (API-Football, Football-Data.org), which a
+  # NAT-less VPC Lambda can't reach. Instead of connecting to Postgres
+  # itself, it dispatches the sync command to the EC2 box via SSM (free,
+  # instance already has AmazonSSMManagedInstanceCore), where Django has a
+  # local DB connection and the instance's own internet access.
+  SyncDispatcherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-sync-dispatcher-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SSMDispatchToInstance
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}
+                  - !Sub arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript
+              - Effect: Allow
+                Action: ssm:GetCommandInvocation
+                Resource: "*"
+
+  SyncDispatcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-sync-dispatcher
+      Handler: handler.handler
+      Runtime: python3.13
+      CodeUri: ../backend/lambda-sync/
+      MemorySize: 256
+      Timeout: 600
+      Role: !GetAtt SyncDispatcherRole.Arn
+      Environment:
+        Variables:
+          INSTANCE_ID: !Ref Instance
+          TASKS_API_KEY: !Ref TasksApiKey
+      Events:
+        SyncData:
+          Type: HttpApi
+          Properties:
+            Path: /tasks/sync
+            Method: POST
             ApiId: !Ref HttpApi
 
   # ==========================================================================
@@ -317,18 +478,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-models
-
-  # ==========================================================================
-  # SECURITY GROUP UPDATE — allow Lambda to reach EC2 PostgreSQL
-  # ==========================================================================
-  LambdaSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SecurityGroup
-      IpProtocol: tcp
-      FromPort: 5432
-      ToPort: 5432
-      CidrIp: 10.0.0.0/8
 
 Outputs:
   PublicIP:

@@ -91,12 +91,6 @@ services:
       start_period: 40s
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
-  frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/taofeek26/bet-hope-frontend:latest}
-    restart: always
-    expose:
-      - "3000"
-
   nginx:
     image: nginx:alpine
     ports:
@@ -108,7 +102,6 @@ services:
       - ./backend/staticfiles:/var/www/static:ro
     depends_on:
       - backend
-      - frontend
     restart: always
 
 volumes:

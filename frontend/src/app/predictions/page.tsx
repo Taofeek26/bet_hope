@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
 import { TrendingUp, Filter, Calendar, RefreshCw, CheckCircle, Clock, XCircle, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -178,8 +179,8 @@ export default function PredictionsPage() {
         <EmptyState />
       ) : (
         <div className="space-y-3">
-          {predictions.map((prediction: any) => (
-            <PredictionCard key={prediction.id} prediction={prediction} />
+          {predictions.map((prediction: any, index: number) => (
+            <PredictionCard key={prediction.id} prediction={prediction} index={index} />
           ))}
         </div>
       )}
@@ -187,7 +188,7 @@ export default function PredictionsPage() {
   );
 }
 
-function PredictionCard({ prediction }: { prediction: any }) {
+function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: number }) {
   const probs = prediction.probabilities || {};
   const homeProb = probs.home || 0.33;
   const drawProb = probs.draw || 0.33;
@@ -200,7 +201,11 @@ function PredictionCard({ prediction }: { prediction: any }) {
   const isCorrect = verification?.is_correct;
 
   return (
-    <div className={`card card-compact ${isFinished ? hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : 'border-l-4 border-l-text-muted/30' : ''}`}>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: Math.min(index, 8) * 0.03 }}
+      className={`card card-compact ${isFinished ? hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : 'border-l-4 border-l-text-muted/30' : ''}`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={`card-icon w-10 h-10 ${isFinished ? (hasVerification ? (isCorrect ? 'bg-green-500/20' : 'bg-red-500/20') : 'bg-surface-alt') : ''}`}>
@@ -306,7 +311,7 @@ function PredictionCard({ prediction }: { prediction: any }) {
           }}
         />
       )}
-    </div>
+    </motion.div>
   );
 }
 

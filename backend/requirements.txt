@@ -1,5 +1,13 @@
 # Bet_Hope Requirements
 # Django + Python AI Football Prediction Platform
+#
+# Used by: Docker Compose / EC2 deployment (the full Django app: web,
+# Celery worker, Celery beat) — see docker-compose.prod.yml.
+#
+# NOT used by the Lambda ML functions — those get their dependencies from
+# backend/ml-layer/requirements.txt via a Lambda Layer instead, so the
+# zip-based Lambda function code (backend/lambda-code/) stays small and
+# fast to cold-start. See infrastructure/template.yaml + backend/lambda-code/.
 
 # =============================================================================
 # CORE DJANGO

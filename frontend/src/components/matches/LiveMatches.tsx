@@ -42,10 +42,10 @@ export function LiveMatches() {
 function LiveMatchCard({ match }: { match: any }) {
   return (
     <Link href={`/matches/${match.id}`}>
-      <div className="p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer border border-red-500/20">
+      <div className="p-4 rounded-lg bg-surface/50 hover:bg-surface transition-colors cursor-pointer border border-red-500/20">
         {/* League */}
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-text-secondary">
             {match.season?.league?.name || 'League'}
           </span>
           <Badge variant="live">LIVE</Badge>

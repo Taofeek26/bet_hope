@@ -1,0 +1,11 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "bet-hope"
+s3_bucket = ""
+s3_prefix = "bet-hope"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+confirm_changeset = false
+disable_rollback = false
+parameter_overrides = "KeyPairName=bet-hope-key InstanceType=t3.medium VolumeSize=30 GitHubRepo=taofeek26/bet-hope"

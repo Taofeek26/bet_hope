@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BarChart3, TrendingUp, Target, Percent, RefreshCw } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { AccuracyBarChart } from '@/components/analytics/AccuracyBarChart';
 
 interface StatsData {
   period: string;
@@ -119,23 +120,13 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <OutcomeBar
-                    label="Home Wins"
-                    data={data.by_outcome.H}
-                    color="bg-brand"
-                  />
-                  <OutcomeBar
-                    label="Draws"
-                    data={data.by_outcome.D}
-                    color="bg-text-sec"
-                  />
-                  <OutcomeBar
-                    label="Away Wins"
-                    data={data.by_outcome.A}
-                    color="bg-blue-500"
-                  />
-                </div>
+                <AccuracyBarChart
+                  data={[
+                    { label: 'Home Wins', accuracy: data.by_outcome.H?.accuracy || 0, total: data.by_outcome.H?.total || 0, correct: data.by_outcome.H?.correct || 0 },
+                    { label: 'Draws', accuracy: data.by_outcome.D?.accuracy || 0, total: data.by_outcome.D?.total || 0, correct: data.by_outcome.D?.correct || 0 },
+                    { label: 'Away Wins', accuracy: data.by_outcome.A?.accuracy || 0, total: data.by_outcome.A?.total || 0, correct: data.by_outcome.A?.correct || 0 },
+                  ]}
+                />
               </div>
             </div>
 
@@ -152,23 +143,13 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <ConfidenceBar
-                    label="High Confidence (60%+)"
-                    data={data.by_confidence.high}
-                    color="bg-brand"
-                  />
-                  <ConfidenceBar
-                    label="Medium (45-60%)"
-                    data={data.by_confidence.medium}
-                    color="bg-amber-500"
-                  />
-                  <ConfidenceBar
-                    label="Low (<45%)"
-                    data={data.by_confidence.low}
-                    color="bg-text-muted"
-                  />
-                </div>
+                <AccuracyBarChart
+                  data={[
+                    { label: 'High (60%+)', accuracy: data.by_confidence.high?.accuracy || 0, total: data.by_confidence.high?.total || 0, correct: data.by_confidence.high?.correct || 0 },
+                    { label: 'Medium (45-60%)', accuracy: data.by_confidence.medium?.accuracy || 0, total: data.by_confidence.medium?.total || 0, correct: data.by_confidence.medium?.correct || 0 },
+                    { label: 'Low (<45%)', accuracy: data.by_confidence.low?.accuracy || 0, total: data.by_confidence.low?.total || 0, correct: data.by_confidence.low?.correct || 0 },
+                  ]}
+                />
               </div>
             </div>
 
@@ -193,7 +174,7 @@ export default function AnalyticsPage() {
                     <div className="text-xs text-text-muted">Correct</div>
                   </div>
                   <div className="p-4 bg-surface rounded-lg text-center">
-                    <div className="text-2xl font-bold text-text-sec">
+                    <div className="text-2xl font-bold text-text-secondary">
                       {data.total_predictions - data.correct_predictions}
                     </div>
                     <div className="text-xs text-text-muted">Incorrect</div>
@@ -220,88 +201,3 @@ export default function AnalyticsPage() {
   );
 }
 
-function OutcomeBar({
-  label,
-  data,
-  color,
-}: {
-  label: string;
-  data?: { total: number; correct: number; accuracy: number };
-  color: string;
-}) {
-  if (!data || data.total === 0) {
-    return (
-      <div>
-        <div className="flex justify-between text-sm mb-1">
-          <span className="text-text">{label}</span>
-          <span className="text-text-muted">No data</span>
-        </div>
-        <div className="h-3 bg-surface rounded-full overflow-hidden">
-          <div className="h-full bg-text-muted/30 w-0" />
-        </div>
-      </div>
-    );
-  }
-
-  const accuracy = data.accuracy * 100;
-
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-text">{label}</span>
-        <span className="text-text-sec">
-          {accuracy.toFixed(1)}% ({data.correct}/{data.total})
-        </span>
-      </div>
-      <div className="h-3 bg-surface rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} transition-all duration-500`}
-          style={{ width: `${accuracy}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ConfidenceBar({
-  label,
-  data,
-  color,
-}: {
-  label: string;
-  data?: { total: number; correct: number; accuracy: number };
-  color: string;
-}) {
-  if (!data || data.total === 0) {
-    return (
-      <div>
-        <div className="flex justify-between text-sm mb-1">
-          <span className="text-text">{label}</span>
-          <span className="text-text-muted">No predictions</span>
-        </div>
-        <div className="h-3 bg-surface rounded-full overflow-hidden">
-          <div className="h-full bg-text-muted/30 w-0" />
-        </div>
-      </div>
-    );
-  }
-
-  const accuracy = data.accuracy * 100;
-
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-text">{label}</span>
-        <span className="text-text-sec">
-          {accuracy.toFixed(1)}% ({data.correct}/{data.total})
-        </span>
-      </div>
-      <div className="h-3 bg-surface rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} transition-all duration-500`}
-          style={{ width: `${accuracy}%` }}
-        />
-      </div>
-    </div>
-  );
-}

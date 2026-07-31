@@ -1,5 +1,8 @@
-# GitHub Actions — Deploy Bet_Hope to AWS EC2
-# Replaces: .github/workflows/deploy.yml (Oracle)
+# GitHub Actions — Deploy Bet_Hope backend to AWS EC2
+#
+# The frontend is deployed separately and automatically by Vercel's own
+# GitHub integration (connect the repo in the Vercel dashboard) — it is
+# NOT built or deployed by this workflow.
 #
 # Before using:
 #   1. Add GitHub Secrets: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, GHCR_TOKEN
@@ -16,11 +19,10 @@ on:
 env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: ghcr.io/taofeek26/bet-hope-backend
-  FRONTEND_IMAGE: ghcr.io/taofeek26/bet-hope-frontend
 
 jobs:
   build:
-    name: Build & Push Images
+    name: Build & Push Backend Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,19 +50,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:latest
-            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.API_URL }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
     name: Deploy to AWS EC2
     needs: build
@@ -82,12 +71,11 @@ jobs:
 
             echo '=== Stop services ==='
             free -h
-            docker compose -f docker-compose.prod.yml stop backend celery celery-beat frontend nginx || true
+            docker compose -f docker-compose.prod.yml stop backend celery celery-beat nginx || true
             docker system prune -f || true
 
             echo '=== Pull new images ==='
             docker pull ghcr.io/taofeek26/bet-hope-backend:latest
-            docker pull ghcr.io/taofeek26/bet-hope-frontend:latest
 
             echo '=== Fix env ==='
             grep -q ALLOWED_HOSTS backend/.env.prod || echo DJANGO_ALLOWED_HOSTS=* >> backend/.env.prod

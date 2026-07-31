@@ -47,13 +47,13 @@ function PickCard({ pick }: { pick: any }) {
   const match = pick.match;
 
   return (
-    <div className="p-3 sm:p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 transition-colors">
+    <div className="p-3 sm:p-4 rounded-lg bg-surface/50 hover:bg-surface/70 transition-colors">
       {/* Clickable match info section */}
       <Link href={`/matches/${match.id}`} className="block">
         {/* League & Time */}
         <div className="flex items-center justify-between mb-2 sm:mb-3">
-          <span className="text-[10px] sm:text-xs text-slate-400 truncate max-w-[60%]">{match.league}</span>
-          <span className="text-[10px] sm:text-xs text-slate-400">{match.time || 'TBD'}</span>
+          <span className="text-[10px] sm:text-xs text-text-secondary truncate max-w-[60%]">{match.league}</span>
+          <span className="text-[10px] sm:text-xs text-text-secondary">{match.time || 'TBD'}</span>
         </div>
 
         {/* Teams */}
@@ -68,7 +68,7 @@ function PickCard({ pick }: { pick: any }) {
             )}
             <p className="font-medium text-white text-xs sm:text-sm truncate">{match.home_team}</p>
           </div>
-          <div className="px-2 sm:px-4 text-slate-500 text-[10px] sm:text-sm flex-shrink-0">vs</div>
+          <div className="px-2 sm:px-4 text-text-muted text-[10px] sm:text-sm flex-shrink-0">vs</div>
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2 min-w-0">
             <p className="font-medium text-white text-xs sm:text-sm truncate">{match.away_team}</p>
             {match.away_team_logo ? (
@@ -93,7 +93,7 @@ function PickCard({ pick }: { pick: any }) {
                   : 'Draw'}
               </span>
             </Badge>
-            <span className="text-[10px] sm:text-sm text-slate-400 flex-shrink-0">
+            <span className="text-[10px] sm:text-sm text-text-secondary flex-shrink-0">
               {formatProbability(prediction.confidence)}
             </span>
           </div>

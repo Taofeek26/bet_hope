@@ -1,0 +1,37 @@
+# ML Layer — heavy deps that change rarely
+#
+# Built into a Lambda Layer via the Makefile in this directory (see
+# MLLayer's Metadata.BuildMethod: makefile in infrastructure/template.yaml,
+# invoked automatically by `sam build`). Provides everything backend/lambda
+# -code/ needs at /opt/python — that directory has no requirements.txt of
+# its own on purpose; don't add one back, it caused a real build failure
+# once already (old exact pins with no matching manylinux wheel for the
+# Lambda's Python version).
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.3.2
+xgboost>=2.0.2
+joblib>=1.3.2
+scipy>=1.11.4
+# Django core
+Django>=5.0,<5.2
+djangorestframework>=3.14.0
+django-cors-headers>=4.3.0
+django-filter>=23.5,<25.0
+django-environ>=0.11.2
+dj-database-url>=2.1.0
+psycopg2-binary>=2.9.9
+# Auth
+djangorestframework-simplejwt>=5.3.1
+# AWS
+boto3>=1.34.0
+# HTTP
+requests>=2.31.0
+httpx>=0.25.0
+# Utils
+python-dateutil>=2.8.2
+pytz>=2023.3
+celery>=5.3.4
+redis>=5.0.1
+gunicorn>=21.2.0
+whitenoise>=6.6.0

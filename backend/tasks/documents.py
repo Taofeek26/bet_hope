@@ -11,6 +11,32 @@ from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
+
+def _tag_teams(document, text: str, teams: list) -> int:
+    """
+    Tag a Document to any team whose name appears in the given text
+    (case-insensitive substring match). Cheap and good enough for RSS
+    headlines/summaries — feeds the 'ai_signals' ML feature group, which
+    needs per-team news, not just generic untagged articles.
+
+    Args:
+        document: Document instance (must already be saved)
+        text: Combined title+content to search
+        teams: list of (team_id, team_name) tuples
+
+    Returns:
+        Number of teams matched/tagged
+    """
+    text_lower = text.lower()
+    matched_ids = [
+        team_id for team_id, name in teams
+        if name and len(name) > 3 and name.lower() in text_lower
+    ]
+    if matched_ids:
+        document.teams.add(*matched_ids)
+    return len(matched_ids)
+
+
 # Documentation sources to scrape
 DOCUMENTATION_SOURCES = [
     {
@@ -443,12 +469,17 @@ def scrape_football_news(self, max_articles_per_feed=10):
     try:
         import feedparser
         from apps.documents.models import Document, DocumentCategory
+        from apps.teams.models import Team
 
         # Get or create news category
         category, _ = DocumentCategory.objects.get_or_create(
             slug='football-news',
             defaults={'name': 'Football News', 'description': 'Latest football news and updates'}
         )
+
+        # Fetched once per run — team-name keyword matching against every
+        # article, cheap enough (a few hundred teams x ~30 articles).
+        teams = list(Team.objects.filter(is_active=True).values_list('id', 'name'))
 
         scraped = 0
         errors = []
@@ -512,6 +543,7 @@ def scrape_football_news(self, max_articles_per_feed=10):
                                 'type': 'news_article',
                             }
                         )
+                        _tag_teams(doc, f"{title} {content}", teams)
                         scraped += 1
                         logger.info(f"Scraped: {title[:50]}...")
 

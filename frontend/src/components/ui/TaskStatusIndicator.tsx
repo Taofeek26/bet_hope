@@ -48,9 +48,9 @@ export function TaskStatusIndicator() {
       label: 'Tasks Need Attention',
     },
     unknown: {
-      bg: 'bg-slate-500/10 hover:bg-slate-500/20',
-      border: 'border-slate-500/30',
-      text: 'text-slate-400',
+      bg: 'bg-text-muted/10 hover:bg-text-muted/20',
+      border: 'border-text-muted/30',
+      text: 'text-text-secondary',
       icon: Activity,
       label: 'No Task History',
     },
@@ -117,8 +117,8 @@ export function TaskStatusIndicator() {
                 <div className="text-lg font-bold text-amber-400">{summary.stale}</div>
                 <div className="text-xs text-text-muted">Stale</div>
               </div>
-              <div className="text-center p-2 rounded-lg bg-slate-500/10">
-                <div className="text-lg font-bold text-slate-400">{summary.unknown}</div>
+              <div className="text-center p-2 rounded-lg bg-text-muted/10">
+                <div className="text-lg font-bold text-text-secondary">{summary.unknown}</div>
                 <div className="text-xs text-text-muted">Unknown</div>
               </div>
             </div>
@@ -170,7 +170,7 @@ function TaskRow({ task }: TaskRowProps) {
   const healthStyles = {
     healthy: 'bg-emerald-500',
     stale: 'bg-amber-500',
-    unknown: 'bg-slate-500',
+    unknown: 'bg-text-muted',
   };
 
   return (

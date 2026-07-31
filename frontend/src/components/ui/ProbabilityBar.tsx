@@ -20,7 +20,7 @@ export function ProbabilityBar({
   return (
     <div className={cn('space-y-2', className)}>
       {/* Bar */}
-      <div className="h-3 rounded-full overflow-hidden flex bg-slate-700">
+      <div className="h-3 rounded-full overflow-hidden flex bg-surface">
         <div
           className="bg-green-500 transition-all duration-500"
           style={{ width: `${homeProb * 100}%` }}
@@ -66,7 +66,7 @@ export function SimpleProbabilityBar({
   };
 
   return (
-    <div className={cn('h-2 rounded-full bg-slate-700 overflow-hidden', className)}>
+    <div className={cn('h-2 rounded-full bg-surface overflow-hidden', className)}>
       <div
         className={cn('h-full rounded-full transition-all duration-500', colorClasses[color])}
         style={{ width: `${probability * 100}%` }}
