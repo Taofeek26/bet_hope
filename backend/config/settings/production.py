@@ -80,3 +80,17 @@ if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
     }
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
+
+    # Everything under BASE_DIR (/var/task) is read-only at runtime — only
+    # /tmp is writable. These are used as scratch/cache dirs (re-downloaded
+    # or regenerated each cold start, not meant to persist — anything that
+    # needs to persist already goes to RDS or S3).
+    from pathlib import Path
+    _TMP = Path('/tmp')
+    MEDIA_ROOT = _TMP / 'media'
+    DATA_DIR = _TMP / 'data'
+    RAW_DATA_DIR = DATA_DIR / 'raw'
+    PROCESSED_DATA_DIR = DATA_DIR / 'processed'
+    ML_ARTIFACTS_DIR = _TMP / 'ml' / 'artifacts'
+    for _dir in (MEDIA_ROOT, RAW_DATA_DIR, PROCESSED_DATA_DIR, ML_ARTIFACTS_DIR):
+        _dir.mkdir(parents=True, exist_ok=True)

@@ -6,6 +6,7 @@ Handles training of prediction models:
 - XGBoost regressors for goals prediction
 - Ensemble combining multiple models
 """
+import os
 import logging
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
@@ -548,6 +549,15 @@ class ModelTrainer:
         except Exception as e:
             logger.warning(f"Could not save to database: {e}")
 
+        # Persist to S3 too — /tmp (where save_dir lives on Lambda) is wiped
+        # between cold starts, so local disk alone isn't durable there.
+        if os.getenv('S3_MODEL_BUCKET'):
+            try:
+                from apps.ml_pipeline.storage import S3ModelStorage
+                S3ModelStorage().upload_artifacts(str(save_dir), version)
+            except Exception as e:
+                logger.warning(f"Could not upload models to S3: {e}")
+
         logger.info(f"Models saved to: {save_dir}")
         return str(save_dir)
 
@@ -584,6 +594,18 @@ class ModelTrainer:
                 if not versions:
                     return False
                 load_dir = versions[-1]
+
+        # /tmp (where load_dir lives on Lambda) is wiped between cold
+        # starts — if it's not there locally, pull it from S3 first.
+        if not load_dir.exists() and os.getenv('S3_MODEL_BUCKET'):
+            try:
+                from apps.ml_pipeline.storage import S3ModelStorage
+                version_name = load_dir.name
+                downloaded = S3ModelStorage().download_artifacts(version_name, str(load_dir))
+                logger.info(f"Downloaded models from S3: {downloaded}")
+            except Exception as e:
+                logger.error(f"Could not download models from S3: {e}")
+                return False
 
         logger.info(f"Loading models from: {load_dir}")
 

@@ -90,7 +90,9 @@ class FeatureExtractor:
             cache_dir: Directory for feature cache files
             use_cache: Whether to use disk caching
         """
-        self.cache_dir = cache_dir or Path(settings.BASE_DIR) / 'cache' / 'features'
+        import os
+        default_base = Path('/tmp') if os.getenv('AWS_LAMBDA_FUNCTION_NAME') else Path(settings.BASE_DIR)
+        self.cache_dir = cache_dir or default_base / 'cache' / 'features'
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.use_cache = use_cache
 
