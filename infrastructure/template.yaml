@@ -163,23 +163,13 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
-  NatEIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
-  # Single NAT Gateway (not one per AZ) — the standard cost-saving choice
-  # for a low-traffic app; ~$32/mo either way, doubling it for HA isn't
-  # worth it here.
-  NatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatEIP.AllocationId
-      SubnetId: !Ref PublicSubnet1
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-nat
-
+  # NAT Gateway + its EIP are NOT declared here as static resources. They're
+  # created/destroyed daily by InfraToggleFunction (see below) on a
+  # 5am-5pm WAT schedule to avoid paying for them 12 hours/day — a NAT
+  # Gateway has no "stop" state, only create/delete, so CloudFormation
+  # can't own something a schedule needs to tear down out-of-band without
+  # drifting. PrivateRoute (the 0.0.0.0/0 -> NAT route) is likewise managed
+  # by that function, not declared statically here.
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -187,13 +177,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-private-rt
-
-  PrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
 
   PrivateSubnet1RouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -456,12 +439,16 @@ Resources:
 
   # ==========================================================================
   # SCHEDULED JOBS — replaces Celery beat (no broker in this architecture)
+  # All fixed cron times below are UTC and deliberately fall inside the
+  # 04:00-16:00 UTC (5am-5pm WAT) window that InfraToggleFunction keeps
+  # NAT Gateway + RDS up for — anything scheduled outside that window would
+  # just fail with the database unreachable.
   # ==========================================================================
   SyncDataSchedule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Daily data sync (fixtures/results)
-      ScheduleExpression: rate(1 day)
+      Description: Daily data sync (fixtures/results), 04:15 UTC — after startup, before training
+      ScheduleExpression: cron(15 4 * * ? *)
       Targets:
         - Arn: !GetAtt ManageFunction.Arn
           Id: SyncData
@@ -478,7 +465,7 @@ Resources:
   TrainModelSchedule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Nightly model retraining, 5am UTC
+      Description: Daily model retraining, 05:00 UTC (6am WAT)
       ScheduleExpression: cron(0 5 * * ? *)
       Targets:
         - Arn: !GetAtt ManageFunction.Arn
@@ -496,8 +483,8 @@ Resources:
   GeneratePredictionsSchedule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Refresh predictions every 6 hours
-      ScheduleExpression: rate(6 hours)
+      Description: Refresh predictions daily, 05:15 UTC — right after training
+      ScheduleExpression: cron(15 5 * * ? *)
       Targets:
         - Arn: !GetAtt ManageFunction.Arn
           Id: GeneratePredictions
@@ -510,6 +497,201 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt GeneratePredictionsSchedule.Arn
+
+  # ==========================================================================
+  # INFRA TOGGLE — brings NAT Gateway + RDS up at 5am WAT and tears them
+  # down at 5pm WAT. A NAT Gateway has no stop/start state (only
+  # create/delete), so this can't be a CloudFormation-owned resource that
+  # a schedule also mutates out-of-band without drifting — it's created
+  # fresh every morning and deleted every evening entirely through this
+  # function, using PrivateRouteTable (still CFN-owned) as the one shared
+  # handle between the two. Runs outside the VPC (it's calling the EC2/RDS
+  # control plane, not the app).
+  # ==========================================================================
+  InfraToggleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ToggleNatAndRds
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # NAT Gateway/EIP/route actions don't support resource-level
+              # ARN scoping in IAM — "*" is the actual AWS-imposed floor here,
+              # not a shortcut taken for convenience.
+              - Effect: Allow
+                Action:
+                  - ec2:AllocateAddress
+                  - ec2:ReleaseAddress
+                  - ec2:DescribeAddresses
+                  - ec2:CreateNatGateway
+                  - ec2:DeleteNatGateway
+                  - ec2:DescribeNatGateways
+                  - ec2:CreateRoute
+                  - ec2:DeleteRoute
+                  - ec2:ReplaceRoute
+                  - ec2:DescribeRouteTables
+                  - ec2:CreateTags
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - rds:StartDBInstance
+                  - rds:StopDBInstance
+                  - rds:DescribeDBInstances
+                Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${DBInstance}
+
+  InfraToggleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-infra-toggle
+      Runtime: python3.13
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 600
+      Role: !GetAtt InfraToggleRole.Arn
+      Environment:
+        Variables:
+          PUBLIC_SUBNET_ID: !Ref PublicSubnet1
+          PRIVATE_ROUTE_TABLE_ID: !Ref PrivateRouteTable
+          DB_INSTANCE_ID: !Ref DBInstance
+          NAT_NAME_TAG: !Sub ${AWS::StackName}-nat
+      InlineCode: |
+        import os
+        import boto3
+        from botocore.exceptions import ClientError
+
+        ec2 = boto3.client('ec2')
+        rds = boto3.client('rds')
+
+        PUBLIC_SUBNET_ID = os.environ['PUBLIC_SUBNET_ID']
+        PRIVATE_ROUTE_TABLE_ID = os.environ['PRIVATE_ROUTE_TABLE_ID']
+        DB_INSTANCE_ID = os.environ['DB_INSTANCE_ID']
+        NAT_NAME_TAG = os.environ['NAT_NAME_TAG']
+
+
+        def handler(event, context):
+            action = event.get('action')
+            if action == 'start':
+                return start()
+            if action == 'stop':
+                return stop()
+            raise ValueError(f'Unknown action: {action!r} (expected "start" or "stop")')
+
+
+        def start():
+            try:
+                rds.start_db_instance(DBInstanceIdentifier=DB_INSTANCE_ID)
+                rds_result = 'starting'
+            except rds.exceptions.InvalidDBInstanceStateFault:
+                rds_result = 'already running/starting'
+
+            eip = ec2.allocate_address(
+                Domain='vpc',
+                TagSpecifications=[{'ResourceType': 'elastic-ip', 'Tags': [{'Key': 'Name', 'Value': NAT_NAME_TAG}]}],
+            )
+            nat = ec2.create_nat_gateway(
+                SubnetId=PUBLIC_SUBNET_ID,
+                AllocationId=eip['AllocationId'],
+                TagSpecifications=[{'ResourceType': 'natgateway', 'Tags': [{'Key': 'Name', 'Value': NAT_NAME_TAG}]}],
+            )
+            nat_id = nat['NatGateway']['NatGatewayId']
+
+            waiter = ec2.get_waiter('nat_gateway_available')
+            waiter.wait(NatGatewayIds=[nat_id], WaiterConfig={'Delay': 10, 'MaxAttempts': 40})
+
+            try:
+                ec2.delete_route(RouteTableId=PRIVATE_ROUTE_TABLE_ID, DestinationCidrBlock='0.0.0.0/0')
+            except ClientError:
+                pass
+            ec2.create_route(
+                RouteTableId=PRIVATE_ROUTE_TABLE_ID,
+                DestinationCidrBlock='0.0.0.0/0',
+                NatGatewayId=nat_id,
+            )
+
+            return {'status': 'started', 'nat_gateway_id': nat_id, 'rds': rds_result}
+
+
+        def stop():
+            try:
+                rds.stop_db_instance(DBInstanceIdentifier=DB_INSTANCE_ID)
+                rds_result = 'stopping'
+            except rds.exceptions.InvalidDBInstanceStateFault:
+                rds_result = 'already stopped/stopping'
+
+            nats = ec2.describe_nat_gateways(Filters=[
+                {'Name': 'subnet-id', 'Values': [PUBLIC_SUBNET_ID]},
+                {'Name': 'state', 'Values': ['available']},
+            ])['NatGateways']
+
+            deleted = []
+            for nat in nats:
+                nat_id = nat['NatGatewayId']
+                alloc_ids = [a['AllocationId'] for a in nat.get('NatGatewayAddresses', []) if 'AllocationId' in a]
+
+                try:
+                    ec2.delete_route(RouteTableId=PRIVATE_ROUTE_TABLE_ID, DestinationCidrBlock='0.0.0.0/0')
+                except ClientError:
+                    pass
+
+                ec2.delete_nat_gateway(NatGatewayId=nat_id)
+                waiter = ec2.get_waiter('nat_gateway_deleted')
+                waiter.wait(NatGatewayIds=[nat_id], WaiterConfig={'Delay': 10, 'MaxAttempts': 40})
+
+                for alloc_id in alloc_ids:
+                    try:
+                        ec2.release_address(AllocationId=alloc_id)
+                    except ClientError:
+                        pass
+
+                deleted.append(nat_id)
+
+            return {'status': 'stopped', 'nat_gateways_deleted': deleted, 'rds': rds_result}
+
+  InfraStartSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Bring up NAT Gateway + RDS, 04:00 UTC (5am WAT)
+      ScheduleExpression: cron(0 4 * * ? *)
+      Targets:
+        - Arn: !GetAtt InfraToggleFunction.Arn
+          Id: InfraStart
+          Input: '{"action": "start"}'
+
+  InfraStartPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref InfraToggleFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt InfraStartSchedule.Arn
+
+  InfraStopSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Tear down NAT Gateway + stop RDS, 16:00 UTC (5pm WAT)
+      ScheduleExpression: cron(0 16 * * ? *)
+      Targets:
+        - Arn: !GetAtt InfraToggleFunction.Arn
+          Id: InfraStop
+          Input: '{"action": "stop"}'
+
+  InfraStopPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref InfraToggleFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt InfraStopSchedule.Arn
 
 Outputs:
   ApiUrl:

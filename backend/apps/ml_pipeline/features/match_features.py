@@ -4,8 +4,10 @@ Match Feature Engineering
 Combines team features with head-to-head and contextual features
 to create a complete feature vector for match prediction.
 """
+import bisect
 import logging
-from typing import Dict, List, Optional, Tuple
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -38,6 +40,47 @@ class MatchFeatureBuilder:
 
         self.team_builder = team_feature_builder or TeamFeatureBuilder()
         self._cache = {}
+        self._warmed = False
+        self._odds_by_match_id: Dict[int, Any] = {}
+        self._injury_dates_by_team: Dict[int, List[date]] = {}
+        self._injury_counts_by_team_date: Dict[tuple, int] = {}
+
+    def warm_cache(self, team_ids: List[int], matches: List) -> None:
+        """
+        Bulk-load everything H2H/context/odds/injury features need for
+        this batch of matches, once — see TeamFeatureBuilder.warm_cache
+        for why. `matches` must already be select_related('odds') so odds
+        come for free from what build_training_dataset already fetched,
+        no extra query.
+        """
+        from apps.teams.models import TeamInjury
+
+        self.team_builder.warm_cache(team_ids)
+
+        self._odds_by_match_id = {}
+        for m in matches:
+            try:
+                if m.odds:
+                    self._odds_by_match_id[m.id] = m.odds
+            except Exception:
+                pass
+
+        injuries = list(
+            TeamInjury.objects.filter(team_id__in=team_ids).values('team_id', 'as_of_date')
+        )
+        counts = defaultdict(int)
+        for i in injuries:
+            counts[(i['team_id'], i['as_of_date'])] += 1
+        self._injury_counts_by_team_date = dict(counts)
+
+        dates_by_team = defaultdict(set)
+        for team_id, as_of_date in self._injury_counts_by_team_date:
+            dates_by_team[team_id].add(as_of_date)
+        self._injury_dates_by_team = {
+            team_id: sorted(dates) for team_id, dates in dates_by_team.items()
+        }
+
+        self._warmed = True
 
     def build_features(
         self,
@@ -46,7 +89,8 @@ class MatchFeatureBuilder:
         match_date: date,
         season_code: Optional[str] = None,
         include_odds: bool = True,
-        include_ai_signals: bool = False
+        include_ai_signals: bool = False,
+        match_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """
         Build complete feature vector for a match.
@@ -57,6 +101,9 @@ class MatchFeatureBuilder:
             match_date: Date of the match
             season_code: Optional season filter
             include_odds: Whether to include betting odds features
+            match_id: Optional — when the caller already has the Match row
+                (e.g. the training loop), passing its id lets odds come
+                from the warmed cache instead of a redundant re-query.
 
         Returns:
             Dict of feature name -> value
@@ -106,7 +153,7 @@ class MatchFeatureBuilder:
         # Odds-based features (if available)
         if include_odds:
             odds_features = self._get_odds_features(
-                home_team_id, away_team_id, match_date
+                home_team_id, away_team_id, match_date, match_id=match_id
             )
             features.update(odds_features)
 
@@ -172,14 +219,22 @@ class MatchFeatureBuilder:
         from apps.matches.models import Match
 
         # Get previous meetings
-        h2h_matches = Match.objects.filter(
-            Q(home_team_id=home_team_id, away_team_id=away_team_id) |
-            Q(home_team_id=away_team_id, away_team_id=home_team_id),
-            match_date__lt=as_of_date,
-            status=Match.Status.FINISHED,
-        ).order_by('-match_date')[:limit]
+        if self._warmed:
+            team_matches = self.team_builder._matches_by_team.get(home_team_id, [])
+            h2h_matches = [
+                m for m in team_matches
+                if m.match_date < as_of_date
+                and (m.home_team_id == away_team_id or m.away_team_id == away_team_id)
+            ][-limit:][::-1]
+        else:
+            h2h_matches = list(Match.objects.filter(
+                Q(home_team_id=home_team_id, away_team_id=away_team_id) |
+                Q(home_team_id=away_team_id, away_team_id=home_team_id),
+                match_date__lt=as_of_date,
+                status=Match.Status.FINISHED,
+            ).order_by('-match_date')[:limit])
 
-        if not h2h_matches.exists():
+        if not h2h_matches:
             return {
                 'h2h_matches': 0,
                 'h2h_home_wins': 0.0,
@@ -215,7 +270,7 @@ class MatchFeatureBuilder:
             else:
                 draws += 1
 
-        n = h2h_matches.count()
+        n = len(h2h_matches)
         return {
             'h2h_matches': n,
             'h2h_home_wins': home_wins / n,
@@ -242,25 +297,25 @@ class MatchFeatureBuilder:
 
         features = {}
 
-        # Rest days for home team
-        home_last_match = Match.objects.filter(
-            Q(home_team_id=home_team_id) | Q(away_team_id=home_team_id),
-            match_date__lt=match_date,
-            status=Match.Status.FINISHED,
-        ).order_by('-match_date').first()
+        def last_match_before(team_id):
+            if self._warmed:
+                recent = self.team_builder._recent_matches_from_cache(team_id, match_date, limit=1)
+                return recent[0] if recent else None
+            return Match.objects.filter(
+                Q(home_team_id=team_id) | Q(away_team_id=team_id),
+                match_date__lt=match_date,
+                status=Match.Status.FINISHED,
+            ).order_by('-match_date').first()
 
+        # Rest days for home team
+        home_last_match = last_match_before(home_team_id)
         if home_last_match:
             home_rest = (match_date - home_last_match.match_date).days
         else:
             home_rest = 7  # Default
 
         # Rest days for away team
-        away_last_match = Match.objects.filter(
-            Q(home_team_id=away_team_id) | Q(away_team_id=away_team_id),
-            match_date__lt=match_date,
-            status=Match.Status.FINISHED,
-        ).order_by('-match_date').first()
-
+        away_last_match = last_match_before(away_team_id)
         if away_last_match:
             away_rest = (match_date - away_last_match.match_date).days
         else:
@@ -284,7 +339,8 @@ class MatchFeatureBuilder:
         self,
         home_team_id: int,
         away_team_id: int,
-        match_date: date
+        match_date: date,
+        match_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """
         Get betting odds features (implied probabilities).
@@ -295,13 +351,15 @@ class MatchFeatureBuilder:
         from apps.matches.models import Match, MatchOdds
 
         try:
-            match = Match.objects.get(
-                home_team_id=home_team_id,
-                away_team_id=away_team_id,
-                match_date=match_date,
-            )
-
-            odds = MatchOdds.objects.filter(match=match).first()
+            if self._warmed and match_id is not None:
+                odds = self._odds_by_match_id.get(match_id)
+            else:
+                match = Match.objects.get(
+                    home_team_id=home_team_id,
+                    away_team_id=away_team_id,
+                    match_date=match_date,
+                )
+                odds = MatchOdds.objects.filter(match=match).first()
 
             if odds:
                 # Convert odds to implied probabilities
@@ -357,6 +415,14 @@ class MatchFeatureBuilder:
         from apps.teams.models import TeamInjury
 
         def count_for(team_id: int) -> float:
+            if self._warmed:
+                dates = self._injury_dates_by_team.get(team_id, [])
+                idx = bisect.bisect_right(dates, match_date) - 1
+                if idx < 0:
+                    return 0.0
+                latest = dates[idx]
+                return float(self._injury_counts_by_team_date.get((team_id, latest), 0))
+
             latest = TeamInjury.objects.filter(
                 team_id=team_id, as_of_date__lte=match_date
             ).order_by('-as_of_date').values_list('as_of_date', flat=True).first()
@@ -444,7 +510,7 @@ class MatchFeatureBuilder:
         matches_query = Match.objects.filter(
             season__code__in=season_codes,
             status=Match.Status.FINISHED,
-        ).select_related('home_team', 'away_team', 'season')
+        ).select_related('home_team', 'away_team', 'season', 'odds')
 
         if league_codes:
             matches_query = matches_query.filter(
@@ -453,6 +519,13 @@ class MatchFeatureBuilder:
 
         matches = list(matches_query.order_by('match_date'))
         logger.info(f"Found {len(matches)} matches")
+
+        team_ids = set()
+        for m in matches:
+            team_ids.add(m.home_team_id)
+            team_ids.add(m.away_team_id)
+        self.warm_cache(team_ids, matches)
+        logger.info(f"Warmed cache for {len(team_ids)} teams")
 
         features_list = []
         results = []
@@ -467,7 +540,8 @@ class MatchFeatureBuilder:
                     match_date=match.match_date,
                     season_code=match.season.code,
                     include_odds=True,
-                    include_ai_signals=include_ai_signals
+                    include_ai_signals=include_ai_signals,
+                    match_id=match.id,
                 )
 
                 if features:
@@ -498,5 +572,9 @@ class MatchFeatureBuilder:
         return df, pd.Series(results), pd.Series(total_goals)
 
     def clear_cache(self):
-        """Clear the feature cache."""
+        """Clear the feature cache, including anything warm_cache loaded."""
         self._cache.clear()
+        self._warmed = False
+        self._odds_by_match_id = {}
+        self._injury_dates_by_team = {}
+        self._injury_counts_by_team_date = {}

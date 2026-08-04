@@ -7,7 +7,9 @@ Extracts features for teams including:
 - xG-based metrics
 - Home/Away splits
 """
+import bisect
 import logging
+from collections import defaultdict
 from typing import Dict, List, Optional, Any
 from datetime import date, timedelta
 from decimal import Decimal
@@ -33,6 +35,74 @@ class TeamFeatureBuilder:
     def __init__(self):
         """Initialize the feature builder."""
         self._cache = {}
+        self._warmed = False
+        self._matches_by_team: Dict[int, List] = {}
+        self._match_dates_by_team: Dict[int, List[date]] = {}
+        self._season_stats_by_team_season: Dict[tuple, Any] = {}
+        self._season_stats_latest_by_team: Dict[int, Any] = {}
+
+    def warm_cache(self, team_ids: List[int]) -> None:
+        """
+        Bulk-load everything build_features() would otherwise query per
+        (team, as_of_date) call — recent matches and season stats — for
+        the given teams, once. Training loops over thousands of matches
+        were each triggering their own DB round trips per team per match
+        (15-40+ queries/match with the H2H/context/odds/injury lookups in
+        MatchFeatureBuilder on top), which is why training any scope
+        beyond a single league/season timed out on Lambda's 900s ceiling.
+        After this, _get_recent_matches/_get_season_stats serve from
+        memory. Single-match inference (predict_match) doesn't call this
+        and keeps using the original per-call DB path — warming the cache
+        for one match isn't worth it.
+        """
+        from apps.matches.models import Match
+        from apps.teams.models import TeamSeasonStats
+
+        team_ids = set(team_ids)
+
+        matches = list(
+            Match.objects.filter(
+                Q(home_team_id__in=team_ids) | Q(away_team_id__in=team_ids),
+                status=Match.Status.FINISHED,
+            )
+            .select_related('statistics')
+            .order_by('match_date')
+        )
+
+        self._matches_by_team = defaultdict(list)
+        for m in matches:
+            if m.home_team_id in team_ids:
+                self._matches_by_team[m.home_team_id].append(m)
+            if m.away_team_id in team_ids:
+                self._matches_by_team[m.away_team_id].append(m)
+
+        self._match_dates_by_team = {
+            team_id: [m.match_date for m in team_matches]
+            for team_id, team_matches in self._matches_by_team.items()
+        }
+
+        stats_list = list(
+            TeamSeasonStats.objects.filter(team_id__in=team_ids).select_related('season')
+        )
+        self._season_stats_by_team_season = {
+            (s.team_id, s.season.code): s for s in stats_list
+        }
+        by_team = defaultdict(list)
+        for s in stats_list:
+            by_team[s.team_id].append(s)
+        self._season_stats_latest_by_team = {
+            team_id: max(team_stats, key=lambda s: s.season.code)
+            for team_id, team_stats in by_team.items()
+        }
+
+        self._warmed = True
+
+    def _recent_matches_from_cache(self, team_id: int, as_of_date: date, limit: int) -> List:
+        """Slice of this team's warmed match list strictly before as_of_date, most-recent-first."""
+        dates = self._match_dates_by_team.get(team_id, [])
+        idx = bisect.bisect_left(dates, as_of_date)
+        recent = self._matches_by_team[team_id][max(0, idx - limit):idx]
+        return list(reversed(recent))
 
     def build_features(
         self,
@@ -109,6 +179,9 @@ class TeamFeatureBuilder:
         limit: int = 10
     ) -> List:
         """Get recent finished matches for a team."""
+        if self._warmed:
+            return self._recent_matches_from_cache(team.id, as_of_date, limit)
+
         from apps.matches.models import Match
 
         matches = Match.objects.filter(
@@ -216,7 +289,12 @@ class TeamFeatureBuilder:
         from apps.leagues.models import Season
 
         try:
-            if season_code:
+            if self._warmed:
+                if season_code:
+                    stats = self._season_stats_by_team_season.get((team.id, season_code))
+                else:
+                    stats = self._season_stats_latest_by_team.get(team.id)
+            elif season_code:
                 stats = TeamSeasonStats.objects.get(
                     team=team,
                     season__code=season_code
@@ -340,5 +418,10 @@ class TeamFeatureBuilder:
         }
 
     def clear_cache(self):
-        """Clear the feature cache."""
+        """Clear the feature cache, including anything warm_cache loaded."""
         self._cache.clear()
+        self._warmed = False
+        self._matches_by_team = {}
+        self._match_dates_by_team = {}
+        self._season_stats_by_team_season = {}
+        self._season_stats_latest_by_team = {}
