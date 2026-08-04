@@ -375,7 +375,7 @@ Resources:
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
-          DEFAULT_AI_PROVIDER: openai
+          DEFAULT_AI_PROVIDER: anthropic
           MANAGE_FUNCTION_NAME: !Ref ManageFunction
       Events:
         Root:
@@ -426,7 +426,7 @@ Resources:
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
-          DEFAULT_AI_PROVIDER: openai
+          DEFAULT_AI_PROVIDER: anthropic
 
   RestApi:
     Type: AWS::Serverless::Api
