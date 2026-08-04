@@ -35,7 +35,7 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
     try {
       await generateMutation.mutateAsync({
         prediction_id: predictionId,
-        provider: 'openai',
+        provider: 'anthropic',
         include_rag: true,
       });
     } catch (error) {

@@ -68,7 +68,7 @@ class AIRecommendationService:
     # Default models per provider
     MODELS = {
         'openai': 'gpt-3.5-turbo',  # Using 3.5-turbo for faster response and lower memory usage
-        'anthropic': 'claude-3-sonnet-20240229',
+        'anthropic': 'claude-sonnet-5',
         'google': 'gemini-pro',
     }
 

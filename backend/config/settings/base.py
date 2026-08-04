@@ -353,7 +353,7 @@ ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 
 # Default AI provider
-DEFAULT_AI_PROVIDER = os.getenv('DEFAULT_AI_PROVIDER', 'openai')
+DEFAULT_AI_PROVIDER = os.getenv('DEFAULT_AI_PROVIDER', 'anthropic')
 
 # RAG Configuration
 RAG_CONFIG = {
