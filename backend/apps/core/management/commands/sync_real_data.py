@@ -141,6 +141,17 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f'Fixtures: {fixtures_created} created, {fixtures_updated} updated')
                 )
                 total_created += fixtures_created
+
+                # Pull final scores for matches that have since kicked off —
+                # without this, a Match row stays status='scheduled' with
+                # no score forever, its prediction never gets validated,
+                # and "accuracy" for anything but old historical seasons
+                # would stay empty even long after real matches are played.
+                self.stdout.write('Syncing recent results from Football-Data.org...')
+                results_created, results_updated = org_provider.sync_results_to_database(days=7)
+                self.stdout.write(
+                    self.style.SUCCESS(f'Results: {results_created} created, {results_updated} updated')
+                )
             else:
                 self.stdout.write(
                     self.style.WARNING('FOOTBALL_DATA_ORG_KEY not configured. Skipping fixture sync.')
@@ -156,3 +167,11 @@ class Command(BaseCommand):
         self.stdout.write('Generating predictions for matches without results...')
         from django.core.management import call_command
         call_command('generate_predictions', upcoming=True, days=14)
+
+        # Mark predictions correct/incorrect against whatever results the
+        # step above just pulled in. Nothing did this on any schedule
+        # before — results could sync in fine and predictions would still
+        # show as permanently unverified.
+        self.stdout.write('')
+        self.stdout.write('Validating predictions against results...')
+        call_command('generate_predictions', validate=True)
