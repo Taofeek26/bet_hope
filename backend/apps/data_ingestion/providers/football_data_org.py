@@ -372,17 +372,10 @@ class FootballDataOrgProvider:
         created = 0
         updated = 0
 
-        # Get current season code
-        today = date.today()
-        if today.month >= 8:
-            current_season = f"{str(today.year)[2:]}{str(today.year + 1)[2:]}"
-        else:
-            current_season = f"{str(today.year - 1)[2:]}{str(today.year)[2:]}"
-
         with transaction.atomic():
             for match_data in matches:
                 try:
-                    result = self._sync_match(match_data, current_season)
+                    result = self._sync_match(match_data)
                     if result == 'created':
                         created += 1
                     elif result == 'updated':
@@ -394,13 +387,12 @@ class FootballDataOrgProvider:
         logger.info(f"Matches synced: {created} created, {updated} updated")
         return created, updated
 
-    def _sync_match(self, match_data: Dict, season_code: str) -> Optional[str]:
+    def _sync_match(self, match_data: Dict) -> Optional[str]:
         """
         Sync a single match to the database.
 
         Args:
             match_data: Match data from API
-            season_code: Current season code
 
         Returns:
             'created', 'updated', or None
@@ -430,6 +422,25 @@ class FootballDataOrgProvider:
             }
         )
 
+        # Parse date and time
+        utc_date = match_data.get('utcDate', '')
+        if utc_date:
+            match_dt = datetime.fromisoformat(utc_date.replace('Z', '+00:00'))
+            match_date = match_dt.date()
+            kickoff_time = match_dt.time()
+        else:
+            return None
+
+        # Season code from the MATCH's own date, not the sync run's date —
+        # using date.today() here meant fixtures synced in July (still
+        # "2526" by that rule) and the same fixtures synced again in
+        # August (now "2627") landed under two different Season rows,
+        # creating duplicate Match rows for the same real-world fixture.
+        if match_date.month >= 8:
+            season_code = f"{str(match_date.year)[2:]}{str(match_date.year + 1)[2:]}"
+        else:
+            season_code = f"{str(match_date.year - 1)[2:]}{str(match_date.year)[2:]}"
+
         # Get or create season
         season_name = f"20{season_code[:2]}-{season_code[2:]}"
         db_season, _ = Season.objects.get_or_create(
@@ -449,15 +460,6 @@ class FootballDataOrgProvider:
 
         home_team = self._find_or_create_team(home_name, league, home_crest)
         away_team = self._find_or_create_team(away_name, league, away_crest)
-
-        # Parse date and time
-        utc_date = match_data.get('utcDate', '')
-        if utc_date:
-            match_dt = datetime.fromisoformat(utc_date.replace('Z', '+00:00'))
-            match_date = match_dt.date()
-            kickoff_time = match_dt.time()
-        else:
-            return None
 
         # Get score if available
         score = match_data.get('score', {})

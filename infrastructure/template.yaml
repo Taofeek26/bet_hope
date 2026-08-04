@@ -447,12 +447,18 @@ Resources:
   SyncDataSchedule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Daily data sync (fixtures/results), 04:15 UTC — after startup, before training
+      # --fixtures-only, not --fixtures: the latter also re-syncs the ENTIRE
+      # historical dataset (all 20 leagues x every available season) before
+      # touching fixtures at all, which alone blows the 850s budget —
+      # confirmed timing out on this schedule every single day since it was
+      # deployed. Historical results don't change day to day, so there's
+      # nothing to gain from redoing that daily; only fixtures need it.
+      Description: Daily upcoming-fixture sync, 04:15 UTC — after startup, before training
       ScheduleExpression: cron(15 4 * * ? *)
       Targets:
         - Arn: !GetAtt ManageFunction.Arn
           Id: SyncData
-          Input: '{"command": "sync_real_data", "args": ["--fixtures"]}'
+          Input: '{"command": "sync_real_data", "args": ["--fixtures-only"]}'
 
   SyncDataPermission:
     Type: AWS::Lambda::Permission

@@ -354,11 +354,17 @@ class MatchFeatureBuilder:
             if self._warmed and match_id is not None:
                 odds = self._odds_by_match_id.get(match_id)
             else:
-                match = Match.objects.get(
+                # .filter().first(), not .get() — a data-quality bug in the
+                # fixture sync (fixed separately) could produce duplicate
+                # Match rows for the same fixture; this path shouldn't take
+                # the whole prediction down if that ever happens again.
+                match = Match.objects.filter(
                     home_team_id=home_team_id,
                     away_team_id=away_team_id,
                     match_date=match_date,
-                )
+                ).order_by('-id').first()
+                if match is None:
+                    raise Match.DoesNotExist
                 odds = MatchOdds.objects.filter(match=match).first()
 
             if odds:
