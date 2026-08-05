@@ -74,7 +74,7 @@ class AIRecommendationService:
         'google': 'gemini-pro',
         # OpenRouter model slugs are "vendor/model" regardless of which
         # vendor is actually serving the request underneath.
-        'openrouter': 'anthropic/claude-sonnet-4.5',
+        'openrouter': 'anthropic/claude-sonnet-5',
     }
 
     # System prompts
