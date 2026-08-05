@@ -74,7 +74,12 @@ class AIRecommendationService:
         'google': 'gemini-pro',
         # OpenRouter model slugs are "vendor/model" regardless of which
         # vendor is actually serving the request underneath.
-        'openrouter': 'anthropic/claude-sonnet-5',
+        # Only DeepSeek endpoints clear this account's OpenRouter privacy/
+        # data-policy restrictions (Settings > Privacy) — confirmed by
+        # testing Claude, GPT-4o-mini, and 5 other DeepSeek slugs, which
+        # all hit "No endpoints available matching your guardrail
+        # restrictions" even with a healthy account balance.
+        'openrouter': 'deepseek/deepseek-v4-pro',
     }
 
     # System prompts
@@ -357,19 +362,25 @@ REQUIREMENTS:
             return self._call_openai(prompt, model)
 
     def _call_openai(self, prompt: str, model: str) -> Dict[str, Any]:
-        """Call OpenAI API."""
+        """Call OpenAI API (also used for OpenRouter — same request shape)."""
         response = self.client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": self.SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=2000,
+            # Reasoning models routed through OpenRouter (e.g. deepseek-v4-pro)
+            # spend a large chunk of their token budget on internal
+            # chain-of-thought before the visible answer — 359 reasoning
+            # tokens just to say "hi" in 3 words in testing. 2000 was
+            # regularly getting exhausted mid-reasoning, returning an empty
+            # content string. Plain chat models just ignore the headroom.
+            max_tokens=4000,
             temperature=0.7,
         )
 
         return {
-            'content': response.choices[0].message.content,
+            'content': response.choices[0].message.content or '',
             'tokens': response.usage.total_tokens,
         }
 
