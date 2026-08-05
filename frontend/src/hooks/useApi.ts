@@ -2,6 +2,15 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { leaguesApi, teamsApi, matchesApi, predictionsApi, aiApi, syncApi } from '@/lib/api';
+import { useSettings } from '@/contexts/SettingsContext';
+
+// Settings > General > Auto-refresh — when off, disables polling on every
+// hook below that would otherwise refetch on an interval, instead of only
+// controlling a subset (the toggle should mean what it says everywhere).
+function useAutoRefreshInterval(intervalMs: number): number | false {
+  const { settings } = useSettings();
+  return settings.autoRefresh ? intervalMs : false;
+}
 
 // Query keys
 export const queryKeys = {
@@ -149,7 +158,7 @@ export function useUpcomingMatches() {
   return useQuery({
     queryKey: queryKeys.matches.upcoming,
     queryFn: () => matchesApi.getUpcoming(),
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: useAutoRefreshInterval(60000), // Refresh every minute
   });
 }
 
@@ -157,7 +166,7 @@ export function useTodayMatches() {
   return useQuery({
     queryKey: queryKeys.matches.today,
     queryFn: () => matchesApi.getToday(),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: useAutoRefreshInterval(30000), // Refresh every 30 seconds
   });
 }
 
@@ -165,7 +174,7 @@ export function useLiveMatches() {
   return useQuery({
     queryKey: queryKeys.matches.live,
     queryFn: () => matchesApi.getLive(),
-    refetchInterval: 15000, // Refresh every 15 seconds for live matches
+    refetchInterval: useAutoRefreshInterval(15000), // Refresh every 15 seconds for live matches
   });
 }
 
@@ -215,7 +224,7 @@ export function useUpcomingPredictions(
   return useQuery({
     queryKey: [...queryKeys.predictions.upcoming, params],
     queryFn: () => predictionsApi.getUpcoming(params),
-    refetchInterval: 300000, // Refresh every 5 minutes
+    refetchInterval: useAutoRefreshInterval(300000), // Refresh every 5 minutes
   });
 }
 
@@ -237,7 +246,7 @@ export function useDailyPicks(params?: { date?: string }) {
   return useQuery({
     queryKey: [...queryKeys.predictions.dailyPicks, params],
     queryFn: () => predictionsApi.getDailyPicks(params),
-    refetchInterval: 300000,
+    refetchInterval: useAutoRefreshInterval(300000),
   });
 }
 

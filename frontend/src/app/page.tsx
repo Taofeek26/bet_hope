@@ -1,6 +1,8 @@
 'use client';
 
-import { Suspense, useState, useMemo } from 'react';
+import { Suspense, useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSettings } from '@/contexts/SettingsContext';
 import {
   TrendingUp,
   Target,
@@ -63,8 +65,17 @@ function DashboardStats() {
 }
 
 export default function HomePage() {
+  const router = useRouter();
+  const { settings } = useSettings();
   const [selectedDateOffset, setSelectedDateOffset] = useState(0);
   const { data: weeklyAvailability } = useWeeklyAvailability();
+
+  // Settings > General > Default View — "/" is always the entry route, so
+  // this is the one place a preferred landing page can actually apply.
+  useEffect(() => {
+    if (settings.defaultView === 'predictions') router.replace('/predictions');
+    else if (settings.defaultView === 'matches') router.replace('/matches');
+  }, [settings.defaultView, router]);
 
   // Calculate the selected date based on offset
   const today = useMemo(() => {

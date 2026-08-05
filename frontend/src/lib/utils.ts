@@ -43,10 +43,74 @@ export function formatProbability(prob: number, decimals: number = 0) {
   return `${(prob * 100).toFixed(decimals)}%`;
 }
 
-// Format odds
-export function formatOdds(odds: number | null | undefined) {
-  if (!odds) return '-';
+// Format odds — decimal is the raw stored value; fractional/american are
+// derived from it. Settings > Region & Odds > Odds Format controls which.
+export type OddsFormat = 'decimal' | 'fractional' | 'american';
+
+export function formatOdds(odds: number | null | undefined, format: OddsFormat = 'decimal') {
+  if (!odds || odds <= 1) return '-';
+
+  if (format === 'american') {
+    const american = odds >= 2 ? (odds - 1) * 100 : -100 / (odds - 1);
+    return american > 0 ? `+${Math.round(american)}` : `${Math.round(american)}`;
+  }
+
+  if (format === 'fractional') {
+    const decimalPart = odds - 1;
+    // Approximate as a fraction with a denominator up to 100 — good enough
+    // for display; betting fractional odds are conventionally simplified,
+    // but exact simplification isn't worth the complexity here.
+    let bestNum = 1;
+    let bestDen = 1;
+    let bestErr = Infinity;
+    for (let den = 1; den <= 100; den++) {
+      const num = Math.round(decimalPart * den);
+      if (num < 1) continue;
+      const err = Math.abs(num / den - decimalPart);
+      if (err < bestErr) {
+        bestErr = err;
+        bestNum = num;
+        bestDen = den;
+        if (err < 0.001) break;
+      }
+    }
+    const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+    const g = gcd(bestNum, bestDen);
+    return `${bestNum / g}/${bestDen / g}`;
+  }
+
   return odds.toFixed(2);
+}
+
+// Date format — Settings > Region & Odds > Date Format.
+export type DateFormatPreset = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+
+const DATE_FORMAT_PATTERNS: Record<DateFormatPreset, string> = {
+  'DD/MM/YYYY': 'dd/MM/yyyy',
+  'MM/DD/YYYY': 'MM/dd/yyyy',
+  'YYYY-MM-DD': 'yyyy-MM-dd',
+};
+
+export function formatDateWithPreset(date: string | Date, preset: DateFormatPreset) {
+  const d = typeof date === 'string' ? parseISO(date) : date;
+  return format(d, DATE_FORMAT_PATTERNS[preset]);
+}
+
+// Timezone-aware time formatting — Settings > Region & Odds > Timezone.
+// 'local' uses the browser's own zone (Intl default); anything else is an
+// explicit IANA zone name.
+export function formatTimeInZone(date: string | Date, timezone: string) {
+  const d = typeof date === 'string' ? parseISO(date) : date;
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: timezone === 'local' ? undefined : timezone,
+    }).format(d);
+  } catch {
+    return formatTime(typeof date === 'string' ? date : date.toISOString());
+  }
 }
 
 // Get result color class

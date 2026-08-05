@@ -22,22 +22,26 @@ module.exports = {
           2: '#7DD3FC',  // Lighter sky blue
           3: '#BAE6FD',  // Lightest sky blue
         },
-        // Page backgrounds (dark theme)
-        page: '#030303',
-        card: '#0A0A0A',
-        surface: '#111111',
-        input: '#1A1A1A',
+        // Page backgrounds — CSS variables (not literal hex) so the
+        // Settings > Appearance > Theme control can actually flip these at
+        // runtime via [data-theme="light"] in globals.css, instead of every
+        // bg-page/text-text-muted/etc. class being permanently baked to
+        // dark-mode hex at build time.
+        page: 'var(--page)',
+        card: 'var(--card)',
+        surface: 'var(--surface)',
+        input: 'var(--input)',
         // Borders
         border: {
-          DEFAULT: '#222222',
-          dim: '#1A1A1A',
-          bright: '#333333',
+          DEFAULT: 'var(--border)',
+          dim: 'var(--border-dim)',
+          bright: 'var(--border-bright)',
         },
         // Text
         text: {
-          DEFAULT: '#FFFFFF',
-          secondary: '#A3A3A3',
-          muted: '#666666',
+          DEFAULT: 'var(--text)',
+          secondary: 'var(--text-sec)',
+          muted: 'var(--text-muted)',
         },
         // Primary - Sky Blue
         primary: {
@@ -77,9 +81,9 @@ module.exports = {
         info: '#7DD3FC',
         // Background
         background: {
-          DEFAULT: '#030303',
-          secondary: '#0A0A0A',
-          tertiary: '#111111',
+          DEFAULT: 'var(--page)',
+          secondary: 'var(--card)',
+          tertiary: 'var(--surface)',
         },
       },
       fontFamily: {

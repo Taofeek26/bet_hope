@@ -40,6 +40,51 @@
     --radius: 0.5rem;
   }
 
+  /* Settings > Appearance > Theme sets this via SettingsContext. Overrides
+     the same tokens tailwind.config.js's colors now point at, so every
+     existing bg-page/text-text-muted/border-border/etc. class in the app
+     flips automatically — no per-component light-mode variants needed. */
+  :root[data-theme="light"] {
+    --page: #FAFAFA;
+    --card: #FFFFFF;
+    --surface: #F5F5F5;
+    --input: #EFEFEF;
+
+    --border: #E2E2E2;
+    --border-dim: #ECECEC;
+    --border-bright: #CFCFCF;
+
+    --text: #0A0A0A;
+    --text-sec: #4B4B4B;
+    --text-muted: #8A8A8A;
+  }
+
+  /* Settings > Appearance > Compact Mode */
+  :root.compact {
+    --content-padding: 16px;
+  }
+  :root.compact .card,
+  :root.compact .blueprint.elev-sm {
+    padding: 14px;
+  }
+  :root.compact .content-header {
+    margin-bottom: 16px;
+  }
+  :root.compact .card-title {
+    font-size: 0.95rem;
+  }
+
+  /* Settings > Appearance > Show Animations (off) — kills CSS transitions
+     app-wide; Framer Motion usages are gated separately via
+     useReducedMotionSetting() since motion.div doesn't use CSS transitions. */
+  :root.no-animations *,
+  :root.no-animations *::before,
+  :root.no-animations *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
   * {
     box-sizing: border-box;
     margin: 0;

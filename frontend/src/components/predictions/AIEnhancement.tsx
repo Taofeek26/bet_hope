@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAIRecommendation, useGenerateAIRecommendation } from '@/hooks/useApi';
+import { usePredictionHistory } from '@/hooks/usePredictionHistory';
 import type { AIRecommendationResponse } from '@/types';
 
 interface AIEnhancementProps {
@@ -25,6 +26,7 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
 
   // Generate new recommendation
   const generateMutation = useGenerateAIRecommendation();
+  const { record: recordPredictionView } = usePredictionHistory();
 
   const recommendation = existingRecommendation as AIRecommendationResponse | undefined;
   const hasExisting = !!recommendation && !existingError;
@@ -32,6 +34,7 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
   const handleGenerate = async () => {
     setHasGenerated(true);
     setIsExpanded(true);
+    recordPredictionView(predictionId, matchInfo?.homeTeam, matchInfo?.awayTeam);
     try {
       await generateMutation.mutateAsync({
         prediction_id: predictionId,

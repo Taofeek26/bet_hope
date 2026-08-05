@@ -6,6 +6,8 @@ import { matchesApi, leaguesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useState } from 'react';
 import Link from 'next/link';
+import { formatDateWithPreset } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchesPage() {
   const [view, setView] = useState<'upcoming' | 'live' | 'results'>('upcoming');
@@ -153,6 +155,7 @@ export default function MatchesPage() {
 }
 
 function MatchCard({ match }: { match: any }) {
+  const { settings } = useSettings();
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
 
@@ -208,7 +211,9 @@ function MatchCard({ match }: { match: any }) {
             <div className="badge badge-live text-[10px] sm:text-xs">LIVE</div>
           ) : (
             <div className="text-xs sm:text-sm text-text-muted">
-              <div className="truncate">{match.kickoff_time || match.match_date || 'TBD'}</div>
+              <div className="truncate">
+                {match.kickoff_time || (match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD')}
+              </div>
               {leagueName && <div className="text-[10px] sm:text-xs truncate max-w-[80px] sm:max-w-none">{leagueName}</div>}
             </div>
           )}

@@ -6,7 +6,8 @@ import { TrendingUp, Filter, Calendar, RefreshCw, CheckCircle, Clock, XCircle, C
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSettings } from '@/contexts/SettingsContext';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -28,8 +29,10 @@ function formatDateDisplay(date: Date, today: Date): string {
 }
 
 export default function PredictionsPage() {
+  const { settings } = useSettings();
   const [filter, setFilter] = useState('all');
   const [selectedDateOffset, setSelectedDateOffset] = useState(0);
+  const [page, setPage] = useState(1);
 
   // Calculate dates
   const today = useMemo(() => {
@@ -84,6 +87,18 @@ export default function PredictionsPage() {
 
     return results;
   }, [data, filter]);
+
+  // Settings > General > Predictions Per Page
+  useEffect(() => {
+    setPage(1);
+  }, [filter, selectedDateStr]);
+
+  const perPage = settings.predictionsPerPage;
+  const totalPages = Math.max(1, Math.ceil(predictions.length / perPage));
+  const pagedPredictions = useMemo(
+    () => predictions.slice((page - 1) * perPage, page * perPage),
+    [predictions, page, perPage]
+  );
 
   return (
     <>
@@ -178,17 +193,45 @@ export default function PredictionsPage() {
       ) : predictions.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="space-y-3">
-          {predictions.map((prediction: any, index: number) => (
-            <PredictionCard key={prediction.id} prediction={prediction} index={index} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {pagedPredictions.map((prediction: any, index: number) => (
+              <PredictionCard key={prediction.id} prediction={prediction} index={index} />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6">
+              <p className="text-xs text-text-muted">
+                Showing {(page - 1) * perPage + 1}-{Math.min(page * perPage, predictions.length)} of {predictions.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs text-text-muted">Page {page} of {totalPages}</span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="btn btn-secondary btn-sm p-1 disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </>
   );
 }
 
 function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: number }) {
+  const { settings } = useSettings();
   const probs = prediction.probabilities || {};
   const homeProb = probs.home || 0.33;
   const drawProb = probs.draw || 0.33;
@@ -202,9 +245,9 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={settings.showAnimations ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: Math.min(index, 8) * 0.03 }}
+      transition={settings.showAnimations ? { duration: 0.25, delay: Math.min(index, 8) * 0.03 } : { duration: 0 }}
       className={`blueprint elev-sm ${isFinished ? hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : 'border-l-4 border-l-text-muted/30' : ''}`}>
       <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
       <div className="flex items-center justify-between mb-4">

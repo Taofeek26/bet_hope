@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Target, TrendingUp, AlertCircle, Clock, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { formatOdds } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -25,6 +27,7 @@ function formatDateDisplay(date: Date, today: Date): string {
 }
 
 export default function ValueBetsPage() {
+  const { settings } = useSettings();
   const [selectedDateOffset, setSelectedDateOffset] = useState(0);
   const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
 
@@ -212,7 +215,10 @@ export default function ValueBetsPage() {
         <div className="stat-card">
           <div className="stat-value">
             {filteredBets.length > 0
-              ? (filteredBets.reduce((sum: number, b: any) => sum + (b.odds || 0), 0) / filteredBets.length).toFixed(2)
+              ? formatOdds(
+                  filteredBets.reduce((sum: number, b: any) => sum + (b.odds || 0), 0) / filteredBets.length,
+                  settings.oddsFormat
+                )
               : '--'}
           </div>
           <div className="stat-label">Avg Odds</div>
@@ -264,6 +270,7 @@ export default function ValueBetsPage() {
 }
 
 function ValueBetCard({ bet }: { bet: any }) {
+  const { settings } = useSettings();
   const edge = bet.edge || 0;
   const isStrong = bet.rating === 'strong' || edge > 0.1;
   const isModerate = !isStrong && edge > 0.05;
@@ -353,7 +360,7 @@ function ValueBetCard({ bet }: { bet: any }) {
         </div>
         <div className="text-center">
           <div className="text-xs text-text-muted mb-1">Market Odds</div>
-          <div className="font-semibold text-text">{(bet.odds || 0).toFixed(2)}</div>
+          <div className="font-semibold text-text">{formatOdds(bet.odds, settings.oddsFormat)}</div>
         </div>
         <div className="text-center">
           <div className="text-xs text-text-muted mb-1">Edge</div>
