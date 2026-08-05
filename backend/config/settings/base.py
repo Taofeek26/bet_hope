@@ -348,12 +348,13 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 
 # Anthropic (Claude)
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 
 # Google (Gemini)
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 
 # Default AI provider
-DEFAULT_AI_PROVIDER = os.getenv('DEFAULT_AI_PROVIDER', 'anthropic')
+DEFAULT_AI_PROVIDER = os.getenv('DEFAULT_AI_PROVIDER', 'openrouter')
 
 # RAG Configuration
 RAG_CONFIG = {

@@ -5,6 +5,7 @@ Generates AI-powered recommendations using multiple LLM providers:
 - OpenAI (GPT-4, GPT-3.5)
 - Anthropic (Claude)
 - Google (Gemini)
+- OpenRouter (routes to Claude/GPT/etc. through one key + one API shape)
 
 Uses RAG context for enhanced recommendations.
 """
@@ -44,6 +45,7 @@ class AIProvider(str, Enum):
     OPENAI = 'openai'
     ANTHROPIC = 'anthropic'
     GOOGLE = 'google'
+    OPENROUTER = 'openrouter'
 
 
 @dataclass
@@ -70,6 +72,9 @@ class AIRecommendationService:
         'openai': 'gpt-3.5-turbo',  # Using 3.5-turbo for faster response and lower memory usage
         'anthropic': 'claude-sonnet-5',
         'google': 'gemini-pro',
+        # OpenRouter model slugs are "vendor/model" regardless of which
+        # vendor is actually serving the request underneath.
+        'openrouter': 'anthropic/claude-sonnet-4.5',
     }
 
     # System prompts
@@ -122,6 +127,10 @@ RULES:
             raise ImportError("Anthropic not available. Install with: pip install anthropic")
         if self.provider == 'google' and not GOOGLE_AVAILABLE:
             raise ImportError("Google AI not available. Install with: pip install google-generativeai")
+        # OpenRouter speaks the OpenAI Chat Completions API — same package,
+        # different base_url, so it rides on the same availability check.
+        if self.provider == 'openrouter' and not OPENAI_AVAILABLE:
+            raise ImportError("OpenAI package not available (required for OpenRouter too). Install with: pip install openai")
 
     def _init_clients(self):
         """Initialize AI clients."""
@@ -136,6 +145,11 @@ RULES:
         elif self.provider == 'google':
             genai.configure(api_key=getattr(settings, 'GOOGLE_API_KEY', None))
             self.client = genai.GenerativeModel(self.MODELS['google'])
+        elif self.provider == 'openrouter':
+            self.client = openai.OpenAI(
+                api_key=getattr(settings, 'OPENROUTER_API_KEY', None),
+                base_url='https://openrouter.ai/api/v1',
+            )
 
     def generate_recommendation(
         self,
@@ -337,6 +351,10 @@ REQUIREMENTS:
             return self._call_anthropic(prompt, model)
         elif self.provider == 'google':
             return self._call_google(prompt, model)
+        elif self.provider == 'openrouter':
+            # OpenRouter is Chat-Completions-API-compatible, same request
+            # shape as OpenAI — no separate call method needed.
+            return self._call_openai(prompt, model)
 
     def _call_openai(self, prompt: str, model: str) -> Dict[str, Any]:
         """Call OpenAI API."""
@@ -520,4 +538,6 @@ REQUIREMENTS:
             providers.append('anthropic')
         if GOOGLE_AVAILABLE and getattr(settings, 'GOOGLE_API_KEY', None):
             providers.append('google')
+        if OPENAI_AVAILABLE and getattr(settings, 'OPENROUTER_API_KEY', None):
+            providers.append('openrouter')
         return providers

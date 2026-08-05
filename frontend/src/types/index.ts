@@ -202,7 +202,7 @@ export type FormResult = 'W' | 'D' | 'L';
 export interface AIRecommendation {
   id: number;
   prediction_id: number;
-  provider: 'openai' | 'anthropic' | 'google';
+  provider: 'openai' | 'anthropic' | 'google' | 'openrouter';
   model: string;
   recommendation: string;
   confidence_assessment: string;

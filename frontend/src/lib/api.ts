@@ -267,7 +267,7 @@ export const aiApi = {
 
   generate: async (params: {
     prediction_id: number;
-    provider?: 'openai' | 'anthropic' | 'google';
+    provider?: 'openai' | 'anthropic' | 'google' | 'openrouter';
     include_rag?: boolean;
   }) => {
     // AI generation can take up to 60 seconds due to OpenAI API calls

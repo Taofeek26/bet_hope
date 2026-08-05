@@ -38,7 +38,7 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
     try {
       await generateMutation.mutateAsync({
         prediction_id: predictionId,
-        provider: 'anthropic',
+        provider: 'openrouter',
         include_rag: true,
       });
     } catch (error) {

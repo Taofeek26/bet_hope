@@ -304,7 +304,7 @@ export function useGenerateAIRecommendation() {
   return useMutation({
     mutationFn: (params: {
       prediction_id: number;
-      provider?: 'openai' | 'anthropic' | 'google';
+      provider?: 'openai' | 'anthropic' | 'google' | 'openrouter';
       include_rag?: boolean;
     }) => aiApi.generate(params),
     onSuccess: (_, variables) => {

@@ -64,6 +64,11 @@ Parameters:
     NoEcho: true
     Default: ""
 
+  OpenRouterApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
 Resources:
   # ==========================================================================
   # NETWORKING — dedicated VPC (not the account default) so we control
@@ -375,7 +380,8 @@ Resources:
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
-          DEFAULT_AI_PROVIDER: anthropic
+          OPENROUTER_API_KEY: !Ref OpenRouterApiKey
+          DEFAULT_AI_PROVIDER: openrouter
           MANAGE_FUNCTION_NAME: !Ref ManageFunction
       Events:
         Root:
@@ -426,7 +432,8 @@ Resources:
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
-          DEFAULT_AI_PROVIDER: anthropic
+          OPENROUTER_API_KEY: !Ref OpenRouterApiKey
+          DEFAULT_AI_PROVIDER: openrouter
 
   RestApi:
     Type: AWS::Serverless::Api

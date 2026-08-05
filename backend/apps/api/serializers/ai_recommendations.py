@@ -71,8 +71,8 @@ class AIRecommendationRequestSerializer(serializers.Serializer):
 
     prediction_id = serializers.IntegerField()
     provider = serializers.ChoiceField(
-        choices=['openai', 'anthropic', 'google'],
-        default='anthropic'
+        choices=['openai', 'anthropic', 'google', 'openrouter'],
+        default='openrouter'
     )
     include_rag = serializers.BooleanField(default=True)
 
