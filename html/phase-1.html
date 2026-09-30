@@ -35,7 +35,7 @@
       <tr><td>Code changes (backend, frontend, template)</td><td><span class="st ok">Done</span> Live since Phase 0 (image <code>11a47c9</code>)</td></tr>
       <tr><td>Step 1: create the Neon database</td><td><span class="st ok">Done</span> 30 Sep, by you</td></tr>
       <tr><td>Steps 2–6: build image, copy data, switch the app (stage 1)</td><td><span class="st ok">Done 30 Sep 11:01–11:10 UTC</span> See <a href="#stage1-log">stage 1 record</a></td></tr>
-      <tr><td>Step 7: remove VPC, NAT and RDS (stage 2)</td><td><span class="st none">Waiting</span> Run on or after 1 Oct, with your OK</td></tr>
+      <tr><td>Step 7: remove VPC, NAT and RDS (stage 2)</td><td><span class="st ok">Done 30 Sep 11:22–11:40 UTC</span> See <a href="#stage2-log">stage 2 record</a></td></tr>
     </tbody>
   </table></div>
   <div class="callout">Phase 1 comes after <a href="phase-0.html">Phase 0</a>. The rate limits, locked endpoints, ECR clean-up and log retention are recorded there. Deploying the app code for both phases can happen in one image build (see Phase 0 → Deploy). This phase adds the infrastructure switch.</div>
@@ -327,6 +327,26 @@ aws ec2 describe-addresses --query 'Addresses[?AssociationId==null].[PublicIp,Al
       <tr><td>S13</td><td>CloudWatch <code>AWS/RDS DatabaseConnections</code> for <code>bet-hope-dbinstance-…</code></td><td>1–2 connections 10:50–11:05 (the size check, the copy, and traffic before the switch). Per minute afterwards: 1 until 11:07, then <strong>0 from 11:08</strong> (the last pre-switch containers retired), so nothing uses RDS any more.</td></tr>
     </tbody>
   </table></div>
+
+
+  <h2 id="stage2-log">Stage 2 record (30 Sep 2026)</h2>
+  <p><strong>Decision:</strong> stage 2 ran the same day instead of after 1–3 days. The waiting period had two purposes, both covered sooner. (1) Proof the app no longer needed RDS or the NAT: RDS showed 0 connections from 11:08, and the "evening" simulation below. (2) Time for Lambda to release its VPC network interfaces: already gone by 11:25. The final snapshot replaces the rollback copy. You approved it at 11:30.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command (abridged)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td><code>aws lambda invoke --function-name bet-hope-infra-toggle --payload '{"action":"stop"}'</code>: the same action the 16:00 UTC schedule runs</td><td>NAT <code>nat-020a50115a499308e</code> deleted, its EIP released, RDS stopping (11:22–11:23)</td></tr>
+      <tr><td>T2</td><td><strong>Evening simulation:</strong> <code>curl</code> /health/, 5 page endpoints and the website; manage <code>generate_predictions</code></td><td>All 200; the job succeeded (108 updated). <strong>The nightly outage is gone.</strong></td></tr>
+      <tr><td>T3</td><td><code>aws ec2 describe-network-interfaces --filters Name=vpc-id,Values=vpc-01f90c4a3810588f7</code></td><td>Only RDS's own interface left; no Lambda interfaces</td></tr>
+      <tr><td>T4</td><td><code>until [ "$(aws rds describe-db-instances … DBInstanceStatus)" = stopped ]; do sleep 20; done</code></td><td>Stopped at 11:31 (deleting a "stopping" instance fails)</td></tr>
+      <tr><td>T5</td><td>Step 6 <code>sam deploy</code> command with <code>LegacyNetwork=remove</code> and <code>--no-execute-changeset</code></td><td>Change set: 26 Delete (RDS, subnet group, VPC, 4 subnets, 2 route tables, route, 4 route associations, internet gateway and its attachment, 2 security groups, toggle function, role, 2 schedules, 2 permissions, static bucket + policy) and 10 Modify (both functions, role, REST API, schedules). The model bucket wasn't touched.</td></tr>
+      <tr><td>T6</td><td><code>aws cloudformation execute-change-set</code>; <code>wait stack-update-complete</code></td><td><code>UPDATE_COMPLETE</code> 11:31:41 → 11:37:57</td></tr>
+      <tr><td>T7</td><td><code>describe-db-instances</code>, <code>describe-db-snapshots --snapshot-type manual</code>, <code>describe-vpcs</code>, <code>describe-nat-gateways</code>, <code>describe-addresses</code>, <code>list-functions</code></td><td>Bet Hope RDS gone; final snapshot <code>bet-hope-snapshot-dbinstance-6tksmz8adfd2</code> (20 GB, available); 0 Bet Hope VPCs; 0 NATs; the only EIP left is rabbithub's; functions are <code>bet-hope-web</code> and <code>bet-hope-manage</code> only</td></tr>
+      <tr><td>T8</td><td><code>aws s3 ls s3://bet-hope-static-294983767092 --recursive</code>; <code>delete-bucket-policy</code>; <code>delete-bucket</code></td><td>0 objects; bucket deleted (AWS refuses if any versions remain, so it was truly empty)</td></tr>
+      <tr><td>T9</td><td><code>curl</code> /health/, leagues, upcoming predictions</td><td>200 / 200 / 200</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><strong>Left on purpose:</strong> the final RDS snapshot. It costs about $0.095/GB-month, so about $1.90/month for 20 GB. Delete it after a month of stable running:
+<pre><code>aws rds delete-db-snapshot --db-snapshot-identifier bet-hope-snapshot-dbinstance-6tksmz8adfd2</code></pre></div>
 
   <h3 id="rotate">Rotate the Neon password (you, then me)</h3>
   <ol>
