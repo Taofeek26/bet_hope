@@ -85,6 +85,16 @@ if os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
 
+    # Rate-limit identity. The API is edge-optimized, so X-Forwarded-For
+    # arrives as "<client>, <CloudFront edge IP>". With NUM_PROXIES unset,
+    # DRF keys throttles on that whole string, and the edge IP changes
+    # between requests, so limits never accumulated (found in the Phase 0
+    # live test). 2 = take the second-to-last address: the real client as
+    # seen by CloudFront. Anything a caller prepends is ignored, so it
+    # can't be spoofed. With a single-entry header (regional API) DRF
+    # falls back to that entry.
+    REST_FRAMEWORK['NUM_PROXIES'] = int(os.getenv('DRF_NUM_PROXIES', '2'))
+
     # Everything under BASE_DIR (/var/task) is read-only at runtime — only
     # /tmp is writable. These are used as scratch/cache dirs (re-downloaded
     # or regenerated each cold start, not meant to persist — anything that
