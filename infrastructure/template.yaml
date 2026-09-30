@@ -2,15 +2,32 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
 Description: >
-  Bet_Hope Fully Serverless Deployment — Lambda (container image, Django
-  via apig-wsgi) + API Gateway REST + RDS Postgres + NAT Gateway.
-  Replaces the earlier EC2/Docker Compose approach. Real monthly cost
-  (~$50-70/mo: RDS db.t4g.micro + NAT Gateway + Lambda + API Gateway) —
-  a deliberate tradeoff, not the cheapest possible option; see
-  docs/AWS_COST_ESTIMATOR.md for the comparison against the EC2 approach.
-  Deploy: sam build && sam deploy --guided
+  Bet_Hope Serverless Deployment — Lambda (container image, Django via
+  apig-wsgi) + API Gateway REST, running OUTSIDE any VPC against an
+  external managed Postgres (Neon/Supabase) given as DatabaseUrl. Phase 1
+  (html/phase-1.html) removed the need for a VPC, NAT Gateway and RDS; the
+  old network + RDS resources are kept only while LegacyNetwork=keep, as a
+  rollback copy, and are deleted by redeploying with LegacyNetwork=remove.
 
 Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: >
+      postgres:// URL of the managed Postgres the Lambdas use (Neon: the
+      POOLED connection string, with ?sslmode=require). Pass with
+      --parameter-overrides, never store in samconfig.toml.
+
+  LegacyNetwork:
+    Type: String
+    AllowedValues: [keep, remove]
+    Default: keep
+    Description: >
+      keep = leave the old VPC, NAT toggle and RDS instance in place
+      (rollback copy, still costs money). remove = delete them (RDS takes
+      a final snapshot first). Switch to remove only after the app has
+      run correctly on DatabaseUrl.
+
   ImageUri:
     Type: String
     Description: >
@@ -26,7 +43,10 @@ Parameters:
     Type: String
     NoEcho: true
     MinLength: 12
-    Description: RDS Postgres password. Pass with --parameter-overrides, never --guided-saved.
+    Description: >
+      Legacy RDS master password. Still required while the RDS instance
+      exists (LegacyNetwork=keep); pass the same value as before so
+      CloudFormation doesn't try to change it.
 
   DjangoSecretKey:
     Type: String
@@ -69,14 +89,20 @@ Parameters:
     NoEcho: true
     Default: ""
 
+Conditions:
+  KeepLegacy: !Equals [!Ref LegacyNetwork, keep]
+
 Resources:
   # ==========================================================================
-  # NETWORKING — dedicated VPC (not the account default) so we control
-  # exactly which subnets are public (IGW) vs private (NAT), since Lambda
-  # needs both RDS access (private) and internet access (via NAT) at once.
+  # LEGACY NETWORKING + RDS (Condition: KeepLegacy)
+  # Every resource from here down to "S3" exists only while
+  # LegacyNetwork=keep. Nothing live uses them any more: both Lambdas run
+  # outside the VPC and connect to DatabaseUrl. They're kept for one
+  # deploy as a rollback copy of the old database, then removed.
   # ==========================================================================
   VPC:
     Type: AWS::EC2::VPC
+    Condition: KeepLegacy
     Properties:
       CidrBlock: 10.0.0.0/16
       EnableDnsSupport: true
@@ -87,6 +113,7 @@ Resources:
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
+    Condition: KeepLegacy
     Properties:
       Tags:
         - Key: Name
@@ -94,12 +121,14 @@ Resources:
 
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
   PublicSubnet1:
     Type: AWS::EC2::Subnet
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
@@ -111,6 +140,7 @@ Resources:
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.2.0/24
@@ -122,6 +152,7 @@ Resources:
 
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.11.0/24
@@ -132,6 +163,7 @@ Resources:
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.12.0/24
@@ -142,6 +174,7 @@ Resources:
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       Tags:
@@ -150,6 +183,7 @@ Resources:
 
   PublicRoute:
     Type: AWS::EC2::Route
+    Condition: KeepLegacy
     DependsOn: VPCGatewayAttachment
     Properties:
       RouteTableId: !Ref PublicRouteTable
@@ -158,12 +192,14 @@ Resources:
 
   PublicSubnet1RouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: KeepLegacy
     Properties:
       SubnetId: !Ref PublicSubnet1
       RouteTableId: !Ref PublicRouteTable
 
   PublicSubnet2RouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: KeepLegacy
     Properties:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
@@ -177,6 +213,7 @@ Resources:
   # by that function, not declared statically here.
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
+    Condition: KeepLegacy
     Properties:
       VpcId: !Ref VPC
       Tags:
@@ -185,18 +222,21 @@ Resources:
 
   PrivateSubnet1RouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: KeepLegacy
     Properties:
       SubnetId: !Ref PrivateSubnet1
       RouteTableId: !Ref PrivateRouteTable
 
   PrivateSubnet2RouteAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: KeepLegacy
     Properties:
       SubnetId: !Ref PrivateSubnet2
       RouteTableId: !Ref PrivateRouteTable
 
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    Condition: KeepLegacy
     Properties:
       GroupDescription: Django Lambda functions - egress only
       VpcId: !Ref VPC
@@ -206,6 +246,7 @@ Resources:
 
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    Condition: KeepLegacy
     Properties:
       GroupDescription: RDS Postgres - only from Lambda
       VpcId: !Ref VPC
@@ -223,6 +264,7 @@ Resources:
   # ==========================================================================
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
+    Condition: KeepLegacy
     Properties:
       DBSubnetGroupDescription: Private subnets for RDS
       SubnetIds:
@@ -231,6 +273,7 @@ Resources:
 
   DBInstance:
     Type: AWS::RDS::DBInstance
+    Condition: KeepLegacy
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
@@ -255,8 +298,14 @@ Resources:
   # ==========================================================================
   # S3 — static/media + ML model storage
   # ==========================================================================
+  # Legacy and unused: static files are baked into the image and served by
+  # WhiteNoise. Retain so a non-empty bucket can't fail the removal deploy;
+  # empty and delete it by hand (commands in html/phase-1.html).
   StaticBucket:
     Type: AWS::S3::Bucket
+    Condition: KeepLegacy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub ${AWS::StackName}-static-${AWS::AccountId}
       PublicAccessBlockConfiguration:
@@ -275,6 +324,7 @@ Resources:
 
   StaticBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: KeepLegacy
     Properties:
       Bucket: !Ref StaticBucket
       PolicyDocument:
@@ -313,9 +363,14 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      # The VPC-access policy stays while the legacy network exists: during
+      # the deploy that detaches the functions from the VPC, Lambda still
+      # needs it to clean up the old network interfaces.
+      ManagedPolicyArns: !If
+        - KeepLegacy
+        - - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: S3Access
           PolicyDocument:
@@ -328,8 +383,6 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !GetAtt StaticBucket.Arn
-                  - !Sub ${StaticBucket.Arn}/*
                   - !GetAtt ModelBucket.Arn
                   - !Sub ${ModelBucket.Arn}/*
         # Lets WebFunction (the Django/API Gateway side) kick off ManageFunction
@@ -361,18 +414,14 @@ Resources:
       MemorySize: 1024
       Timeout: 29
       Role: !GetAtt LambdaExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds:
-          - !Ref PrivateSubnet1
-          - !Ref PrivateSubnet2
+      # No VpcConfig (Phase 1): the database is reached over TLS on the
+      # public internet, so there's no VPC and no NAT Gateway to pay for.
       Environment:
         Variables:
           DJANGO_ENV: production
           DJANGO_SECRET_KEY: !Ref DjangoSecretKey
           DJANGO_ALLOWED_HOSTS: "*"
-          DATABASE_URL: !Sub postgres://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:5432/bet_hope
+          DATABASE_URL: !Ref DatabaseUrl
           CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
           CORS_ALLOWED_ORIGIN_REGEXES: !Ref CorsAllowedOriginRegexes
           S3_MODEL_BUCKET: !Ref ModelBucket
@@ -413,18 +462,12 @@ Resources:
       MemorySize: 2048
       Timeout: 900
       Role: !GetAtt LambdaExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds:
-          - !Ref PrivateSubnet1
-          - !Ref PrivateSubnet2
       Environment:
         Variables:
           DJANGO_ENV: production
           DJANGO_SECRET_KEY: !Ref DjangoSecretKey
           DJANGO_ALLOWED_HOSTS: "*"
-          DATABASE_URL: !Sub postgres://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:5432/bet_hope
+          DATABASE_URL: !Ref DatabaseUrl
           CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
           CORS_ALLOWED_ORIGIN_REGEXES: !Ref CorsAllowedOriginRegexes
           S3_MODEL_BUCKET: !Ref ModelBucket
@@ -446,10 +489,8 @@ Resources:
 
   # ==========================================================================
   # SCHEDULED JOBS — replaces Celery beat (no broker in this architecture)
-  # All fixed cron times below are UTC and deliberately fall inside the
-  # 04:00-16:00 UTC (5am-5pm WAT) window that InfraToggleFunction keeps
-  # NAT Gateway + RDS up for — anything scheduled outside that window would
-  # just fail with the database unreachable.
+  # All times are UTC. They no longer depend on the old 04:00-16:00 UTC
+  # infra window: the external database is available around the clock.
   # ==========================================================================
   SyncDataSchedule:
     Type: AWS::Events::Rule
@@ -520,9 +561,14 @@ Resources:
   # function, using PrivateRouteTable (still CFN-owned) as the one shared
   # handle between the two. Runs outside the VPC (it's calling the EC2/RDS
   # control plane, not the app).
+  # LEGACY (Condition: KeepLegacy): the app no longer needs NAT or RDS. It
+  # only keeps the rollback RDS copy on its old schedule. Before deploying
+  # LegacyNetwork=remove, invoke it with {"action":"stop"} so no NAT/EIP
+  # is left in the VPC (see html/phase-1.html, step 7).
   # ==========================================================================
   InfraToggleRole:
     Type: AWS::IAM::Role
+    Condition: KeepLegacy
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -564,6 +610,7 @@ Resources:
 
   InfraToggleFunction:
     Type: AWS::Serverless::Function
+    Condition: KeepLegacy
     Properties:
       FunctionName: !Sub ${AWS::StackName}-infra-toggle
       Runtime: python3.13
@@ -672,6 +719,7 @@ Resources:
 
   InfraStartSchedule:
     Type: AWS::Events::Rule
+    Condition: KeepLegacy
     Properties:
       Description: Bring up NAT Gateway + RDS, 04:00 UTC (5am WAT)
       ScheduleExpression: cron(0 4 * * ? *)
@@ -682,6 +730,7 @@ Resources:
 
   InfraStartPermission:
     Type: AWS::Lambda::Permission
+    Condition: KeepLegacy
     Properties:
       FunctionName: !Ref InfraToggleFunction
       Action: lambda:InvokeFunction
@@ -690,6 +739,7 @@ Resources:
 
   InfraStopSchedule:
     Type: AWS::Events::Rule
+    Condition: KeepLegacy
     Properties:
       Description: Tear down NAT Gateway + stop RDS, 16:00 UTC (5pm WAT)
       ScheduleExpression: cron(0 16 * * ? *)
@@ -700,6 +750,7 @@ Resources:
 
   InfraStopPermission:
     Type: AWS::Lambda::Permission
+    Condition: KeepLegacy
     Properties:
       FunctionName: !Ref InfraToggleFunction
       Action: lambda:InvokeFunction
@@ -711,9 +762,11 @@ Outputs:
     Description: API Gateway URL
     Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
   DBEndpoint:
-    Description: RDS endpoint
+    Condition: KeepLegacy
+    Description: Legacy RDS endpoint (rollback copy only; the app uses DatabaseUrl)
     Value: !GetAtt DBInstance.Endpoint.Address
   StaticBucket:
+    Condition: KeepLegacy
     Value: !Ref StaticBucket
   ModelBucket:
     Value: !Ref ModelBucket
