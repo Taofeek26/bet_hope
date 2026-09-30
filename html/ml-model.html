@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ML Model Review</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html" class="active">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>The prediction model: why it's inaccurate and how to fix it</h1>
+  <p class="lede">The model type (XGBoost with probability calibration) is a sensible choice. The problems are upstream of it: the model is fed different inputs in production than in training, some training features see the future, and the reported accuracy is measured in a way that overstates it.</p>
+  <p class="meta">Source: <code>backend/apps/ml_pipeline/</code> (features, training, inference), <code>backend/apps/core/management/commands/{train_model,generate_predictions,train_from_export,sync_real_data}.py</code>, <code>backend/models/*/metadata.json</code></p>
+
+  <h2>How the pipeline works today</h2>
+  <div class="panel"><ol>
+    <li><strong>Training data</strong>: finished matches for seasons <code>2526, 2425, 2324, 2223, 2122</code> (the defaults in <code>train_model.py</code>), all leagues.</li>
+    <li><strong>Features</strong> (<code>MatchFeatureBuilder</code>): about 120 columns per match. They cover each team's last 5 and 10 results, venue form, season stats, xG, scoring patterns, head-to-head, rest days, weekend/early/late season flags, bookmaker odds and injuries. Missing values are filled with <code>0</code>.</li>
+    <li><strong>Models</strong> (<code>ModelTrainer</code>): an XGBoost classifier for home/draw/away (200 trees), an XGBoost regressor for total goals, and a classifier for over 2.5 goals. The last 20% (by date) is held out, and the classifiers are calibrated on that same 20%.</li>
+    <li><strong>Saving</strong>: pickles go to <code>/tmp/models/&lt;version&gt;</code> and S3, a <code>ModelVersion</code> row is created with status <code>active</code>, and every other version is archived. This happens with no comparison against the previous model.</li>
+    <li><strong>Predicting</strong> (<code>MatchPredictor</code>): features are rebuilt for each upcoming fixture, then the three models run. <code>generate_predictions</code> stores home/draw/away probabilities, "confidence" (the top probability) and a predicted score.</li>
+  </ol></div>
+
+  <h2 id="accuracy">Measured accuracy vs baselines</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Source</th><th class="num">Home/draw/away accuracy</th><th class="num">Log loss</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>models/20260220_050019</code> (train_model, 120 features)</td><td class="num">49.0%</td><td class="num">1.016</td><td>Calibrated on the same rows it was scored on, so this is optimistic (ML-03)</td></tr>
+      <tr><td><code>models/20260708_073153</code> (train_from_export, 24 features)</td><td class="num">50.1%</td><td class="num">—</td><td>Random, not time-based, split, so optimistic (ML-05)</td></tr>
+      <tr><td>Baseline: always pick the home team</td><td class="num">≈ 43–46%</td><td class="num">—</td><td>Typical for European leagues</td></tr>
+      <tr><td>Baseline: bookmaker favourite</td><td class="num">≈ 50–54%</td><td class="num">≈ 0.96–1.00</td><td>This is the bar to beat</td></tr>
+      <tr><td>Help page claim</td><td class="num">87% (95%+ high-confidence)</td><td class="num">—</td><td>Not achievable for home/draw/away football prediction; remove it</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">A log loss of 1.016 is worse than simply using the bookmaker's implied probabilities. As things stand, the model adds no information over the odds it was trained on. A realistic, well-built target is <strong>52–55% accuracy with log loss at or slightly below the market</strong> on top leagues. Consistently beating the bookmaker, which "value bets" require, is hard and needs odds captured at the moment you would bet.</div>
+
+  <h2>Findings</h2>
+
+  <div class="finding" id="ML-01">
+    <div class="finding-head"><span class="finding-id">ML-01</span><span class="sev crit">Critical</span><span class="finding-title">The model trains with odds on every match but predicts with odds = 0</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>match_features.py</code> <code>_get_odds_features</code>; fixtures come from <code>football_data_org.py</code> (no odds), while <code>FootballDataProvider.sync_fixtures</code> (which has odds) is never called</dd>
+      <dt>Why</dt><dd>Historical rows from football-data.co.uk CSVs almost always include average market odds, and odds are usually the strongest features. Upcoming fixtures come from football-data.org, which provides no odds, so <code>implied_*_prob</code> and <code>odds_*</code> are all <code>0.0</code> at prediction time. The trees split on odds values that never appear in training as zero, so live predictions go down branches the training data never reached.</dd>
+      <dt>Fix</dt><dd>Pick one of these and use it consistently. (a) Get pre-match odds for upcoming fixtures: football-data.co.uk <code>fixtures.csv</code> already has them for its leagues, and the code exists, or use an odds API. (b) Train one model with odds and one without, and choose per match by whether odds exist. Never feed zeros for "unknown": use <code>NaN</code> plus a <code>has_odds</code> flag.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-02">
+    <div class="finding-head"><span class="finding-id">ML-02</span><span class="sev high">High</span><span class="finding-title">Season-stat features either see the future or are always zero</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>team_features.py</code> <code>_get_season_stats</code> (reads <code>TeamSeasonStats</code> for the whole season)</dd>
+      <dt>Why</dt><dd><code>TeamSeasonStats</code> holds season <em>totals</em>, not as-of-date values. If it is populated, a match from matchday 3 is trained with that team's end-of-season record, which includes the result being predicted and all later results (target leakage). This inflates validation and fails on live matches. If it is not populated (I found no sync code that writes it), these 14 home/away columns are always 0. Both cases are wrong.</dd>
+      <dt>Fix</dt><dd>Compute season-to-date stats from matches strictly before <code>match_date</code> (the warmed per-team match list is already in memory), or drop these features.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-03">
+    <div class="finding-head"><span class="finding-id">ML-03</span><span class="sev high">High</span><span class="finding-title">Reported accuracy is measured on the rows used for calibration</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>trainer.py</code> <code>train_result_model</code> / <code>train_over25_model</code>: <code>_calibrate(..., X_val, y_val)</code>, then <code>accuracy_score(y_val, ...)</code></dd>
+      <dt>Fix</dt><dd>Split by time into train / calibration / test (e.g. train ≤ 2024-25, calibrate on 2025-26 first half, test on 2025-26 second half and on 2026-27 so far). Report on the test set only. Track log loss, Brier score, ranked probability score (RPS), accuracy and a calibration curve, each next to the bookmaker baseline.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-04">
+    <div class="finding-head"><span class="finding-id">ML-04</span><span class="sev high">High</span><span class="finding-title">Every new model goes live automatically, even a worse one</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>trainer.py</code> <code>save_models</code>: archives all active versions, then creates the new one as <code>ACTIVE</code></dd>
+      <dt>Effect</dt><dd>The Admin "Train Model" button (<code>--leagues E0 --seasons 2425</code>, about 380 matches) replaces the full multi-league model. A bad daily run is never caught.</dd>
+      <dt>Fix</dt><dd>Save new models as <code>evaluating</code>. Promote one only if its test log loss beats the active model on the same test window. Otherwise keep it archived and log why.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-05">
+    <div class="finding-head"><span class="finding-id">ML-05</span><span class="sev high">High</span><span class="finding-title">A second training path produces models the predictor would read backwards</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>train_from_export.py</code></dd>
+      <dt>Why</dt><dd>It encodes results as <code>0 = Away, 1 = Draw, 2 = Home</code>, while <code>MatchPredictor._predict</code> reads <code>proba[0]</code> as home and <code>proba[2]</code> as away. Its 24 feature names (<code>home_ppg</code>, <code>implied_home</code>…) mostly don't exist in the live feature extractor, so they would be filled with 0. It uses a random split, saves with <code>joblib</code> while the loader uses <code>pickle</code>, and creates no <code>ModelVersion</code> row. <code>load_models</code> falls back to "latest directory" when no active row exists, so one of these could be loaded, with home and away swapped. The newest local model directory (<code>20260708_073153</code>) is one of these.</dd>
+      <dt>Fix</dt><dd>Delete this command and the export workflow, or make it reuse <code>FeatureExtractor</code> + <code>ModelTrainer</code>. Remove the "latest directory" fallback: no active model should mean no predictions.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-06">
+    <div class="finding-head"><span class="finding-id">ML-06</span><span class="sev crit">Critical</span><span class="finding-title">Many upcoming fixtures belong to "new" teams with no history, so their features are zero</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>football_data_org.py</code> <code>_find_or_create_team</code>; details in <a href="data-sources.html#DATA-01">DATA-01</a></dd>
+      <dt>Effect</dt><dd>When football-data.org's name doesn't match the football-data.co.uk name, a new <code>Team</code> row is created. That team has no past matches, so form, venue form, head-to-head and rest days are all empty or default. The model then predicts from the home-advantage prior alone.</dd>
+      <dt>Fix</dt><dd>A team alias table plus a one-off merge of duplicates (DATA-01). Then re-generate upcoming predictions.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-07">
+    <div class="finding-head"><span class="finding-id">ML-07</span><span class="sev med">Medium</span><span class="finding-title">"Unknown" is encoded as 0</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>X.fillna(0)</code> in the trainer, <code>features.get(col, 0.0)</code> in the predictor, and every "no data" default in the feature builders</dd>
+      <dt>Why</dt><dd>0 is a real value: 0 points, 0 goals, 0% win rate. XGBoost handles <code>NaN</code> natively and learns the best direction for missing values.</dd>
+      <dt>Fix</dt><dd>Leave missing values as <code>NaN</code> end to end, and add count features (<code>matches_in_history</code>, <code>has_odds</code>, <code>has_xg</code>).</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-08">
+    <div class="finding-head"><span class="finding-id">ML-08</span><span class="sev med">Medium</span><span class="finding-title">The predicted score is made up and can contradict the prediction</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>generate_predictions.py</code>: <code>home = total_goals × 0.55</code>, <code>away = total_goals × 0.45</code></dd>
+      <dt>Effect</dt><dd>Every match shows a slight home lead, even when "Away win" is predicted. For example, the page shows "Predicted: AWAY (1–1)".</dd>
+      <dt>Fix</dt><dd>Fit a Poisson or Dixon–Coles goals model (team attack/defence strengths plus home advantage). Its scoreline grid gives a consistent most-likely score, over/under 2.5, both-teams-to-score, and a second home/draw/away estimate to blend in.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-09">
+    <div class="finding-head"><span class="finding-id">ML-09</span><span class="sev med">Medium</span><span class="finding-title">Season codes are hard-coded and already out of date</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>train_model.py</code> default seasons; <code>settings.HISTORICAL_SEASONS</code> (stops at <code>2425</code>); <code>tasks/data_sync.py</code> (<code>'2526'</code>); <code>generate_predictions._generate_historical_predictions</code> (<code>'2526'</code>); <code>retrain_model_task</code> (<code>'2324'…'1920'</code>)</dd>
+      <dt>Effect</dt><dd>The current season, 2026-27, is excluded from training even though results arrive for it daily.</dd>
+      <dt>Fix</dt><dd>One helper, <code>current_season_code(today, start_month)</code>, and "last N seasons" computed from it everywhere.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-10">
+    <div class="finding-head"><span class="finding-id">ML-10</span><span class="sev med">Medium</span><span class="finding-title">The training-data cache can serve old data</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>feature_extractor.py</code> <code>_get_cache_key</code> (seasons/leagues/groups only), used with <code>use_disk_cache=True</code></dd>
+      <dt>Why</dt><dd>The cache key never changes as new results arrive. On a warm Lambda container, <code>/tmp</code> survives between invocations, and locally <code>backend/cache/features/*.pkl</code> holds four stale datasets. A retrain can silently reuse yesterday's (or last month's) dataset.</dd>
+      <dt>Fix</dt><dd>Include the finished-match count and latest <code>updated_at</code> in the key, or turn the disk cache off for scheduled training.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-11">
+    <div class="finding-head"><span class="finding-id">ML-11</span><span class="sev high">High</span><span class="finding-title">The accuracy shown in the app is miscounted and can include "predictions" made after the game</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>api/views/predictions.py</code> <code>stats</code>; <code>generate_predictions --historical</code>; <code>_generate_simple_predictions</code></dd>
+      <dt>Why</dt><dd>(1) <code>total = predictions.count()</code> is taken <em>before</em> skipping matches with missing scores. (2) There is no check that the prediction was created before kickoff. <code>--historical</code> back-fills finished matches using a model trained on those same matches (in-sample), and the fallback "simple" predictor can also label finished matches. (3) Without a trained model, <code>_generate_simple_predictions</code> predicts the league's most common result, "home", for every match.</dd>
+      <dt>Fix</dt><dd>Count only predictions with <code>created_at &lt; kickoff</code>. Freeze predictions at kickoff (stop <code>update_or_create</code> once the match has started). Store <code>is_backtest</code> for back-filled rows and exclude them from the headline accuracy.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-12">
+    <div class="finding-head"><span class="finding-id">ML-12</span><span class="sev med">Medium</span><span class="finding-title">Predictions don't record which model made them or from which inputs</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>generate_predictions.py</code>: <code>'model_version': predictor.model_version or 'current'</code> (always <code>'current'</code>); <code>features_json</code> never set</dd>
+      <dt>Effect</dt><dd>You can't compare models on live results or debug a bad pick. The AI prompt's "Feature Summary" section is always empty, and it looks up names like <code>home_ppg</code> that the feature builder never produces.</dd>
+      <dt>Fix</dt><dd>Save <code>predictor.trainer.version</code> and a compact <code>features_json</code> on every prediction.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-13">
+    <div class="finding-head"><span class="finding-id">ML-13</span><span class="sev low">Low</span><span class="finding-title">Training hygiene</span></div>
+    <dl>
+      <dt>What</dt><dd>No early stopping (<code>eval_set</code> is passed but <code>early_stopping_rounds</code> isn't). The <code>use_label_encoder</code> parameter is deprecated. The three models refit the shared scaler (harmless today, fragile later). Trees don't need scaling at all. The unused <code>settings.ML_CONFIG</code> parameters differ from the ones actually used.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="ML-14">
+    <div class="finding-head"><span class="finding-id">ML-14</span><span class="sev low">Low</span><span class="finding-title">Confidence bands differ from screen to screen</span></div>
+    <dl>
+      <dt>What</dt><dd><code>Prediction.save</code>: strong ≥ 70%, moderate ≥ 55%. <code>daily_picks</code>: ≥ 55%, "low risk" ≥ 60%. <code>stats</code>: high ≥ 60%, medium ≥ 45%. Predictions page "High confidence" filter: ≥ 70%. The same pick can be "moderate", "low risk" and "high" on different screens. Draws are almost never the top probability, so the app almost never predicts a draw. That is expected, but should be explained.</dd>
+      <dt>Fix</dt><dd>One shared set of bands (a backend constant exposed via <code>model_info</code>), used by every page.</dd>
+    </dl>
+  </div>
+
+  <h2 id="plan">Plan to reach market-level accuracy</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Step</th><th>What to do</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>1. Clean identity and coverage</td><td>Team alias mapping and merge (DATA-01). Current-season CSVs from football-data.co.uk for all 20 leagues twice a week, with results, shots and odds (DATA-02).</td><td>Without this, every feature is wrong for many teams.</td></tr>
+      <tr><td>2. Point-in-time features only</td><td>Rolling form (last 5/10), season-to-date points/goal difference, <strong>Elo rating</strong> with home advantage and promotion/relegation carry-over, rolling shots and shots on target (in the CSVs), xG where available (the Understat provider exists), rest days, a newly-promoted flag.</td><td>Elo plus shot-based form usually carry most of the signal that isn't already in the odds.</td></tr>
+      <tr><td>3. Consistent odds</td><td>Odds at prediction time from the same kind of source as training, or a separate no-odds model. <code>NaN</code> for unknown.</td><td>Removes the biggest train/serve mismatch (ML-01).</td></tr>
+      <tr><td>4. Goals model</td><td>Dixon–Coles/Poisson for scorelines, over/under 2.5 and both-teams-to-score, blended with XGBoost for home/draw/away.</td><td>Consistent, explainable numbers across all markets (ML-08).</td></tr>
+      <tr><td>5. Honest evaluation</td><td>Season-by-season walk-forward tests. Log loss, Brier, RPS, accuracy, calibration plot. Compare with "always home" and bookmaker probabilities.</td><td>Tells you whether a change actually helps.</td></tr>
+      <tr><td>6. Promotion check</td><td>Only activate a model that beats the current one on the same test window; weekly retraining.</td><td>Protects production (ML-04).</td></tr>
+      <tr><td>7. Traceability</td><td>Save model version + features with each prediction, freeze at kickoff, exclude back-tests from accuracy.</td><td>Trustworthy accuracy numbers in the app (ML-11/12).</td></tr>
+      <tr><td>8. Honest UI</td><td>Show accuracy next to the bookmaker baseline, a calibration chart and sample size. Replace the Help page's "87%".</td><td>Users can trust what they see.</td></tr>
+    </tbody>
+  </table></div>
+
+  <footer>The accuracy figures come from the <code>metadata.json</code> files saved locally under <code>backend/models/</code>. I couldn't see which version is active in the production database. Check with <code>GET /api/v1/predictions/model_info/</code>.</footer>
+</main>
+</body>
+</html>

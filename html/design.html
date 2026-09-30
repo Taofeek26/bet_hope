@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Review</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html" class="active">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Design: colours, logos, typography</h1>
+  <p class="lede">The visual system (near-black surfaces, a sky-blue accent, "blueprint" corner brackets) is coherent. Much of it doesn't render, though, because the class names in the pages don't match the colours defined in <code>tailwind.config.js</code>.</p>
+  <p class="meta">Source: <code>frontend/tailwind.config.js</code>, <code>src/styles/globals.css</code>, components and pages</p>
+
+  <h2>Current palette</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Token</th><th>Dark</th><th>Light</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td><code>--page</code></td><td><span class="swatch" style="background:#030303"></span>#030303</td><td><span class="swatch" style="background:#FAFAFA"></span>#FAFAFA</td><td>Page background</td></tr>
+      <tr><td><code>--card</code></td><td><span class="swatch" style="background:#0A0A0A"></span>#0A0A0A</td><td><span class="swatch" style="background:#FFFFFF"></span>#FFFFFF</td><td>Cards, sidebar</td></tr>
+      <tr><td><code>--surface</code></td><td><span class="swatch" style="background:#111111"></span>#111111</td><td><span class="swatch" style="background:#F5F5F5"></span>#F5F5F5</td><td>Inner panels, match rows</td></tr>
+      <tr><td><code>--border</code></td><td><span class="swatch" style="background:#222222"></span>#222222</td><td><span class="swatch" style="background:#E2E2E2"></span>#E2E2E2</td><td>Borders</td></tr>
+      <tr><td><code>--text</code> / <code>--text-sec</code> / <code>--text-muted</code></td><td>#FFFFFF / #A3A3A3 / #666666</td><td>#0A0A0A / #4B4B4B / #8A8A8A</td><td>Text levels. Muted #666 on #030303 is about 3.6:1, below the 4.5:1 WCAG AA minimum for small text.</td></tr>
+      <tr><td><code>--brand1/2/3</code></td><td><span class="swatch" style="background:#38BDF8"></span>#38BDF8 · #7DD3FC · #BAE6FD</td><td>same</td><td>Accent, active tab, primary button, "win" and "success"</td></tr>
+      <tr><td>Result colours</td><td colspan="2">win #38BDF8 (blue) · draw #94A3B8 · loss #ef4444, while "correct prediction" uses Tailwind green-500</td><td>Two different meanings for "good" (blue win, green correct)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Findings</h2>
+
+  <div class="finding" id="UI-01">
+    <div class="finding-head"><span class="finding-id">UI-01</span><span class="sev high">High</span><span class="finding-title">Brand colour classes used across the app don't exist</span></div>
+    <dl>
+      <dt>Why</dt><dd>Tailwind defines <code>brand</code> only as <code>brand-1</code>, <code>brand-2</code> and <code>brand-3</code> (no <code>DEFAULT</code>) and has no <code>bg</code> colour. <code>globals.css</code> hand-defines only <code>.text-brand</code> and <code>.border-brand</code>. Every other variant is silently dropped at build time:</dd>
+      <dd><code>bg-brand</code>, <code>bg-brand/5</code>, <code>/10</code>, <code>/15</code>, <code>/20</code>, <code>/70</code>, <code>text-brand/70</code>, <code>/80</code>, <code>border-brand/20</code>, <code>/30</code>, <code>/40</code>, <code>/50</code>, <code>from-brand/10</code>, <code>to-brand/5</code>, <code>text-bg</code>, <code>bg-bg</code>, <code>bg-brand1</code>, <code>text-text-sec</code>, <code>text-text-primary</code>, <code>bg-card-hover</code>, <code>bg-surface-alt</code></dd>
+      <dt>Effect</dt><dd>Selected date pills (Dashboard, Predictions, Value Bets) lose their highlight. Team-initial avatar circles have no background. Value-bet "strong/good" cards look identical. The AI button gradient is missing. The mobile "has prediction" dot is invisible.</dd>
+      <dt>Fix</dt><dd>In <code>tailwind.config.js</code>: <code>brand: { DEFAULT: 'rgb(var(--brand1-rgb) / &lt;alpha-value&gt;)', 1: …, 2: …, 3: … }</code>, <code>bg: 'rgb(var(--page-rgb) / &lt;alpha-value&gt;)'</code>. Replace the invented names (<code>text-text-sec</code> → <code>text-text-secondary</code>, <code>text-text-primary</code> → <code>text-text</code>, <code>bg-card-hover</code> → <code>bg-input</code>). Add a CI grep, or <code>eslint-plugin-tailwindcss</code> <code>no-custom-classname</code>, to catch unknown classes.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-02">
+    <div class="finding-head"><span class="finding-id">UI-02</span><span class="sev high">High</span><span class="finding-title">Opacity modifiers on CSS-variable colours are silently dropped, which leaves the header transparent</span></div>
+    <dl>
+      <dt>Why</dt><dd>Colours such as <code>surface: 'var(--surface)'</code> can't take Tailwind 3's <code>/50</code>-style opacity, so classes like <code>bg-surface/50</code>, <code>bg-surface/30</code>, <code>bg-card/50</code>, <code>border-border/50</code>, <code>bg-text-muted/10</code>, <code>text-text-muted/50</code> and <code>bg-background-secondary/80</code> are never generated.</dd>
+      <dt>Effect</dt><dd>The sticky header has no background, so content scrolls visibly underneath it. Several match-row and panel backgrounds and dividers disappear.</dd>
+      <dt>Fix</dt><dd>Store the tokens as RGB channels (<code>--surface-rgb: 17 17 17;</code>) and define the colours as <code>'rgb(var(--surface-rgb) / &lt;alpha-value&gt;)'</code>. That single change fixes every <code>/NN</code> class.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-03">
+    <div class="finding-head"><span class="finding-id">UI-03</span><span class="sev med">Medium</span><span class="finding-title">The light theme has invisible text</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>text-white</code> is hard-coded in <code>Header</code>, <code>DailyPicks</code>, <code>UpcomingMatches</code>, <code>LiveMatches</code> and <code>PredictionStats</code>; <code>bg-black/40</code> is used in Admin logs; <code>.glass</code> uses a dark rgba; <code>::selection</code> sets its colour to white</dd>
+      <dt>Fix</dt><dd>Use <code>text-text</code> (the token) everywhere, then test each page in light mode.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-04">
+    <div class="finding-head"><span class="finding-id">UI-04</span><span class="sev med">Medium</span><span class="finding-title">No logo, favicon or app icon</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>frontend/public/</code> contains only <code>.gitkeep</code>; there's no <code>app/icon.*</code>; notifications reference <code>/favicon.ico</code> (404); the header uses a "BH" text box; the sidebar uses gradient text</dd>
+      <dt>Fix</dt><dd>Design one mark (e.g. a ball inside a rising chart line, in #38BDF8) and export it as <code>app/icon.svg</code>, <code>app/apple-icon.png</code> (180 px), <code>public/favicon.ico</code> and an Open Graph image (1200×630). Use the same mark in the sidebar header and in notifications. Team crests and league logos are covered in <a href="data-sources.html#DATA-08">DATA-08</a>.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-05">
+    <div class="finding-head"><span class="finding-id">UI-05</span><span class="sev low">Low</span><span class="finding-title">Two component systems mixed, so headings appear twice</span></div>
+    <dl>
+      <dt>Where</dt><dd>The Dashboard wraps <code>&lt;UpcomingMatches/&gt;</code> and <code>&lt;PredictionStats/&gt;</code>, which use the older <code>Card</code>/<code>CardHeader</code> with <code>primary-*</code>/<code>accent-*</code> colours, inside new <code>.card</code> blocks that have their own header</dd>
+      <dt>Effect</dt><dd>"Upcoming Matches" and "Model Performance" headings appear twice, with a card nested inside a card.</dd>
+      <dt>Fix</dt><dd>Pick one card component (the blueprint style) and remove the other.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-06">
+    <div class="finding-head"><span class="finding-id">UI-06</span><span class="sev low">Low</span><span class="finding-title">Colour meaning is inconsistent</span></div>
+    <dl>
+      <dt>What</dt><dd>"Win" and "success" are brand blue, while "correct prediction" is green. The "HOT" badge is sky blue. Red is used both for "live" and for "loss" / "incorrect".</dd>
+      <dt>Fix</dt><dd>Keep blue as the brand and interaction colour only. Use green for correct/win, red for incorrect/loss, amber for live/pending, and slate for draw.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-07">
+    <div class="finding-head"><span class="finding-id">UI-07</span><span class="sev low">Low</span><span class="finding-title">Accessibility</span></div>
+    <dl>
+      <dt>What</dt><dd>Icon-only buttons have no <code>aria-label</code> (menu, search, bell, user, chevrons, sidebar toggle). Muted text contrast is too low (see the palette table). Some correct/incorrect states are shown by border colour alone. The settings toggles are hidden checkboxes whose label has no visible focus style.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="UI-08">
+    <div class="finding-head"><span class="finding-id">UI-08</span><span class="sev low">Low</span><span class="finding-title">Responsive gaps</span></div>
+    <dl>
+      <dt>What</dt><dd>The Help page grids have no breakpoints. The dashboard date selector has 7 pills plus two chevrons, and on small phones it scrolls horizontally with no scroll affordance. On mobile the sidebar turns into a top tab strip, but the header's ☰ (which does nothing) is still shown.</dd>
+    </dl>
+  </div>
+
+  <h2>Typography</h2>
+  <div class="panel">
+    <p>Inter (UI) and JetBrains Mono (numbers in metric plates) are loaded with <code>next/font</code>, and <code>font-sans</code> on <code>&lt;body&gt;</code> correctly overrides the system stack in <code>globals.css</code>. Sizes are consistent: headings 1.6 rem, card titles 1.1 rem, body 13–15 px. No changes are needed beyond the contrast fix above.</p>
+  </div>
+
+  <footer>A class is "not generated" when Tailwind 3.4 can't resolve it from <code>tailwind.config.js</code> and <code>globals.css</code> doesn't define it by hand. A production build plus a grep of the output CSS will confirm each one.</footer>
+</main>
+</body>
+</html>

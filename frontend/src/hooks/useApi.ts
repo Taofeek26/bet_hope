@@ -154,11 +154,18 @@ export function useMatch(id: number) {
   });
 }
 
+// Polling intervals (Phase 0, API-01). The backend only updates fixtures,
+// results and match status once a day, and there is no live-score source
+// yet (DATA-05), so polling every 15-60s fetched the same data ~330 times
+// an hour per open tab and tripped the API rate limit. Five minutes is
+// still far fresher than the data itself.
+const POLL_MS = 5 * 60 * 1000;
+
 export function useUpcomingMatches() {
   return useQuery({
     queryKey: queryKeys.matches.upcoming,
     queryFn: () => matchesApi.getUpcoming(),
-    refetchInterval: useAutoRefreshInterval(60000), // Refresh every minute
+    refetchInterval: useAutoRefreshInterval(POLL_MS),
   });
 }
 
@@ -166,7 +173,7 @@ export function useTodayMatches() {
   return useQuery({
     queryKey: queryKeys.matches.today,
     queryFn: () => matchesApi.getToday(),
-    refetchInterval: useAutoRefreshInterval(30000), // Refresh every 30 seconds
+    refetchInterval: useAutoRefreshInterval(POLL_MS),
   });
 }
 
@@ -174,7 +181,7 @@ export function useLiveMatches() {
   return useQuery({
     queryKey: queryKeys.matches.live,
     queryFn: () => matchesApi.getLive(),
-    refetchInterval: useAutoRefreshInterval(15000), // Refresh every 15 seconds for live matches
+    refetchInterval: useAutoRefreshInterval(POLL_MS),
   });
 }
 
@@ -289,11 +296,14 @@ export function useAIProviders() {
   });
 }
 
-export function useAIRecommendation(predictionId: number) {
+// `enabled` lets a card defer this lookup until the user asks for the
+// analysis: firing it for every card on page load (mostly 404s) used up
+// the rate limit on busy days.
+export function useAIRecommendation(predictionId: number, enabled = true) {
   return useQuery({
     queryKey: ['ai', 'recommendation', predictionId],
     queryFn: () => aiApi.getForPrediction(predictionId),
-    enabled: !!predictionId,
+    enabled: !!predictionId && enabled,
     retry: false, // Don't retry if not found
   });
 }
@@ -313,6 +323,20 @@ export function useGenerateAIRecommendation() {
         queryKey: ['ai', 'recommendation', variables.prediction_id],
       });
     },
+  });
+}
+
+// Polls a queued AI analysis until it finishes (completed/failed).
+export function useAIRecommendationJob(id: number | null) {
+  return useQuery({
+    queryKey: ['ai', 'job', id],
+    queryFn: () => aiApi.getById(id as number),
+    enabled: id !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'completed' || status === 'failed' ? false : 3000;
+    },
+    retry: 2,
   });
 }
 

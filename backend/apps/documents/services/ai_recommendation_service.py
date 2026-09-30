@@ -161,6 +161,7 @@ RULES:
         prediction_id: int,
         include_rag: bool = True,
         model: Optional[str] = None,
+        record=None,
     ) -> AIResponse:
         """
         Generate AI recommendation for a prediction.
@@ -169,6 +170,10 @@ RULES:
             prediction_id: Prediction ID
             include_rag: Whether to include RAG context
             model: Optional model override
+            record: Optional existing AIRecommendation row (status
+                pending/processing) to fill in instead of creating a new
+                one — used by the async path (generate_ai_recommendation
+                command run in the manage Lambda).
 
         Returns:
             AIResponse with recommendation details
@@ -222,8 +227,7 @@ RULES:
         processing_time = int((time.time() - start_time) * 1000)
 
         # Save to database
-        ai_rec = AIRecommendation.objects.create(
-            prediction=prediction,
+        fields = dict(
             provider=self.provider,
             model_name=model,
             prompt=prompt,
@@ -236,7 +240,15 @@ RULES:
             key_factors=parsed.key_factors,
             tokens_used=response.get('tokens', 0),
             processing_time_ms=processing_time,
+            error_message='',
         )
+        if record is not None:
+            for name, value in fields.items():
+                setattr(record, name, value)
+            record.save()
+            ai_rec = record
+        else:
+            ai_rec = AIRecommendation.objects.create(prediction=prediction, **fields)
 
         # Link context chunks
         if context_chunks:

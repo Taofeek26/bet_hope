@@ -1,9 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { useAIRecommendation, useGenerateAIRecommendation } from '@/hooks/useApi';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useAIRecommendation,
+  useAIRecommendationJob,
+  useGenerateAIRecommendation,
+} from '@/hooks/useApi';
 import { usePredictionHistory } from '@/hooks/usePredictionHistory';
-import type { AIRecommendationResponse } from '@/types';
+import type { AIGenerationQueued, AIRecommendationResponse } from '@/types';
+
+// Give up polling a queued job after this long (the manage Lambda's own
+// limit is 15 minutes; a healthy LLM call finishes well within 3).
+const JOB_TIMEOUT_MS = 4 * 60 * 1000;
 
 interface AIEnhancementProps {
   predictionId: number;
@@ -17,16 +26,41 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hasGenerated, setHasGenerated] = useState(false);
 
-  // Check for existing recommendation
+  // Look up a saved analysis only once the panel is opened (Phase 0,
+  // API-01): doing it on mount sent one request per card on every page
+  // load. The generate endpoint itself returns a recent saved analysis
+  // instead of making a new LLM call, so nothing is lost by waiting.
   const {
     data: existingRecommendation,
     isLoading: isLoadingExisting,
     error: existingError,
-  } = useAIRecommendation(predictionId);
+  } = useAIRecommendation(predictionId, isExpanded);
 
   // Generate new recommendation
   const generateMutation = useGenerateAIRecommendation();
   const { record: recordPredictionView } = usePredictionHistory();
+  const queryClient = useQueryClient();
+
+  // Async path: generate returns 202 {status: 'pending', id}; poll that id.
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [jobStartedAt, setJobStartedAt] = useState<number>(0);
+  const [jobTimedOut, setJobTimedOut] = useState(false);
+  const { data: job } = useAIRecommendationJob(jobId);
+  const jobDone = job?.status === 'completed' || job?.status === 'failed';
+  const jobRunning = jobId !== null && !jobDone && !jobTimedOut;
+
+  useEffect(() => {
+    if (!jobRunning) return;
+    const remaining = JOB_TIMEOUT_MS - (Date.now() - jobStartedAt);
+    const timer = setTimeout(() => setJobTimedOut(true), Math.max(0, remaining));
+    return () => clearTimeout(timer);
+  }, [jobRunning, jobStartedAt]);
+
+  useEffect(() => {
+    if (job?.status === 'completed') {
+      queryClient.invalidateQueries({ queryKey: ['ai', 'recommendation', predictionId] });
+    }
+  }, [job?.status, predictionId, queryClient]);
 
   const recommendation = existingRecommendation as AIRecommendationResponse | undefined;
   const hasExisting = !!recommendation && !existingError;
@@ -34,22 +68,38 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
   const handleGenerate = async () => {
     setHasGenerated(true);
     setIsExpanded(true);
+    setJobId(null);
+    setJobTimedOut(false);
     recordPredictionView(predictionId, matchInfo?.homeTeam, matchInfo?.awayTeam);
     try {
-      await generateMutation.mutateAsync({
+      const result = await generateMutation.mutateAsync({
         prediction_id: predictionId,
         provider: 'openrouter',
         include_rag: true,
       });
+      const queued = result as AIGenerationQueued;
+      if (queued?.id && (queued.status === 'pending' || queued.status === 'processing')) {
+        setJobStartedAt(Date.now());
+        setJobId(queued.id);
+      }
     } catch (error) {
       console.error('Failed to generate AI recommendation:', error);
     }
   };
 
-  const isLoading = generateMutation.isPending || isLoadingExisting;
+  const isLoading = generateMutation.isPending || isLoadingExisting || jobRunning;
+  const jobFailed = job?.status === 'failed' || jobTimedOut;
+  const hasError = generateMutation.isError || jobFailed;
 
-  // If we have data from mutation, use that instead
-  const displayData = generateMutation.data as AIRecommendationResponse | undefined || recommendation;
+  // Newest result wins: finished async job, then inline (sync) response,
+  // then whatever was already saved for this prediction.
+  const inlineData =
+    generateMutation.data && 'recommendation' in (generateMutation.data as object)
+      ? (generateMutation.data as AIRecommendationResponse)
+      : undefined;
+  const jobData =
+    job?.status === 'completed' ? (job as unknown as AIRecommendationResponse) : undefined;
+  const displayData = jobData || inlineData || recommendation;
 
   return (
     <div className="mt-4 border-t border-border/50 pt-4">
@@ -127,10 +177,12 @@ export function AIEnhancement({ predictionId, matchInfo }: AIEnhancementProps) {
           )}
 
           {/* Error state */}
-          {generateMutation.isError && (
+          {hasError && !isLoading && (
             <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
               <p className="text-sm text-red-400">
-                Failed to generate AI analysis. Please try again.
+                {jobTimedOut
+                  ? 'The AI analysis is taking too long. Please try again.'
+                  : 'Failed to generate AI analysis. Please try again.'}
               </p>
               <button
                 onClick={handleGenerate}

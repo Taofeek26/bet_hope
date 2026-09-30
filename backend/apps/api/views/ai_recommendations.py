@@ -1,11 +1,19 @@
 """
 AI Recommendation Views
 """
+import json
+import logging
+from datetime import timedelta
+
+import boto3
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.throttling import ScopedRateThrottle
 
 from apps.documents.models import AIRecommendation, Document
 from apps.api.serializers.ai_recommendations import (
@@ -15,6 +23,8 @@ from apps.api.serializers.ai_recommendations import (
     DocumentSerializer,
     DocumentUploadSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AIRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -31,6 +41,14 @@ class AIRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AIRecommendation.objects.all()
     serializer_class = AIRecommendationSerializer
     permission_classes = [AllowAny]
+
+    def get_throttles(self):
+        # generate costs an LLM call: its own strict per-visitor limit on
+        # top of the normal read limit (settings THROTTLE_AI_GENERATE).
+        if self.action == 'generate':
+            self.throttle_scope = 'ai_generate'
+            return [ScopedRateThrottle(), *super().get_throttles()]
+        return super().get_throttles()
 
     def get_queryset(self):
         queryset = AIRecommendation.objects.select_related(
@@ -68,6 +86,29 @@ class AIRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
 
         data = serializer.validated_data
 
+        # Phase 0 (SEC-01): this endpoint is public and every call costs
+        # money, so reuse a recent result and enforce a daily ceiling.
+        reuse_after = timezone.now() - timedelta(hours=settings.AI_REUSE_HOURS)
+        recent_done = AIRecommendation.objects.filter(
+            prediction_id=data['prediction_id'],
+            status=AIRecommendation.Status.COMPLETED,
+            created_at__gte=reuse_after,
+        ).order_by('-created_at').first()
+        if recent_done:
+            return Response({**AIRecommendationSerializer(recent_done).data, 'reused': True})
+
+        day_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        started_today = AIRecommendation.objects.filter(created_at__gte=day_start).count()
+        if started_today >= settings.AI_DAILY_GENERATION_LIMIT:
+            return Response(
+                {'error': 'The daily AI analysis limit has been reached. Please try again tomorrow.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        if getattr(settings, 'MANAGE_FUNCTION_NAME', ''):
+            return self._generate_async(data)
+
+        # Local development (no manage Lambda): run inline as before.
         try:
             from apps.documents.services import AIRecommendationService
 
@@ -93,6 +134,53 @@ class AIRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    def _generate_async(self, data):
+        """
+        Queue the LLM call in the manage Lambda and return 202 immediately.
+        The LLM (a reasoning model via OpenRouter) often needs longer than
+        API Gateway's 29s limit, which used to surface as a 504 while the
+        call kept running and billing. The browser polls
+        GET /ai-recommendations/{id}/ until status is completed/failed.
+        """
+        from apps.documents.services import AIRecommendationService
+
+        # A double click (or two tabs) shouldn't pay for two LLM calls.
+        recent = timezone.now() - timedelta(minutes=5)
+        in_flight = AIRecommendation.objects.filter(
+            prediction_id=data['prediction_id'],
+            status__in=[AIRecommendation.Status.PENDING, AIRecommendation.Status.PROCESSING],
+            created_at__gte=recent,
+        ).first()
+        if in_flight:
+            return Response({'status': in_flight.status, 'id': in_flight.id},
+                            status=status.HTTP_202_ACCEPTED)
+
+        record = AIRecommendation.objects.create(
+            prediction_id=data['prediction_id'],
+            provider=data['provider'],
+            model_name=AIRecommendationService.MODELS.get(data['provider'], ''),
+            prompt='',
+            status=AIRecommendation.Status.PENDING,
+        )
+        args = ['--id', str(record.id)]
+        if not data['include_rag']:
+            args.append('--no-rag')
+        try:
+            boto3.client('lambda').invoke(
+                FunctionName=settings.MANAGE_FUNCTION_NAME,
+                InvocationType='Event',
+                Payload=json.dumps({'command': 'generate_ai_recommendation', 'args': args}).encode(),
+            )
+        except Exception as e:
+            logger.exception('Failed to queue AI recommendation %s', record.id)
+            record.status = AIRecommendation.Status.FAILED
+            record.error_message = f'Failed to start: {e}'
+            record.save(update_fields=['status', 'error_message', 'updated_at'])
+            return Response({'status': 'failed', 'id': record.id, 'error': 'Could not start AI analysis'},
+                            status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({'status': record.status, 'id': record.id}, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['get'])
     def providers(self, request):
@@ -135,7 +223,16 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
-    permission_classes = [AllowAny]
+
+    # Phase 0 (SEC-01): documents feed the AI prompt, so anonymous writes
+    # were a prompt-injection path; scraping, embedding and search also
+    # spend API money. Only browsing stays public.
+    PUBLIC_ACTIONS = {'list', 'retrieve', 'stats'}
+
+    def get_permissions(self):
+        if self.action in self.PUBLIC_ACTIONS:
+            return [AllowAny()]
+        return [IsAdminUser()]
 
     def get_queryset(self):
         queryset = Document.objects.filter(is_active=True)

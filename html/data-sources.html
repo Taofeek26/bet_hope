@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Sources Review</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html" class="active">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Data sources, league coverage and logos</h1>
+  <p class="lede">The app says it covers 20 leagues. In practice, only 8 get new fixtures and results. The two providers name teams differently, which quietly splits one club into two database rows.</p>
+  <p class="meta">Source: <code>backend/apps/data_ingestion/providers/</code>, <code>sync_real_data.py</code>, <code>config/settings/base.py</code>, <code>infrastructure/template.yaml</code> schedules</p>
+
+  <h2>What each source provides and whether it's used</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Source</th><th>Provides</th><th>Used by</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>football-data.co.uk season CSVs (free, no key)</td><td>Results, half-time scores, shots, corners, fouls, cards, average market odds; 20 league codes</td><td><code>sync_real_data</code> without <code>--fixtures-only</code></td><td><span class="st partial">Manual only</span> The daily job uses <code>--fixtures-only</code>, so this never runs on a schedule. Data stops at whenever it was last run by hand.</td></tr>
+      <tr><td>football-data.co.uk <code>fixtures.csv</code></td><td>Upcoming fixtures <strong>with odds</strong></td><td><code>FootballDataProvider.sync_fixtures()</code></td><td><span class="st none">Not called</span> Code exists, but nothing calls it.</td></tr>
+      <tr><td>football-data.org v4 API (free key, 10 requests/min)</td><td>Fixtures, results, status, kickoff (UTC), team crests</td><td>Daily 04:15 UTC sync, next 14 days of fixtures and last 7 days of results</td><td><span class="st ok">Active</span> Only 8 domestic leagues plus CL/EL (below).</td></tr>
+      <tr><td>API-Football</td><td>Fixtures, live scores, injuries</td><td><code>/api/sync/*</code> endpoints, <code>sync_injuries</code></td><td><span class="st broken">Unusable</span> The free tier rejects the current season (noted in <code>sync_real_data.py</code>).</td></tr>
+      <tr><td>Understat</td><td>xG for the top 5 leagues</td><td><code>providers/understat.py</code></td><td><span class="st none">Not scheduled</span> I found no job that runs it, so xG features are always 0.</td></tr>
+      <tr><td>RSS news + LLM "news signals"</td><td>Injury mentions and sentiment per team</td><td><code>generate_news_signals</code></td><td><span class="st none">Off</span> Off by default; the code marks it experimental.</td></tr>
+      <tr><td>OpenRouter (<code>deepseek/deepseek-v4-pro</code>)</td><td>Written "AI analysis"</td><td><code>/ai-recommendations/generate/</code></td><td><span class="st partial">Often times out</span> See <a href="backend-api.html#API-04">API-04</a>.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="coverage">League coverage</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Code</th><th>League</th><th>New fixtures</th><th>New results</th><th>Team logos</th></tr></thead>
+    <tbody>
+      <tr><td>E0</td><td>Premier League</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes (crests)</td></tr>
+      <tr><td>E1</td><td>Championship</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>SP1</td><td>La Liga</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>I1</td><td>Serie A</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>D1</td><td>Bundesliga</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>F1</td><td>Ligue 1</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>N1</td><td>Eredivisie</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>P1</td><td>Primeira Liga</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes</td></tr>
+      <tr><td>B1, T1, G1, SC0, SC1, SC2, SP2, I2, D2, F2, E2, E3</td><td>Belgium, Turkey, Greece, Scotland ×3, 2nd divisions ×4, League One/Two</td><td><span class="st broken">No</span></td><td><span class="st broken">No</span></td><td>Letter placeholder</td></tr>
+      <tr><td>CL, EL</td><td>Champions / Europa League</td><td><span class="st ok">Yes</span></td><td><span class="st ok">Yes</span></td><td>Yes. Teams are created <em>separately</em> from their domestic-league rows, so they have no history.</td></tr>
+      <tr><td>ARG, BRA</td><td>Listed in <code>settings.SUPPORTED_LEAGUES</code></td><td><span class="st none">No</span></td><td><span class="st none">No</span></td><td>Not in any provider mapping</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Findings</h2>
+
+  <div class="finding" id="DATA-01">
+    <div class="finding-head"><span class="finding-id">DATA-01</span><span class="sev crit">Critical</span><span class="finding-title">Team names don't match across providers, so duplicate teams get created</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>football_data_org.py</code> <code>_find_or_create_team</code> / <code>_normalize_team_name</code>; teams from CSVs are keyed by <code>fd_name</code> + league in <code>football_data.py</code></dd>
+      <dt>Why</dt><dd>Name normalisation only strips suffixes like " fc"/" cf" and lower-cases, so short CSV names don't match full official names:</dd>
+      <dd>
+        <div class="table-wrap"><table>
+          <thead><tr><th>football-data.co.uk</th><th>football-data.org (typical)</th></tr></thead>
+          <tbody>
+            <tr><td>Man United</td><td>Manchester United FC</td></tr>
+            <tr><td>Man City</td><td>Manchester City FC</td></tr>
+            <tr><td>Nott'm Forest</td><td>Nottingham Forest FC</td></tr>
+            <tr><td>Wolves</td><td>Wolverhampton Wanderers FC</td></tr>
+            <tr><td>Newcastle</td><td>Newcastle United FC</td></tr>
+            <tr><td>Tottenham</td><td>Tottenham Hotspur FC</td></tr>
+            <tr><td>Ath Madrid</td><td>Club Atlético de Madrid</td></tr>
+            <tr><td>Bayern Munich</td><td>FC Bayern München</td></tr>
+            <tr><td>Paris SG</td><td>Paris Saint-Germain FC</td></tr>
+            <tr><td>Inter</td><td>FC Internazionale Milano</td></tr>
+          </tbody>
+        </table></div>
+        Every miss creates a new <code>Team</code> row with no match history. The normaliser also does plain substring replacement (<code>' sc' → ''</code>), which mangles names like "fc schalke 04" into "fchalke 04". That shows how fragile the matching is.
+      </dd>
+      <dt>Effect</dt><dd>Features are empty for these teams (ML-06), standings split one club into two rows across sources, and team pages show only part of a club's history.</dd>
+      <dt>Fix</dt><dd>Add a <code>TeamAlias(team, provider, name)</code> table seeded with a mapping per league (about 20 teams per league). Look up by alias first, then fuzzy-match (e.g. <code>rapidfuzz</code> with a high threshold), and log unmatched names for a human to review. Then run a one-off merge of existing duplicates (the repo has <code>cleanup_duplicate_teams</code>; review it before running). For CL/EL, link each team to its domestic team instead of creating new rows.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-02">
+    <div class="finding-head"><span class="finding-id">DATA-02</span><span class="sev high">High</span><span class="finding-title">12 of 20 leagues are frozen at the last manual import</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>SyncDataSchedule</code> uses <code>--fixtures-only</code>; football-data.org's free tier covers only 8 of the domestic leagues</dd>
+      <dt>Effect</dt><dd>These leagues show old standings and no upcoming matches, but the dashboard still says "AI-powered predictions across 20 major leagues worldwide".</dd>
+      <dt>Fix</dt><dd>Twice a week, download <em>only the current season</em> CSV for each of the 20 leagues from football-data.co.uk. That's 20 small files, well inside Lambda limits, and it brings results, shots and odds for every league. Keep football-data.org for fixture kickoff times and crests. Until then, label the frozen leagues "historical data only" in the UI.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-03">
+    <div class="finding-head"><span class="finding-id">DATA-03</span><span class="sev high">High</span><span class="finding-title">Season codes are hard-coded</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>settings.HISTORICAL_SEASONS</code> / <code>SEASON_DISPLAY</code> (ends 2024-25), <code>FootballDataProvider.SEASONS</code> (starts at <code>2526</code>, so no <code>2627</code>), <code>tasks/data_sync.py</code>, <code>train_model.py</code>, Admin page train button (<code>2425</code>)</dd>
+      <dt>Fix</dt><dd>Derive the season from the date (the <code>League.current_season</code> property already does this per league) and use it everywhere.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-04">
+    <div class="finding-head"><span class="finding-id">DATA-04</span><span class="sev med">Medium</span><span class="finding-title">Results older than 7 days are lost if a daily run fails</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>sync_results_to_database(days=7)</code>; the job runs at 04:15, when the database may not be up yet (COST-02)</dd>
+      <dt>Effect</dt><dd>A match stays "scheduled" forever, its prediction is never checked, and standings are short a game.</dd>
+      <dt>Fix</dt><dd>Also re-sync any match whose kickoff has passed but whose status is still <code>scheduled</code>, however old. The CSV sync (DATA-02) back-fills these automatically too.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-05">
+    <div class="finding-head"><span class="finding-id">DATA-05</span><span class="sev med">Medium</span><span class="finding-title">There is no live-score source, but the UI polls for live matches every 15 seconds</span></div>
+    <dl>
+      <dt>Where</dt><dd>Status only changes during the once-a-day sync; <code>useLiveMatches</code> polls every 15 s; the dashboard, Matches page "Live" tab and notifications rely on it</dd>
+      <dt>Fix</dt><dd>Either add a real live source (e.g. football-data.org <code>/matches?status=IN_PLAY</code> every few minutes during match windows, within its rate limit), or remove the Live tab and polling and say so.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-06">
+    <div class="finding-head"><span class="finding-id">DATA-06</span><span class="sev med">Medium</span><span class="finding-title">Kickoff times are UTC but shown as if local</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>football_data_org.py</code> stores <code>match_dt.time()</code> from UTC; football-data.co.uk times are UK local time; the frontend prints <code>kickoff_time</code> as-is</dd>
+      <dt>Effect</dt><dd>In Lagos (WAT, UTC+1), every football-data.org kickoff looks one hour early. The Settings "Timezone" option has no effect (FE, Settings).</dd>
+      <dt>Fix</dt><dd>Store a single timezone-aware <code>kickoff_at</code> (UTC) and format it in the browser with <code>formatTimeInZone</code> (it already exists in <code>lib/utils.ts</code>).</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-07">
+    <div class="finding-head"><span class="finding-id">DATA-07</span><span class="sev med">Medium</span><span class="finding-title">Team season stats and head-to-head tables are never filled</span></div>
+    <dl>
+      <dt>Where</dt><dd>Models <code>TeamSeasonStats</code>, <code>HeadToHead</code>; I found no sync code that writes them</dd>
+      <dt>Effect</dt><dd>The team page's stat tiles are hidden, the match page's head-to-head card never appears, and the season features are zero (ML-02). Standings still work because they fall back to computing from matches.</dd>
+      <dt>Fix</dt><dd>Compute both from <code>Match</code> rows on demand (with caching). There's no need to store them.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="DATA-08">
+    <div class="finding-head"><span class="finding-id">DATA-08</span><span class="sev med">Medium</span><span class="finding-title">Logos: team crests for 8 leagues only, and no league logos</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>Team.logo_url</code> is set only from football-data.org crests; <code>League.logo_url</code> is never set</dd>
+      <dt>Effect</dt><dd>Every league card shows the same trophy icon. Teams in the other 12 leagues, and duplicate teams from DATA-01, show a letter circle whose background class doesn't exist (UI-01), so it renders as bare text.</dd>
+      <dt>Fix</dt><dd>Run the existing <code>sync_teams_with_logos</code> once after the team merge, and set <code>League.logo_url</code> from football-data.org competition emblems. For uncovered leagues, host a small crest set in S3 or <code>frontend/public/crests/</code>. Keep the letter fallback, but give it a working style.</dd>
+    </dl>
+  </div>
+
+  <footer>Team-name examples reflect each provider's usual naming. Confirm against your data with <code>Team.objects.values('league__code','name','fd_name').order_by('league__code','name')</code>.</footer>
+</main>
+</body>
+</html>

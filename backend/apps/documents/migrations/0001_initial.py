@@ -3,6 +3,7 @@
 import django.db.models.deletion
 import pgvector.django.vector
 from django.db import migrations, models
+from pgvector.django import VectorExtension
 
 
 class Migration(migrations.Migration):
@@ -16,6 +17,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # The VectorField columns below need the pgvector extension. It used
+        # to come only from scripts/init_db.sql (Docker), so a fresh managed
+        # database (Neon/Supabase) failed here. Existing databases have
+        # already applied this migration, so adding it changes nothing there.
+        VectorExtension(),
         migrations.CreateModel(
             name="DocumentCategory",
             fields=[

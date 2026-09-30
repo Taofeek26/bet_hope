@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS Cost Review</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html" class="active">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>AWS cost: where the money goes and how to cut it</h1>
+  <p class="lede">Most of the bill pays for keeping a VPC reachable (NAT Gateway), a database that is off half the day anyway, and a container image several times bigger than it needs to be. The cheapest fix also fixes the biggest product problem: the site being offline every evening.</p>
+  <p class="meta">Source: <code>infrastructure/template.yaml</code>, <code>.github/workflows/deploy-lambda-web.yml</code>, <code>backend/Dockerfile.lambda-web</code>, <code>backend/requirements.txt</code>, <code>backend/config/settings/*</code>. Prices are us-east-1 list prices. Check them against your bill using the <a href="#verify">commands at the bottom</a>.</p>
+
+  <h2>Estimated monthly cost by resource</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Resource (template.yaml)</th><th>How it's billed</th><th class="num">Est. / month</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>NAT Gateway (created 04:00, deleted 16:00 UTC)</td><td>$0.045/hour + $0.045/GB processed</td><td class="num">≈ $16 + data</td><td>The largest fixed cost. It exists only because the Lambdas run inside the VPC.</td></tr>
+      <tr><td>Elastic IP on the NAT</td><td>$0.005/hour public IPv4</td><td class="num">≈ $1.80</td><td>Any leaked, unattached EIPs cost the same each (see COST-04).</td></tr>
+      <tr><td>RDS db.t4g.micro (12 h/day)</td><td>$0.016/hour</td><td class="num">≈ $5.80</td><td>Stopping it saves compute only.</td></tr>
+      <tr><td>RDS storage 20 GB gp3 + backups</td><td>$0.115/GB-month</td><td class="num">≈ $2.30–4</td><td>Billed even while stopped. 7-day backups are free up to the database size.</td></tr>
+      <tr><td>ECR image storage (<code>bet-hope-web</code>)</td><td>$0.10/GB-month</td><td class="num">$3–15+, growing</td><td>No lifecycle policy. Every push to <code>main</code> that touches <code>backend/</code> stores another image of roughly 2–3 GB (torch, transformers…).</td></tr>
+      <tr><td>CloudWatch Logs (3 Lambdas)</td><td>$0.50/GB ingested + $0.03/GB-month stored</td><td class="num">$1–5, growing</td><td>No retention set, so logs are kept forever. The <code>apps</code> logger is at DEBUG level (<code>base.py</code>).</td></tr>
+      <tr><td>Lambda <code>web</code> (1 GB)</td><td>$0.0000167/GB-second</td><td class="num">&lt; $1 normally</td><td>Can reach $10+ if requests hang while the database is stopped (COST-03).</td></tr>
+      <tr><td>Lambda <code>manage</code> (2 GB, up to 900 s)</td><td>GB-seconds</td><td class="num">$0–3</td><td>3 scheduled runs a day. Mostly inside the free tier.</td></tr>
+      <tr><td>API Gateway REST</td><td>$3.50 per million requests</td><td class="num">&lt; $1</td><td>An HTTP API would cost about 70% less per request.</td></tr>
+      <tr><td>S3 (static + models + SAM artifacts)</td><td>GB-month + requests</td><td class="num">&lt; $1</td><td>The static bucket is versioned with no clean-up, and appears unused (static files are served from the image by WhiteNoise).</td></tr>
+      <tr><td><strong>Total (estimate)</strong></td><td></td><td class="num"><strong>≈ $30–60</strong></td><td>If your bill is well above this, look at COST-03 and COST-04 first.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Findings</h2>
+
+  <div class="finding" id="COST-01">
+    <div class="finding-head"><span class="finding-id">COST-01</span><span class="sev high">High</span><span class="finding-title">The NAT Gateway exists only because the Lambdas are inside the VPC</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>template.yaml</code>: <code>WebFunction</code> / <code>ManageFunction</code> <code>VpcConfig</code>, <code>InfraToggleFunction</code></dd>
+      <dt>Why</dt><dd>The Lambdas sit in private subnets to reach RDS. They also need the internet (football-data.org, OpenRouter, S3, AWS Lambda invoke), which requires a NAT Gateway, the single most expensive piece. The daily create/delete toggle roughly halves it, but adds complexity and the downtime in COST-02.</dd>
+      <dt>Fix</dt><dd>Run the Lambdas outside the VPC and use a database that is reachable over TLS (Option A below), or move to one small server (Option B). Either way the NAT, EIP, VPC and toggle function disappear.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-02">
+    <div class="finding-head"><span class="finding-id">COST-02</span><span class="sev crit">Critical</span><span class="finding-title">The cost-saving schedule takes the whole site offline for 12 hours a day</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>InfraStopSchedule</code> <code>cron(0 16 * * ? *)</code> / <code>InfraStartSchedule</code> <code>cron(0 4 * * ? *)</code></dd>
+      <dt>Effect</dt><dd>From 16:00 to 04:00 UTC (5pm–5am WAT) RDS is stopped. Every API call fails and every page shows its error state. That window covers most evening kick-offs in Europe and all of South America.</dd>
+      <dt>Also</dt><dd>RDS can take 5–10 minutes to become available after <code>start</code>, and the NAT waiter can take up to about 7 minutes. The fixture sync fires at 04:15, so on a slow morning it runs before the database is up and that day's results are skipped.</dd>
+      <dt>Fix</dt><dd>Remove the need for the toggle (Options A/B). Until then, run the first job at 04:30 or later and have it retry on a connection error.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-03">
+    <div class="finding-head"><span class="finding-id">COST-03</span><span class="sev high">High</span><span class="finding-title">Requests made while the database is stopped probably hang until the 29-second timeout, and you pay for every second</span></div>
+    <dl>
+      <dt>Where</dt><dd>No <code>connect_timeout</code> in <code>DATABASES</code> (<code>base.py</code>); frontend polling in <code>frontend/src/hooks/useApi.ts</code></dd>
+      <dt>Effect</dt><dd>With the database stopped, each database-backed request likely waits for the TCP connect to time out, which is longer than the 29-second Lambda timeout. A browser tab left open overnight keeps polling every 15–60 seconds, and React Query retries once, so each failed call is billed for about 29 GB-seconds. Throttling caps this at roughly 100 slow calls per hour per visitor, which works out to about $0.5–2 per open tab per night. <em>Likely: confirm in CloudWatch by looking for web Lambda durations near 29,000 ms between 16:00 and 04:00 UTC.</em></dd>
+      <dt>Fix</dt><dd>Add <code>'OPTIONS': {'connect_timeout': 5}</code> to the database settings, stop polling after errors, remove the 15-second "live" polling (nothing updates live scores, see DATA-05), and make the site available 24/7.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-04">
+    <div class="finding-head"><span class="finding-id">COST-04</span><span class="sev high">High</span><span class="finding-title">The infra toggle can leave a second NAT Gateway or orphaned Elastic IPs running</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>InfraToggleFunction</code> inline code: <code>start()</code> / <code>stop()</code></dd>
+      <dt>Why</dt><dd><code>start()</code> always allocates a new EIP and creates a new NAT without checking whether one already exists. <code>stop()</code> only deletes NATs in state <code>available</code>, and releases EIPs only after the delete waiter succeeds (40 × 10 s = 400 s, inside a 600 s timeout that also stops RDS). If <code>stop()</code> fails or times out even once, the old NAT runs through the night. The next morning a second NAT is created alongside it, and orphaned EIPs cost $3.60/month each.</dd>
+      <dt>Fix</dt><dd>Run the verification commands below today. In the function, make start/stop idempotent: reuse an existing NAT, delete NATs in <code>pending</code> state too, and release all EIPs tagged with <code>NAT_NAME_TAG</code>. Add an AWS Budgets alert (the first two budgets are free).</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-05">
+    <div class="finding-head"><span class="finding-id">COST-05</span><span class="sev high">High</span><span class="finding-title">The container image carries several GB of unused ML libraries, with no ECR lifecycle policy</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>backend/requirements.txt</code>, <code>Dockerfile.lambda-web</code>, <code>deploy-lambda-web.yml</code></dd>
+      <dt>Why</dt><dd>The image installs <code>torch</code>, <code>sentence-transformers</code>, <code>transformers</code>, <code>huggingface-hub</code>, <code>google-generativeai</code>, <code>celery</code>, <code>django-celery-beat/results</code>, <code>redis</code>, <code>django-redis</code>, <code>gunicorn</code>, <code>uvicorn</code>, <code>aiohttp</code> and <code>gcc</code>. On Lambda there is no Celery broker, no Redis and no GPU, and local embeddings (torch) inside a 1 GB, 29-second web function aren't viable. Each push stores 2 tags. Old images are never deleted.</dd>
+      <dt>Effect</dt><dd>Growing ECR storage, slower cold starts (seconds on the first request after idle), and longer CI builds.</dd>
+      <dt>Fix</dt><dd>Split requirements into <code>requirements-lambda.txt</code> (Django, DRF, psycopg2-binary, numpy, pandas, scikit-learn, xgboost, joblib, boto3, openai, anthropic, apig-wsgi, whitenoise). Use API embeddings, or disable RAG. Add an ECR lifecycle rule keeping the last 5 images. Expect the image to drop from about 2–3 GB to about 0.5 GB (estimate).</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-06">
+    <div class="finding-head"><span class="finding-id">COST-06</span><span class="sev med">Medium</span><span class="finding-title">CloudWatch logs are kept forever and are verbose</span></div>
+    <dl>
+      <dt>Where</dt><dd>No <code>AWS::Logs::LogGroup</code> with <code>RetentionInDays</code> in the template; <code>LOGGING['loggers']['apps']['level'] = 'DEBUG'</code></dd>
+      <dt>Fix</dt><dd>Declare the three log groups with 14-day retention and set the <code>apps</code> logger to INFO in production.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-07">
+    <div class="finding-head"><span class="finding-id">COST-07</span><span class="sev med">Medium</span><span class="finding-title">Retraining every day costs compute and adds nothing on days without new results</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>TrainModelSchedule</code> <code>cron(0 5 * * ? *)</code></dd>
+      <dt>Fix</dt><dd>Retrain weekly (e.g. Monday after the weekend's results) and only promote the new model if it beats the current one (see ML-04). Keep predictions refreshing daily.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-08">
+    <div class="finding-head"><span class="finding-id">COST-08</span><span class="sev low">Low</span><span class="finding-title">The static bucket is fully public and versioned, and appears unused</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>StaticBucket</code> + <code>StaticBucketPolicy</code> (Principal <code>*</code>)</dd>
+      <dt>Why</dt><dd>Static files are baked into the image by <code>collectstatic</code> and served by WhiteNoise. I found nothing that writes to this bucket. It is public-read with versioning and no clean-up rule.</dd>
+      <dt>Fix</dt><dd>Confirm it's empty, then remove the bucket and its policy from the template.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="COST-09">
+    <div class="finding-head"><span class="finding-id">COST-09</span><span class="sev low">Low</span><span class="finding-title">REST API instead of HTTP API or a Function URL</span></div>
+    <dl>
+      <dt>Why</dt><dd>REST APIs cost $3.50 per million requests against $1.00 for HTTP APIs, and both cap at about 29–30 seconds. A Lambda Function URL is free and allows up to 15 minutes, which would also fix the AI analysis timeout (API-04).</dd>
+    </dl>
+  </div>
+
+  <h2 id="alternatives">Alternatives</h2>
+  <p>All three options keep the frontend on Vercel. They differ in where Django and Postgres run.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>A. Serverless, no VPC <em>(recommended if staying on AWS)</em></th><th>B. One small server</th><th>C. Managed platform</th></tr></thead>
+    <tbody>
+      <tr><td><strong>What</strong></td><td>Lambda <em>outside</em> the VPC + serverless Postgres (Neon or Supabase, both support pgvector). Models stay in S3.</td><td>Docker Compose (Postgres + Django + cron) on Oracle Cloud Always Free ARM, Hetzner CX22, or Lightsail 2 GB.</td><td>Render / Railway / Fly.io web service + their managed Postgres.</td></tr>
+      <tr><td><strong>Est. monthly</strong></td><td>AWS $0–8 + DB $0 (free tier) to ~$19</td><td>$0 (Oracle Free) · ~€5 (Hetzner) · $12 (Lightsail)</td><td>~$7–25</td></tr>
+      <tr><td><strong>Uptime</strong></td><td>24/7, scales to zero</td><td>24/7 on one machine</td><td>24/7</td></tr>
+      <tr><td><strong>Removes</strong></td><td>NAT, EIP, VPC, RDS, infra toggle</td><td>All AWS compute; no 29 s / 15 min limits</td><td>All AWS compute</td></tr>
+      <tr><td><strong>Trade-offs</strong></td><td>The database is reached over the public internet (TLS plus a strong password). The free tier has compute and storage limits (0.5 GB at the time of writing, so check the current plans). Keep the dataset trimmed.</td><td>You patch the OS and set up backups yourself (a nightly <code>pg_dump</code> to S3 or Backblaze costs cents). Single point of failure.</td><td>Least ops work; the bill grows with usage; some free tiers sleep when idle.</td></tr>
+      <tr><td><strong>Migration effort</strong></td><td>Small: <code>pg_dump</code> → restore, change <code>DATABASE_URL</code>, remove <code>VpcConfig</code> and the network resources.</td><td>Medium: the repo already has <code>docker-compose.yml</code> and <code>scripts/oracle-cloud-setup.sh</code>.</td><td>Medium.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><strong>Recommendation.</strong> Do the quick wins first. Then choose A if you want to stay serverless on AWS, or B on Oracle's free tier if the goal is close to $0 and you're comfortable running a server. Both make the site available 24/7, which matters more than the savings. Before deleting RDS, take a final snapshot (the template already has <code>DeletionPolicy: Snapshot</code>).</div>
+
+  <h2 id="quick-wins">Quick wins that need no migration</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Action</th><th>Where</th><th>Saves / fixes</th></tr></thead>
+    <tbody>
+      <tr><td>ECR lifecycle policy: keep the last 5 images</td><td>ECR console or <code>aws ecr put-lifecycle-policy</code></td><td>Stops ECR storage from growing</td></tr>
+      <tr><td>14-day log retention, <code>apps</code> logger → INFO</td><td>template.yaml, base.py</td><td>Log storage</td></tr>
+      <tr><td>AWS Budget alert at your target amount</td><td>Billing → Budgets</td><td>Early warning</td></tr>
+      <tr><td>Find and delete extra NATs and unattached EIPs</td><td>Commands below</td><td>$32+/month per stray NAT</td></tr>
+      <tr><td>DB <code>connect_timeout: 5</code>; stop 15-second live polling</td><td>base.py, useApi.ts</td><td>Lambda time during downtime</td></tr>
+      <tr><td>Slim the Lambda image</td><td>requirements-lambda.txt</td><td>ECR, cold starts, CI time</td></tr>
+      <tr><td>Weekly retrain with a promotion check</td><td>template.yaml, trainer</td><td>Compute, plus protects model quality</td></tr>
+      <tr><td>Remove the unused public static bucket</td><td>template.yaml</td><td>Tidiness, security</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="verify">Verify against your account</h2>
+  <p>Run these with the AWS CLI (region us-east-1). They are all read-only.</p>
+<pre><code># 1. What you actually pay, by service, this month
+aws ce get-cost-and-usage --time-period Start=2026-09-01,End=2026-09-30 \
+  --granularity MONTHLY --metrics UnblendedCost \
+  --group-by Type=DIMENSION,Key=SERVICE
+
+# 2. NAT gateways that exist right now (expect 0 after 16:00 UTC, 1 during the day)
+aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available \
+  --query 'NatGateways[].[NatGatewayId,State,CreateTime]' --output table
+
+# 3. Elastic IPs, including unattached ones (AssociationId empty = orphaned)
+aws ec2 describe-addresses --query 'Addresses[].[PublicIp,AllocationId,AssociationId]' --output table
+
+# 4. How many images ECR stores, and their total size in GB
+aws ecr describe-images --repository-name bet-hope-web \
+  --query 'length(imageDetails)'
+aws ecr describe-images --repository-name bet-hope-web \
+  --query 'sum(imageDetails[].imageSizeInBytes)' | awk '{print $1/1024/1024/1024 " GB"}'
+
+# 5. Log groups: stored size and retention (null = forever)
+aws logs describe-log-groups --log-group-name-prefix /aws/lambda/bet-hope \
+  --query 'logGroups[].[logGroupName,storedBytes,retentionInDays]' --output table
+
+# 6. Did web Lambda calls hang at ~29 s overnight? (max duration per hour, last 2 days)
+aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Duration \
+  --dimensions Name=FunctionName,Value=bet-hope-web --statistics Maximum \
+  --start-time $(date -u -v-2d +%Y-%m-%dT%H:%M:%SZ) --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 3600 --output table</code></pre>
+
+  <footer>Prices are public us-east-1 list prices at the time of writing and exclude tax and free-tier credits. The estimates assume the resources in <code>template.yaml</code>; anything created outside the template isn't included.</footer>
+</main>
+</body>
+</html>

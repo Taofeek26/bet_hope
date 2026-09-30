@@ -52,6 +52,10 @@ if SENTRY_DSN:
         environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
     )
 
+# base.py sets the 'apps' logger to DEBUG, which is useful locally but
+# fills CloudWatch (billed per GB ingested) in production. (COST-06)
+LOGGING['loggers']['apps']['level'] = os.getenv('APPS_LOG_LEVEL', 'INFO')
+
 # Logging — skip the file handler entirely on Lambda: /app is read-only
 # there (only /tmp is writable), and CloudWatch Logs already captures
 # stdout/stderr from every invocation, so a log file adds nothing.

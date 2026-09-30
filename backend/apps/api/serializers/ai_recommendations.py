@@ -34,6 +34,7 @@ class AIRecommendationSerializer(serializers.ModelSerializer):
             'provider',
             'model_name',
             'status',
+            'error_message',
             'recommendation',
             'confidence_assessment',
             'risk_analysis',

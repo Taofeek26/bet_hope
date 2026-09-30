@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 1 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html" class="active">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 1: available 24/7 and cheaper</h1>
+  <p class="lede">This is the working record for Phase 1: the decisions made and why, every file changed, every command run while building and testing it, and the exact commands to run the migration on AWS, with a rollback for each step.</p>
+  <p class="meta">Started 30 Sep 2026 · base commit <code>75165fd</code> · audit findings addressed: COST-01, COST-02, COST-03, COST-05, API-04 (plus the unused static bucket, COST-08)</p>
+
+  <h2>Status</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Part</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Code changes (backend, frontend, template)</td><td><span class="st ok">Done</span> Tested locally, not committed yet</td></tr>
+      <tr><td>Step 1: create the Neon database</td><td><span class="st none">To do (you)</span></td></tr>
+      <tr><td>Steps 2–6: build image, copy data, switch the app (stage 1)</td><td><span class="st none">To do (you)</span></td></tr>
+      <tr><td>Step 7: remove VPC, NAT and RDS (stage 2, 1–3 days later)</td><td><span class="st none">To do (you)</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">Phase 1 comes after <a href="phase-0.html">Phase 0</a>. The rate limits, locked endpoints, ECR clean-up and log retention are recorded there. Deploying the app code for both phases can happen in one image build (see Phase 0 → Deploy). This phase adds the infrastructure switch.</div>
+
+  <h2>Decisions</h2>
+
+  <div class="finding" id="D1">
+    <div class="finding-head"><span class="finding-id">D1</span><span class="finding-title">Option A: keep Lambda, drop the VPC, use Neon Postgres</span></div>
+    <dl>
+      <dt>Chose</dt><dd>Lambdas run outside any VPC and connect to a managed Postgres over TLS. <strong>Neon</strong> is the default. Supabase works the same way; only the connection string differs (see step 1).</dd>
+      <dt>Why</dt><dd>It's the smallest change: same SAM stack, same CI, same API URL, same code. It removes the NAT Gateway, the RDS instance and the daily start/stop toggle, and with them the 12-hour daily outage. Neon supports pgvector and scales to zero.</dd>
+      <dt>Rejected</dt><dd>Option B (one server) means more ops work and a new deploy path. Option C (PaaS) means a new platform and a higher bill as usage grows. Both are still valid later.</dd>
+      <dt>Cost</dt><dd>Removes the ~$16/month NAT, ~$2 EIP and ~$8–10 RDS. Neon's free tier covers up to 0.5 GB (step 4 measures your size). Its paid tier is usage-based, from about $5/month.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D2">
+    <div class="finding-head"><span class="finding-id">D2</span><span class="finding-title">Two-stage cutover with a rollback copy</span></div>
+    <dl>
+      <dt>Chose</dt><dd>A new template parameter <code>LegacyNetwork</code> (<code>keep</code> / <code>remove</code>). All 26 old network, RDS and toggle resources carry <code>Condition: KeepLegacy</code>. Stage 1 (<code>keep</code>) moves the app to Neon but leaves RDS in place as an untouched copy. Stage 2 (<code>remove</code>) deletes the old resources, and RDS takes a final snapshot first (<code>DeletionPolicy: Snapshot</code>, already in the template).</dd>
+      <dt>Why</dt><dd>If anything is wrong after the switch, rollback is one redeploy. Detaching Lambdas from a VPC also releases their network interfaces slowly, so deleting subnets and security groups in the same deploy often fails. Two stages avoid that.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D3">
+    <div class="finding-head"><span class="finding-id">D3</span><span class="finding-title">A separate, slim requirements file for the Lambda image</span></div>
+    <dl>
+      <dt>Chose</dt><dd><code>backend/requirements-lambda.txt</code>, used only by <code>Dockerfile.lambda-web</code>. The full <code>requirements.txt</code> is untouched for Docker Compose.</dd>
+      <dt>Removed</dt><dd>torch, sentence-transformers, transformers, huggingface-hub, tiktoken, google-generativeai, optuna, redis, django-redis, gunicorn, uvicorn, aiohttp, httpx, pydantic, structlog, python-json-logger, Pillow, python-slugify, drf-spectacular, django-extensions, django-allauth. The system compilers (<code>gcc</code>, <code>postgresql-devel</code>) are gone too. <code>xgboost</code> became <code>xgboost-cpu</code>: the same library and model files, without the bundled CUDA/NCCL.</dd>
+      <dt>Why it's safe</dt><dd>I listed every module the backend imports (command log #1–#2). The removed ones are either never imported, or imported inside a <code>try/except</code> (google, optuna, understat, sentence_transformers). Local embeddings could never have worked here anyway: the local model makes 384-number vectors, and the database column holds 1536.</dd>
+      <dt>Result</dt><dd>All dependencies now total <strong>115 MB</strong> of compressed Linux wheels (command log #14), with no torch or CUDA.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D4">
+    <div class="finding-head"><span class="finding-id">D4</span><span class="finding-title">A <code>.dockerignore</code> for the backend</span></div>
+    <dl>
+      <dt>Why</dt><dd><code>COPY . .</code> was copying about <strong>242 MB of old model pickles committed to git</strong> (<code>backend/models/</code>, <code>cache/</code>, <code>data/</code>) into every image. On Lambda, models load from S3 into <code>/tmp</code>, so the copies were dead weight. Docker Compose mounts the folder directly, so it's unaffected.</dd>
+      <dt>Later</dt><dd>Removing those pickles from git history is a separate cleanup and isn't done here.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D5">
+    <div class="finding-head"><span class="finding-id">D5</span><span class="finding-title">Copy the data with a Django command run inside the manage Lambda</span></div>
+    <dl>
+      <dt>Why</dt><dd>RDS sits in private subnets with no route from the internet, so you can't <code>pg_dump</code> it from your laptop, and the image has no <code>pg_dump</code> binary. The manage Lambda can reach RDS (it's in the VPC) and the internet (through the NAT, 04:00–16:00 UTC), so it can stream one database into the other.</dd>
+      <dt>How</dt><dd>The new <code>copy_database</code> command does five things. It reports sizes, creates pgvector on the target, and runs <code>migrate</code> there. It then copies every table with streaming <code>COPY</code> in one transaction and resets id sequences. Finally it compares row counts and fails loudly on any mismatch. It never writes to the source. It refuses to run without <code>--yes-overwrite-target</code>, and refuses if the target is the source.</dd>
+      <dt>Rejected</dt><dd>Starting empty and re-syncing: the full historical import takes longer than the 15-minute Lambda limit, and you'd lose prediction history and task logs.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D6">
+    <div class="finding-head"><span class="finding-id">D6</span><span class="finding-title">AI analysis runs in the background; the browser polls</span></div>
+    <dl>
+      <dt>Chose</dt><dd><code>POST /ai-recommendations/generate/</code> creates a <code>pending</code> row and invokes the manage Lambda asynchronously (the same mechanism as the admin task runner), then returns <strong>202</strong> with the id. The new <code>generate_ai_recommendation</code> command fills in the row. The UI polls <code>GET /ai-recommendations/{id}/</code> every 3 s, for up to 4 minutes. A second click within 5 minutes reuses the pending job instead of paying for another LLM call. Without <code>MANAGE_FUNCTION_NAME</code> (local development), the old inline behaviour is kept.</dd>
+      <dt>Rejected</dt><dd>A Lambda Function URL, which would mean a second API URL, new CORS rules and new auth surface. A faster model would change output quality, which is your call and isn't part of this phase.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D7">
+    <div class="finding-head"><span class="finding-id">D7</span><span class="finding-title">Database connection settings for a managed, pooled Postgres</span></div>
+    <dl>
+      <dt>Chose</dt><dd><code>connect_timeout=5</code> (<code>DB_CONNECT_TIMEOUT</code>), <code>CONN_MAX_AGE=0</code> (<code>DB_CONN_MAX_AGE</code>), <code>DISABLE_SERVER_SIDE_CURSORS=True</code> (<code>DB_DISABLE_SERVER_SIDE_CURSORS</code>). SSL comes from <code>?sslmode=require</code> in the URL.</dd>
+      <dt>Why</dt><dd>With a timeout, an unreachable database fails in about 5 s instead of burning 29 s of Lambda time (tested: command log #11). Not holding connections open lets Neon suspend when idle. Neon's pooler (PgBouncer, transaction mode) can't keep the server-side cursors Django uses for <code>.iterator()</code>. <code>/health/</code> now runs <code>SELECT 1</code> and returns 503 when the database is down, without echoing the database host.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D8">
+    <div class="finding-head"><span class="finding-id">D8</span><span class="finding-title">Create the pgvector extension in a migration</span></div>
+    <dl>
+      <dt>Why</dt><dd>The extension was only created by <code>scripts/init_db.sql</code> (Docker), so <code>migrate</code> on any fresh database failed. I prepended <code>VectorExtension()</code> to <code>documents/0001_initial.py</code>. Databases that already applied that migration don't re-run it, so nothing changes for them.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="D9">
+    <div class="finding-head"><span class="finding-id">D9</span><span class="finding-title">Set log retention and ECR clean-up with the CLI, not the template</span></div>
+    <dl>
+      <dt>Why</dt><dd>The log groups and the ECR repository already exist outside the stack. Declaring them in the template makes CloudFormation try to create them, and the deploy fails with "already exists". Two CLI calls (step 6) do the same job.</dd>
+    </dl>
+  </div>
+
+  <h2>Files changed</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>File</th><th>Change</th><th>Decision</th></tr></thead>
+    <tbody>
+      <tr><td><code>infrastructure/template.yaml</code></td><td>New <code>DatabaseUrl</code> and <code>LegacyNetwork</code> parameters and a <code>KeepLegacy</code> condition on 26 legacy resources. <code>VpcConfig</code> removed from both functions. <code>DATABASE_URL</code> now comes from <code>DatabaseUrl</code>. The VPC-access policy is kept only while legacy exists. The static bucket is legacy, with <code>Retain</code>. Legacy outputs are conditional.</td><td>D1, D2</td></tr>
+      <tr><td><code>backend/requirements-lambda.txt</code> (new)</td><td>Slim runtime dependencies, including a pinned <code>boto3</code></td><td>D3</td></tr>
+      <tr><td><code>backend/Dockerfile.lambda-web</code></td><td>Installs from <code>requirements-lambda.txt</code>; no <code>dnf</code> compilers</td><td>D3</td></tr>
+      <tr><td><code>backend/.dockerignore</code> (new)</td><td>Excludes venv, models, cache, data, tests, db.sqlite3, .env</td><td>D4</td></tr>
+      <tr><td><code>backend/apps/core/management/commands/copy_database.py</code> (new)</td><td>The database copy tool</td><td>D5</td></tr>
+      <tr><td><code>backend/apps/core/management/commands/generate_ai_recommendation.py</code> (new)</td><td>Background worker for one AI analysis</td><td>D6</td></tr>
+      <tr><td><code>backend/apps/api/views/ai_recommendations.py</code></td><td>Async queue path (202 + id), de-duplication, failure handling</td><td>D6</td></tr>
+      <tr><td><code>backend/apps/documents/services/ai_recommendation_service.py</code></td><td>Can fill an existing row (<code>record=</code>) instead of always creating one</td><td>D6</td></tr>
+      <tr><td><code>backend/apps/api/serializers/ai_recommendations.py</code></td><td>Exposes <code>error_message</code></td><td>D6</td></tr>
+      <tr><td><code>frontend/src/components/predictions/AIEnhancement.tsx</code>, <code>hooks/useApi.ts</code>, <code>lib/api.ts</code>, <code>types/index.ts</code></td><td>Polls a queued job; shows a timeout or failure message</td><td>D6</td></tr>
+      <tr><td><code>backend/config/settings/base.py</code></td><td>Connect timeout, no persistent connections, no server-side cursors</td><td>D7</td></tr>
+      <tr><td><code>backend/config/urls.py</code></td><td><code>/health/</code> checks the database</td><td>D7</td></tr>
+      <tr><td><code>backend/apps/documents/migrations/0001_initial.py</code></td><td><code>VectorExtension()</code> first</td><td>D8</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="log">Commands I ran while building and testing</h2>
+  <p>All run on your Mac. Nothing touched AWS.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command (abridged)</th><th>Purpose → result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>grep -rhoE "^\s*(from|import) …" --include='*.py' apps tasks config … | sort | uniq -c</code></td><td>List every imported top-level module → the basis for D3</td></tr>
+      <tr><td>2</td><td><code>grep -rnE "^\s*(from|import) (dotenv|aiohttp|understat|google|optuna|…)"</code></td><td>Confirm the optional imports are guarded → all inside try/except or functions</td></tr>
+      <tr><td>3</td><td><code>du -sh venv models cache data</code>; <code>git ls-files models cache data | xargs du -k</code></td><td>Image bloat check → 242 MB of tracked pickles (D4)</td></tr>
+      <tr><td>4</td><td><code>cfn-lint template.yaml</code>; <code>sam validate --lint</code></td><td>Template is valid. One warning (W1011) about the old <code>DBPassword</code> parameter, which Phase "security" (SEC-02) will handle.</td></tr>
+      <tr><td>5</td><td><code>venv/bin/pip install "boto3&gt;=1.34.0"</code></td><td>Local venv lacked boto3, which Django needs to start</td></tr>
+      <tr><td>6</td><td><code>DJANGO_ENV=production … manage.py check</code>; <code>manage.py makemigrations --check --dry-run</code></td><td>"System check identified no issues"; "No changes detected"</td></tr>
+      <tr><td>7</td><td><code>git clone --branch v0.8.0 github.com/pgvector/pgvector</code>; <code>make &amp;&amp; make install PG_CONFIG=/opt/homebrew/opt/postgresql@14/bin/pg_config</code></td><td>pgvector for local testing. This installed it into your Homebrew Postgres 14. To undo: run <code>make uninstall</code> with the same <code>PG_CONFIG</code>.</td></tr>
+      <tr><td>8</td><td><code>initdb</code> + <code>pg_ctl start -o "-p 55432 -k ''"</code> in the scratchpad; <code>createdb src dst</code></td><td>Throwaway test cluster (stopped at the end, command #15)</td></tr>
+      <tr><td>9</td><td><code>manage.py migrate</code> on <code>src</code>, then seed 300 matches, odds and predictions, a document with tabs/quotes/backslashes, a 1536-d vector and a task run</td><td>Fresh migrate succeeded, including the new <code>VectorExtension</code> (D8)</td></tr>
+      <tr><td>10</td><td><code>manage.py copy_database --report-only</code>; without <code>--yes-overwrite-target</code>; with target = source; the real copy; then a re-run onto a non-empty target</td><td>Report OK. Both refusals exit 1 with the right message. "43 tables copied, row counts match" in 2.7 s. The re-run is safe.</td></tr>
+      <tr><td>11</td><td><code>psql … select md5(string_agg(…))</code> on both databases; create a new Team on the target</td><td>Checksums for text, vectors and JSON are identical. The new row got id 3, so the sequences were reset.</td></tr>
+      <tr><td>12</td><td>Python test client with <code>boto3</code> and the LLM call mocked: two POSTs to <code>/generate/</code>, poll, a failing worker, a succeeding worker</td><td>202 + id; the second click was de-duplicated; 1 Lambda invoke with the right payload; failure → <code>failed</code> + message; success → <code>completed</code>, 42 tokens, key factors</td></tr>
+      <tr><td>13</td><td><code>/health/</code> against an unreachable host</td><td>503 <code>unreachable</code> after about 5 s (previously it would hang)</td></tr>
+      <tr><td>14</td><td><code>npx tsc --noEmit</code>; <code>npx next build --no-lint</code>; <code>pip download -r requirements-lambda.txt --platform manylinux… --python-version 3.13 --only-binary=:all:</code></td><td>Type-check and build pass (ESLint isn't configured in this project). All Lambda wheels resolve for Linux/Python 3.13, 115 MB total.</td></tr>
+      <tr><td>15</td><td><code>pg_ctl stop</code>; <code>rm -rf scratchpad/wheels</code></td><td>Clean-up</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="runbook">Runbook: what you run, in order</h2>
+  <div class="callout crit"><strong>Timing:</strong> steps 3–5 must run while the NAT is up and no scheduled job is writing: between <strong>05:30 and 15:30 UTC</strong> (06:30–16:30 WAT). Do steps 4–5 back to back. Anything written to RDS after the copy (e.g. that day's 05:00 training) isn't carried over.</div>
+  <p>Shell setup used by every step below (run from the repository root):</p>
+<pre><code>export AWS_REGION=us-east-1
+export ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+# Loads DBPassword, DjangoSecretKey and the API keys from your local secrets file
+export $(grep -E '^[A-Za-z]+=' infrastructure/LAMBDA_DEPLOY_SECRETS.local.txt | xargs)
+# Current CORS settings. sam deploy would reset them to "" if not passed again.
+aws cloudformation describe-stacks --stack-name bet-hope \
+  --query "Stacks[0].Parameters[?starts_with(ParameterKey,'Cors')]" --output table</code></pre>
+  <p>Copy the two CORS values from that table into <code>CORS_ORIGINS</code> and <code>CORS_REGEXES</code>:</p>
+<pre><code>export CORS_ORIGINS='https://your-app.vercel.app'
+export CORS_REGEXES=''</code></pre>
+
+  <h3>Step 1: create the Neon database</h3>
+  <ol>
+    <li>Go to neon.tech → New project → Postgres 16 → region <strong>AWS US East 1 (N. Virginia)</strong>, the same region as the Lambdas.</li>
+    <li>Dashboard → <em>Connect</em>. Copy two connection strings:
+      <ul>
+        <li><strong>Direct</strong> (connection pooling off). Used once, for the copy. Save it as <code>NEON_DIRECT_URL</code>.</li>
+        <li><strong>Pooled</strong> (pooling on; the host contains <code>-pooler</code>). Used by the app. Save it as <code>NEON_POOLED_URL</code>.</li>
+      </ul>
+      Both must end with <code>?sslmode=require</code>. Keep them in your local secrets file, not in git.</li>
+  </ol>
+  <p class="meta">Using Supabase instead: its direct host is IPv6-only on the free tier, and Lambda outside a VPC is IPv4. Use the <em>Session pooler</em> string (port 5432) for the copy and the <em>Transaction pooler</em> string (port 6543) for the app.</p>
+<pre><code>export NEON_DIRECT_URL='postgresql://…@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require'
+export NEON_POOLED_URL='postgresql://…@ep-xxxx-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require'</code></pre>
+  <p><strong>Rollback:</strong> none needed. Nothing uses it yet.</p>
+
+  <h3>Step 2: commit, then build the image</h3>
+<pre><code>git checkout -b phase-1-serverless-db
+git add backend infrastructure frontend html
+git commit -m "Phase 1: run Lambdas outside the VPC against managed Postgres"
+git push -u origin phase-1-serverless-db
+# CI only runs automatically on main, so start it by hand for this branch:
+gh workflow run deploy-lambda-web.yml --ref phase-1-serverless-db
+gh run watch   # wait for "Build and push image" to succeed
+export IMAGE_URI=$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/bet-hope-web:$(git rev-parse HEAD)
+aws ecr describe-images --repository-name bet-hope-web --image-ids imageTag=$(git rev-parse HEAD) \
+  --query 'imageDetails[0].imageSizeInBytes'   # compare with the old image size</code></pre>
+  <p><strong>Rollback:</strong> none needed. Pushing an image changes nothing that's running.</p>
+
+  <h3>Step 3: give only the manage Lambda the new image</h3>
+  <p>It still runs in the VPC with RDS. The new image adds <code>copy_database</code> and works with the old settings.</p>
+<pre><code>aws lambda get-function --function-name bet-hope-manage --query 'Code.ImageUri' --output text \
+  | tee /tmp/bet-hope-manage-old-image.txt          # keep for rollback
+aws lambda update-function-code --function-name bet-hope-manage --image-uri $IMAGE_URI
+aws lambda wait function-updated --function-name bet-hope-manage</code></pre>
+  <p><strong>Rollback:</strong> <code>aws lambda update-function-code --function-name bet-hope-manage --image-uri $(cat /tmp/bet-hope-manage-old-image.txt)</code></p>
+
+  <h3>Step 4: measure the current database</h3>
+<pre><code>aws lambda invoke --function-name bet-hope-manage --cli-read-timeout 900 \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"command":"copy_database","args":["--report-only"]}' /tmp/report.json
+python3 -c "import json;print(json.load(open('/tmp/report.json'))['stdout'])"</code></pre>
+  <p>If "Source database size" is over about 450 MB, either pick Neon's paid plan or add <code>--exclude</code> for large tables you don't need. Candidates are <code>django_celery_results_taskresult</code> and <code>embedding_cache</code>; both are rebuildable.</p>
+
+  <h3>Step 5: copy RDS into Neon</h3>
+  <p>The payload goes in a file, so the database password doesn't end up in your shell history. Delete the file afterwards.</p>
+<pre><code>python3 - &lt;&lt;'EOF'
+import json, os
+json.dump({"command": "copy_database",
+           "args": ["--target-url", os.environ["NEON_DIRECT_URL"], "--yes-overwrite-target"]},
+          open("/tmp/copy.json", "w"))
+EOF
+aws lambda invoke --function-name bet-hope-manage --cli-read-timeout 900 \
+  --cli-binary-format raw-in-base64-out --payload file:///tmp/copy.json /tmp/copy-out.json
+rm /tmp/copy.json
+python3 -c "import json;d=json.load(open('/tmp/copy-out.json'));print(d['status']);print(d['stdout'][-1500:]);print(d['stderr'][-1500:])"</code></pre>
+  <p><strong>Expect:</strong> <code>success</code> and "Done: N tables copied, row counts match." On <code>error</code> or <code>timeout</code>, don't continue. The stderr text says which table failed. The copy is safe to re-run.</p>
+  <p><strong>Rollback:</strong> not needed. RDS was only read.</p>
+
+  <h3>Step 6: switch the app to Neon (stage 1)</h3>
+<pre><code>cd infrastructure
+sam deploy --template-file template.yaml --stack-name bet-hope --region $AWS_REGION \
+  --resolve-s3 --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --no-confirm-changeset \
+  --parameter-overrides \
+    ImageUri=$IMAGE_URI \
+    DatabaseUrl="$NEON_POOLED_URL" \
+    LegacyNetwork=keep \
+    DBPassword="$DBPassword" \
+    DjangoSecretKey="$DjangoSecretKey" \
+    CorsAllowedOrigins="$CORS_ORIGINS" \
+    CorsAllowedOriginRegexes="$CORS_REGEXES" \
+    OpenAIApiKey="$OpenAIApiKey" ApiFootballKey="$ApiFootballKey" \
+    FootballDataOrgKey="$FootballDataOrgKey" AnthropicApiKey="$AnthropicApiKey" \
+    OpenRouterApiKey="$OpenRouterApiKey"
+cd ..
+export API=$(aws cloudformation describe-stacks --stack-name bet-hope \
+  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)</code></pre>
+  <p>The housekeeping from D9 (log retention, ECR clean-up) was <strong>already applied in Phase 0</strong> (<a href="phase-0.html#P0-D8">P0-D8</a>). Nothing to do here.</p>
+  <p><strong>Check it works:</strong></p>
+<pre><code>curl -s ${API}health/                       # {"status":"healthy",...,"database":"ok"}
+curl -s ${API}api/v1/leagues/ | head -c 300  # real data from Neon
+# Retrain once: the new image has a newer xgboost/scikit-learn than the one that made the current model
+aws lambda invoke --function-name bet-hope-manage --cli-read-timeout 900 --cli-binary-format raw-in-base64-out \
+  --payload '{"command":"train_model","args":[]}' /tmp/train.json && python3 -c "import json;print(json.load(open('/tmp/train.json'))['status'])"
+aws lambda invoke --function-name bet-hope-manage --cli-read-timeout 900 --cli-binary-format raw-in-base64-out \
+  --payload '{"command":"generate_predictions","args":["--upcoming","--days","14"]}' /tmp/pred.json && python3 -c "import json;print(json.load(open('/tmp/pred.json'))['stdout'][-500:])"</code></pre>
+  <p>Then, in the browser: open the site <em>after 17:00 UTC</em> (when it used to be down). Click "Get AI Enhancement Suggestions" and confirm the result appears after a while instead of an error. Sign in to Admin and run "Generate Predictions".</p>
+  <p><strong>Rollback (stage 1):</strong> redeploy the previous template. The Lambdas go back into the VPC and onto RDS, which still holds the data as of step 5.</p>
+<pre><code>git show 75165fd:infrastructure/template.yaml &gt; /tmp/template-old.yaml
+sam deploy --template-file /tmp/template-old.yaml --stack-name bet-hope --region $AWS_REGION --resolve-s3 \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --no-confirm-changeset \
+  --parameter-overrides ImageUri=$(cat /tmp/bet-hope-manage-old-image.txt) DBPassword="$DBPassword" \
+    DjangoSecretKey="$DjangoSecretKey" CorsAllowedOrigins="$CORS_ORIGINS" CorsAllowedOriginRegexes="$CORS_REGEXES" \
+    OpenAIApiKey="$OpenAIApiKey" ApiFootballKey="$ApiFootballKey" FootballDataOrgKey="$FootballDataOrgKey" \
+    AnthropicApiKey="$AnthropicApiKey" OpenRouterApiKey="$OpenRouterApiKey"</code></pre>
+
+  <h3 id="step7">Step 7: remove the VPC, NAT and RDS (stage 2, after 1–3 good days)</h3>
+<pre><code># 1. Delete today's NAT + EIP and stop RDS (the toggle function is deleted by this deploy)
+aws lambda invoke --function-name bet-hope-infra-toggle --cli-read-timeout 700 \
+  --payload '{"action":"stop"}' --cli-binary-format raw-in-base64-out /tmp/stop.json && cat /tmp/stop.json
+# 2. Lambda must have released its VPC network interfaces (expect an empty list; can take ~30–60 min after stage 1)
+VPC=$(aws ec2 describe-vpcs --filters Name=tag:Name,Values=bet-hope-vpc --query 'Vpcs[0].VpcId' --output text)
+aws ec2 describe-network-interfaces --filters Name=vpc-id,Values=$VPC \
+  --query 'NetworkInterfaces[].[NetworkInterfaceId,Description,Status]' --output table
+# 3. Deploy with LegacyNetwork=remove (same command as step 6, one value changed)
+cd infrastructure
+sam deploy --template-file template.yaml --stack-name bet-hope --region $AWS_REGION \
+  --resolve-s3 --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --no-confirm-changeset \
+  --parameter-overrides ImageUri=$IMAGE_URI DatabaseUrl="$NEON_POOLED_URL" LegacyNetwork=remove \
+    DBPassword="$DBPassword" DjangoSecretKey="$DjangoSecretKey" \
+    CorsAllowedOrigins="$CORS_ORIGINS" CorsAllowedOriginRegexes="$CORS_REGEXES" \
+    OpenAIApiKey="$OpenAIApiKey" ApiFootballKey="$ApiFootballKey" FootballDataOrgKey="$FootballDataOrgKey" \
+    AnthropicApiKey="$AnthropicApiKey" OpenRouterApiKey="$OpenRouterApiKey"
+cd ..
+# 4. Confirm the final RDS snapshot exists (keep it for a month, then delete it)
+aws rds describe-db-snapshots --snapshot-type manual \
+  --query 'DBSnapshots[].[DBSnapshotIdentifier,SnapshotCreateTime,Status]' --output table
+# 5. The old static bucket is retained on purpose. Check it's empty, then remove it.
+BUCKET=bet-hope-static-$ACCOUNT
+aws s3 ls s3://$BUCKET --recursive | head
+aws s3api delete-bucket-policy --bucket $BUCKET 2>/dev/null
+aws s3 rb s3://$BUCKET --force     # if versioned objects remain, empty them in the console first
+# 6. Nothing left behind
+aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available --query 'NatGateways[].NatGatewayId'
+aws ec2 describe-addresses --query 'Addresses[?AssociationId==null].[PublicIp,AllocationId]'</code></pre>
+  <p><strong>If step 3 fails</strong> on "has a dependent object" (network interfaces not yet released): wait 30 minutes and run the same deploy again. <strong>Rollback (stage 2):</strong> restore the snapshot as a new RDS instance. It's rarely needed, since Neon already holds everything.</p>
+
+  <h2>Expected result</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>Before</th><th>After Phase 1</th></tr></thead>
+    <tbody>
+      <tr><td>Availability</td><td>04:00–16:00 UTC only</td><td>24/7</td></tr>
+      <tr><td>Fixed AWS cost</td><td>NAT ≈ $16 + EIP ≈ $2 + RDS ≈ $8–10 per month</td><td>$0 (plus Neon: $0 on the free tier, or usage-based)</td></tr>
+      <tr><td>Container image</td><td>2–3 GB (torch, CUDA, 242 MB of pickles)</td><td>Dependencies 115 MB compressed; no model files</td></tr>
+      <tr><td>AI analysis</td><td>Often 504 after 29 s</td><td>Runs up to 15 min in the background; the UI shows the result</td></tr>
+      <tr><td>Database outage</td><td>Requests hang about 29 s</td><td>503 after about 5 s; <code>/health/</code> reports it</td></tr>
+    </tbody>
+  </table></div>
+
+  <footer>This file is updated as each step completes. Next phase log: <code>html/phase-2.html</code>.</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 0 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html" class="active">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 0: stop the bleeding</h1>
+  <p class="lede">Phase 0 is the quick fixes that stop visitors getting errors, stop strangers spending money through the API, and stop cost from growing. This log records what was found in the AWS account, what was decided, every file and AWS setting changed, and every command run.</p>
+  <p class="meta">30 Sep 2026 · base commit <code>75165fd</code> · findings addressed: API-01, SEC-01, SEC-03, SEC-04 (partly), COST-04, COST-05 (ECR part), COST-06, ML-04 (Admin button), the Admin "Sync Data" button, and the Help page claims</p>
+
+  <h2>Status</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Part</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1. Check the AWS account for stray NATs, EIPs and costs</td><td><span class="st ok">Done</span> Read-only; results below</td></tr>
+      <tr><td>2. ECR clean-up rule and 14-day log retention</td><td><span class="st ok">Done</span> Applied to AWS with your approval</td></tr>
+      <tr><td>3. Budget alert</td><td><span class="st ok">Already existed</span> "My Monthly Cost Budget", $20</td></tr>
+      <tr><td>4. Rate limits and polling</td><td><span class="st ok">Code done</span> Tested; needs deploy</td></tr>
+      <tr><td>5. Lock down paid and write endpoints; remove <code>--clear</code></td><td><span class="st ok">Code done</span> Tested; needs deploy</td></tr>
+      <tr><td>6. Admin buttons</td><td><span class="st ok">Code done</span> Needs deploy</td></tr>
+      <tr><td>7. Honest Help page</td><td><span class="st ok">Code done</span> Needs deploy</td></tr>
+      <tr><td>8. Deploy</td><td><span class="st none">Waiting for your go-ahead</span> See <a href="#deploy">Deploy</a></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="inventory">1. What's in the AWS account (read-only check, 30 Sep 07:47 UTC)</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Check</th><th>Result</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>NAT gateways</td><td>1: <code>nat-020a50115a499308e</code>, created 04:00:52 today</td><td>Correct. This is today's toggle NAT, and there's no duplicate (COST-04 hasn't happened).</td></tr>
+      <tr><td>Elastic IPs</td><td>2, both attached: <code>52.2.194.250</code> (bet-hope-nat) and <code>18.214.190.30</code></td><td>No orphaned IPs. The second one belongs to <strong>rabbithub-db</strong>, a public RDS in the default VPC, and isn't Bet Hope's.</td></tr>
+      <tr><td>ECR <code>bet-hope-web</code></td><td>12 images, 15.0 GB, no lifecycle policy</td><td>Each image is 1.2–1.3 GB. The running image is the newest (<code>75165fd</code>).</td></tr>
+      <tr><td>Log groups</td><td>4, retention "never expire", 4.5 MB total</td><td>Small today, but unbounded. There's also a leftover <code>bet-hope-ml-tasks</code> group from an old function.</td></tr>
+      <tr><td>RDS</td><td><code>bet-hope-dbinstance-…</code> (db.t4g.micro) and <code>rabbithub-db</code> (db.t3.micro), both available</td><td>rabbithub-db runs 24/7 and isn't part of this stack.</td></tr>
+      <tr><td>Budgets</td><td>"My Monthly Cost Budget" = $20</td><td>A budget alert already exists.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The real bill, September 1–29, before credits</h3>
+  <p>The account shows <strong>$0.00 net</strong> because credits are covering the charges. Without credits, usage is about <strong>$48</strong> for the month so far:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Usage type</th><th class="num">USD</th><th>Belongs to</th></tr></thead>
+    <tbody>
+      <tr><td>NatGateway-Hours</td><td class="num">17.01</td><td>Bet Hope (fixed by Phase 1)</td></tr>
+      <tr><td>InstanceUsage: db.t3.micro</td><td class="num">12.46</td><td>rabbithub-db (other project)</td></tr>
+      <tr><td>InstanceUsage: db.t4g.micro</td><td class="num">5.53</td><td>Bet Hope RDS (fixed by Phase 1)</td></tr>
+      <tr><td>PublicIPv4: InUseAddress</td><td class="num">5.20</td><td>Both: the Bet Hope NAT EIP (~$1.7) and the rabbithub public DB (~$3.5)</td></tr>
+      <tr><td>RDS: GP2 storage</td><td class="num">2.21</td><td>rabbithub-db</td></tr>
+      <tr><td>RDS: charged backup usage</td><td class="num">2.17</td><td>Snapshots/backups beyond the free allowance (instance not identified)</td></tr>
+      <tr><td>RDS: GP3 storage</td><td class="num">2.14</td><td>Bet Hope RDS</td></tr>
+      <tr><td>ECR TimedStorage</td><td class="num">1.20</td><td>Bet Hope images (fixed now, step 2)</td></tr>
+      <tr><td>Everything else</td><td class="num">&lt; 0.25</td><td>Lambda, API Gateway, S3, KMS</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><strong>Worth knowing:</strong> about $20 of the ~$48 is <em>rabbithub</em> (database, storage and public IP), not Bet Hope. Bet Hope itself is about $28/month, and Phase 1 removes about $26 of that. rabbithub is out of scope and nothing was changed there. When the credits run out, both will be billed.</div>
+
+  <h2>Decisions</h2>
+
+  <div class="finding" id="P0-D1">
+    <div class="finding-head"><span class="finding-id">P0-D1</span><span class="finding-title">Generous read limits, strict limits on paid endpoints</span></div>
+    <dl>
+      <dt>Chose</dt><dd>Anonymous reads <code>2000/hour</code>, signed-in users <code>5000/hour</code>, and AI generation <code>10/hour</code> per visitor (DRF <code>ScopedRateThrottle</code>, scope <code>ai_generate</code>). Each can be changed with an environment variable (<code>THROTTLE_ANON</code>, <code>THROTTLE_USER</code>, <code>THROTTLE_AI_GENERATE</code>).</dd>
+      <dt>Why</dt><dd>With the new 5-minute polling, a dashboard tab makes about 50 requests an hour, so 2000 leaves room for many tabs behind one shared IP (office, mobile carrier). The limit exists to stop abuse, not normal use.</dd>
+      <dt>Caveat</dt><dd>Counters live in per-Lambda-container memory (there's no Redis), so the limits are approximate. That's fine for this purpose. The daily AI cap below is exact because it counts database rows.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D2">
+    <div class="finding-head"><span class="finding-id">P0-D2</span><span class="finding-title">Poll every 5 minutes; load AI analyses on demand</span></div>
+    <dl>
+      <dt>Chose</dt><dd>Live matches, today's matches and upcoming matches refresh every 5 minutes instead of every 15/30/60 seconds. Daily picks and predictions were already on 5 minutes. Each prediction card looks up its saved AI analysis only when opened.</dd>
+      <dt>Why</dt><dd>The backend only changes data once a day, and nothing sets matches to "live" (DATA-05), so faster polling fetched identical data. That was roughly 330 requests an hour per tab, which caused the 429 errors. The per-card lookups were one extra request per card on every page load.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D3">
+    <div class="finding-head"><span class="finding-id">P0-D3</span><span class="finding-title">AI generation stays public, but can't run up a bill</span></div>
+    <dl>
+      <dt>Chose</dt><dd>Three guards on <code>POST /ai-recommendations/generate/</code>. (1) If an analysis for that prediction completed within the last <code>AI_REUSE_HOURS</code> (6), return it instead of calling the LLM again; the response includes <code>"reused": true</code>. (2) Stop at <code>AI_DAILY_GENERATION_LIMIT</code> (200) new analyses per UTC day across all visitors, returning HTTP 429 with a readable message. (3) The per-visitor 10/hour limit from P0-D1.</dd>
+      <dt>Why not admin-only</dt><dd>The AI button is a visitor-facing feature. Making it admin-only would remove it from the product. The worst case is now 200 LLM calls a day. Also set a monthly spend limit on the OpenRouter key itself as a second line of defence.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D4">
+    <div class="finding-head"><span class="finding-id">P0-D4</span><span class="finding-title">Documents, search and on-demand model runs become admin-only</span></div>
+    <dl>
+      <dt>Chose</dt><dd>Documents: list, retrieve and stats stay public. Create, update, delete, upload, embed, refresh, scrape-news and search now need a staff token. Predictions: <code>generate</code> and <code>batch</code> are admin-only.</dd>
+      <dt>Why</dt><dd>Documents feed the AI prompt, so anonymous edits were a way to inject instructions into it. Search, embed and scrape spend API money. I checked the frontend: none of these endpoints is called by any page, so no visitor feature changes.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D5">
+    <div class="finding-head"><span class="finding-id">P0-D5</span><span class="finding-title">Remove <code>--clear</code> from the admin task runner</span></div>
+    <dl>
+      <dt>Why</dt><dd><code>sync_real_data --clear</code> deletes every league, team, match, odds row and prediction. <code>generate_predictions --clear</code> deletes all predictions. That shouldn't be one API call away. The CLI still accepts <code>--clear</code> for deliberate use.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D6">
+    <div class="finding-head"><span class="finding-id">P0-D6</span><span class="finding-title">Admin: fix Sync, disable Train, show errors</span></div>
+    <dl>
+      <dt>Chose</dt><dd><strong>Sync Data</strong> now sends <code>--fixtures-only</code> (fixtures + recent results + predict + validate), the same as the daily schedule. <strong>Train Model</strong> is disabled, with a visible reason, until Phase 3 adds the "new model must beat the current one" check. Trigger failures show on the page. An expired or invalid token (401/403) sends you back to the sign-in form with "Your session expired".</dd>
+      <dt>Why</dt><dd><code>--fixtures</code> re-imported every historical season first and always ran past 15 minutes. The Train button trained on one league and put that model live for all 20 (ML-04). The daily scheduled training is unchanged.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D7">
+    <div class="finding-head"><span class="finding-id">P0-D7</span><span class="finding-title">Help page tells the truth</span></div>
+    <dl>
+      <dt>Changed</dt><dd>Accuracy: "87% / 95%+" became the measured ~49–50%, next to the bookmaker-favourite baseline (~50–54%). Data sources: removed "Understat xG" and "real-time odds", which aren't connected. Leagues: says which 8 get new data. Update frequency: daily sync and retrain, no live scores. The feature card no longer says "high accuracy", and the Value Bets card explains that it needs odds.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="P0-D8">
+    <div class="finding-head"><span class="finding-id">P0-D8</span><span class="finding-title">ECR: keep the newest 5 images; logs: keep 14 days</span></div>
+    <dl>
+      <dt>Checked first</dt><dd>Both Lambdas run digest <code>sha256:eb0ea0e2…</code>, which is the newest image (<code>75165fd</code>). A preview of the rule showed it expires exactly the 7 oldest (<code>4c89fde</code>, <code>77ec9c1</code>, <code>8d38c3a</code>, <code>9739f47</code>, <code>9763253</code>, <code>aa321ae</code>, <code>e72d22c</code>), about 9.2 GB. ECR deletes them within 24 hours. Any of them can be rebuilt from its git commit.</dd>
+      <dt>Watch</dt><dd>Keep the image the Lambdas actually run among the newest 5. After a deploy it always is. Don't push more than 4 test builds without deploying one.</dd>
+      <dt>Logs</dt><dd>14 days on <code>bet-hope-web</code>, <code>bet-hope-manage</code>, <code>bet-hope-infra-toggle</code> and the leftover <code>bet-hope-ml-tasks</code>. The <code>apps</code> logger now defaults to INFO in production (<code>APPS_LOG_LEVEL</code>).</dd>
+    </dl>
+  </div>
+
+  <h2>Files changed</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>File</th><th>Change</th><th>Decision</th></tr></thead>
+    <tbody>
+      <tr><td><code>backend/config/settings/base.py</code></td><td>Throttle rates via env; <code>ai_generate</code> scope; <code>AI_DAILY_GENERATION_LIMIT</code>, <code>AI_REUSE_HOURS</code></td><td>P0-D1, D3</td></tr>
+      <tr><td><code>backend/config/settings/production.py</code></td><td><code>apps</code> logger → INFO</td><td>P0-D8</td></tr>
+      <tr><td><code>backend/apps/api/views/ai_recommendations.py</code></td><td>Scoped throttle on generate; reuse; daily cap; document endpoints admin-only except list/retrieve/stats</td><td>P0-D1, D3, D4</td></tr>
+      <tr><td><code>backend/apps/api/views/predictions.py</code></td><td><code>generate</code> / <code>batch</code> → <code>IsAdminUser</code></td><td>P0-D4</td></tr>
+      <tr><td><code>backend/apps/api/serializers/tasks.py</code></td><td><code>--clear</code> removed from allowed args</td><td>P0-D5</td></tr>
+      <tr><td><code>frontend/src/hooks/useApi.ts</code></td><td>5-minute polling; <code>useAIRecommendation(id, enabled)</code></td><td>P0-D2</td></tr>
+      <tr><td><code>frontend/src/components/predictions/AIEnhancement.tsx</code></td><td>Lookup only when the panel is opened</td><td>P0-D2</td></tr>
+      <tr><td><code>frontend/src/app/admin/page.tsx</code></td><td><code>--fixtures-only</code>; Train disabled with reason; errors shown; re-sign-in on 401/403</td><td>P0-D6</td></tr>
+      <tr><td><code>frontend/src/app/help/page.tsx</code></td><td>Accuracy, sources, leagues, frequency, feature cards</td><td>P0-D7</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta">These edits sit in the same working tree as the Phase 1 code (some in the same files). Both are compatible with the current AWS setup. Only the Phase 1 <em>template</em> changes the infrastructure.</p>
+
+  <h2 id="log">Commands run</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command (abridged)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>aws sts get-caller-identity</code></td><td>Account 294983767092, user <code>Taofeek_Personal</code>, region us-east-1</td></tr>
+      <tr><td>2</td><td><code>aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available</code></td><td>1 NAT (today's)</td></tr>
+      <tr><td>3</td><td><code>aws ec2 describe-addresses</code>; <code>describe-network-interfaces --network-interface-ids eni-0a2dd44b8eb57a74c</code></td><td>2 EIPs, both attached; the untagged one is an <code>RDSNetworkInterface</code> in the default VPC (rabbithub-db)</td></tr>
+      <tr><td>4</td><td><code>aws ecr describe-images --repository-name bet-hope-web</code>; <code>get-lifecycle-policy</code></td><td>12 images / 15.0 GB; no policy</td></tr>
+      <tr><td>5</td><td><code>aws logs describe-log-groups --log-group-name-prefix /aws/lambda/bet-hope</code></td><td>4 groups, no retention</td></tr>
+      <tr><td>6</td><td><code>aws rds describe-db-instances</code>; <code>aws lambda list-functions</code>; <code>aws budgets describe-budgets</code></td><td>2 databases (one is rabbithub); 19 functions across 3 projects; $20 budget exists</td></tr>
+      <tr><td>7</td><td><code>aws ce get-cost-and-usage … --filter 'Not RECORD_TYPE in [Credit, Refund]' --group-by USAGE_TYPE</code></td><td>Usage table above (~$48 before credits)</td></tr>
+      <tr><td>8</td><td><code>grep -rn "useGeneratePrediction|predictionsApi.generate|documentsApi.|refetchInterval" frontend/src</code></td><td>No page calls generate or document writes (safe to restrict)</td></tr>
+      <tr><td>9</td><td>Local Postgres test with the Django test client (anonymous): the endpoints above, 250 reads, AI generate with <code>THROTTLE_AI_GENERATE=3/hour</code> and <code>AI_DAILY_GENERATION_LIMIT=4</code></td><td>Document reads 200, writes/search/refresh 401; prediction generate/batch 401; 250 reads with 0 errors; AI: queued 202 → reused 200 → 4th in an hour 429 → second visitor 202, 202 → cap reached 429; <code>--clear</code> rejected</td></tr>
+      <tr><td>10</td><td><code>manage.py check</code>; <code>npx tsc --noEmit</code>; <code>npx next build --no-lint</code></td><td>No issues; types OK; build compiled</td></tr>
+      <tr><td>11</td><td><code>aws lambda get-function … --query Code.ResolvedImageUri</code> (both functions); ECR images sorted by push date</td><td>Both run the newest image</td></tr>
+      <tr><td>12</td><td><code>aws logs put-retention-policy --retention-in-days 14</code> ×4</td><td>Applied (verified: all 4 show 14)</td></tr>
+      <tr><td>13</td><td><code>aws ecr put-lifecycle-policy … countType=imageCountMoreThan, countNumber=5</code>; <code>start-lifecycle-policy-preview</code></td><td>Applied; the preview expires the 7 oldest images only</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="deploy">Deploy</h2>
+  <p>Phase 0's code only takes effect once deployed. The backend and frontend ship separately.</p>
+  <h3>Backend: new image onto the existing functions (no template change)</h3>
+<pre><code>git checkout -b phase-0-1-app-fixes
+git add backend frontend html
+git commit -m "Phase 0 + Phase 1 app code: rate limits, locked endpoints, async AI, slim image"
+git push -u origin phase-0-1-app-fixes
+gh workflow run deploy-lambda-web.yml --ref phase-0-1-app-fixes && gh run watch
+export IMAGE_URI=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:$(git rev-parse HEAD)
+for f in bet-hope-web bet-hope-manage; do
+  aws lambda update-function-code --function-name $f --image-uri $IMAGE_URI
+  aws lambda wait function-updated --function-name $f
+done
+# The new image has newer xgboost/scikit-learn: retrain once so the model files match
+aws lambda invoke --function-name bet-hope-manage --cli-read-timeout 900 --cli-binary-format raw-in-base64-out \
+  --payload '{"command":"train_model","args":[]}' /tmp/train.json && python3 -c "import json;print(json.load(open('/tmp/train.json'))['status'])"</code></pre>
+  <p><strong>Rollback:</strong> <code>aws lambda update-function-code --function-name &lt;each&gt; --image-uri 294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:75165fdfafe1…</code> (the full tag is the commit hash <code>git rev-parse 75165fd</code>). This image is kept by the lifecycle rule while it's among the newest 5.</p>
+  <p class="meta">Leave <code>infrastructure/</code> out of this commit if you want to deploy Phase 0 before the Phase 1 template. The template only takes effect through <code>sam deploy</code> anyway.</p>
+  <h3>Frontend</h3>
+  <p>Vercel deploys from git. Merge the branch to <code>main</code> (or promote the branch's preview deployment in the Vercel dashboard). Don't merge before the backend image is live: the new Admin "Sync Data" arguments work on either backend, but the "session expired" handling assumes the backend's current errors.</p>
+
+  <h2>Done when</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Check</th><th>How</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>A dashboard tab stays open 2 hours without a 429</td><td>Browser dev tools → Network, filter "429", during 04:00–16:00 UTC (the database is still off at night until Phase 1)</td><td><span class="st none">After deploy</span></td></tr>
+      <tr><td>AI endpoints refuse floods</td><td><code>for i in $(seq 12); do curl -s -o /dev/null -w "%{http_code} " -X POST -H 'Content-Type: application/json' -d '{"prediction_id":1}' ${API}api/v1/ai-recommendations/generate/; done</code> → 429s after the 10th</td><td><span class="st none">After deploy</span></td></tr>
+      <tr><td>Document writes need a token</td><td><code>curl -s -o /dev/null -w "%{http_code}" -X POST ${API}api/v1/documents/refresh/</code> → 401</td><td><span class="st none">After deploy</span></td></tr>
+      <tr><td>At most 1 NAT and no orphaned EIPs</td><td>Command #2–3</td><td><span class="st ok">Verified</span></td></tr>
+      <tr><td>ECR and logs can't grow without limit</td><td>Commands #12–13</td><td><span class="st ok">Verified</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta">Also do yourself: set a monthly spend limit on the OpenRouter API key (openrouter.ai → Keys → Edit → Credit limit).</p>
+
+  <footer>Next: <a href="phase-1.html">Phase 1: available 24/7 and cheaper</a>.</footer>
+</main>
+</body>
+</html>

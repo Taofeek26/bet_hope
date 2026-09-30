@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontend Pages Review</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html" class="active">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Every page, tab and button</h1>
+  <p class="lede">These are all 13 routes in <code>frontend/src/app/</code>, plus the layout shared by every page. For each control: what it should do, what it actually does, and a status.</p>
+  <p class="meta">Status key: <span class="st ok">Works</span> <span class="st partial">Partly works</span> <span class="st broken">Broken</span> <span class="st fake">Fake / placeholder</span> <span class="st none">No data</span>. Many "no data" results are caused by the backend or data problems linked in each row.</p>
+
+  <h3>Contents</h3>
+  <ul class="toc">
+    <li><a href="#global">Layout (sidebar, header, notifications)</a></li>
+    <li><a href="#dashboard">Dashboard <code>/</code></a></li>
+    <li><a href="#predictions">Predictions <code>/predictions</code></a></li>
+    <li><a href="#matches">Matches <code>/matches</code></a></li>
+    <li><a href="#match">Match detail <code>/matches/[id]</code></a></li>
+    <li><a href="#leagues">Leagues <code>/leagues</code></a></li>
+    <li><a href="#league">League detail <code>/leagues/[code]</code></a></li>
+    <li><a href="#team">Team <code>/teams/[id]</code></a></li>
+    <li><a href="#value-bets">Value Bets <code>/value-bets</code></a></li>
+    <li><a href="#analytics">Analytics <code>/analytics</code></a></li>
+    <li><a href="#favorites">Favorites <code>/favorites</code></a></li>
+    <li><a href="#settings">Settings <code>/settings</code></a></li>
+    <li><a href="#help">Help <code>/help</code></a></li>
+    <li><a href="#admin">Admin <code>/admin</code></a></li>
+  </ul>
+
+  <div class="callout crit"><strong>Before any single page:</strong> whenever the database is stopped (16:00–04:00 UTC, <a href="aws-cost.html#COST-02">COST-02</a>) or the visitor hits the 100-requests-per-hour limit (<a href="backend-api.html#API-01">API-01</a>), <em>every</em> page below shows its error or empty state. Test the rows below during 04:00–16:00 UTC in a fresh browser session.</div>
+
+  <h2 id="global">Layout on every page</h2>
+  <p class="meta">Files: <code>app/layout.tsx</code>, <code>components/layout/{Sidebar,Header,MainContent}.tsx</code>, <code>components/ui/TaskStatusIndicator.tsx</code>, <code>components/notifications/NotificationWatcher.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Sidebar links: Dashboard, Predictions, Matches, Leagues, Analytics, Value Bets, Favorites, Admin, Settings, Help</td><td>Navigate and highlight the current section</td><td>Navigation works. The highlight matches the exact path only, so nothing is highlighted on <code>/matches/123</code>, <code>/leagues/E0</code> or <code>/teams/5</code>.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>"HOT" badge on Value Bets</td><td>Signal new value bets</td><td>Static text, always shown, even when there are 0 value bets.</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>Sidebar collapse chevron</td><td>Collapse / expand</td><td>Works (hidden on mobile, where the sidebar becomes a horizontal tab strip).</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Footer "Model vX Active"</td><td>Show the active model</td><td>Shows <code>v1.0.0 Active</code> as a fallback when the API is down or no model exists, which is misleading.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Header ☰ menu button (shown below 1024px)</td><td>Open or close the sidebar</td><td>Toggles a zustand flag (<code>useAppStore.sidebarOpen</code>) that nothing reads. The sidebar uses <code>SidebarContext</code>.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Header "BH" logo + "Bet Hope"</td><td>Go home</td><td>Works. The text is hard-coded white, so it's invisible in light theme.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Header search box (desktop) and mobile 🔍 toggle</td><td>Search teams and matches</td><td>No handler. Typing does nothing; there's no search endpoint wired up.</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>Task status pill "0/18 Tasks"</td><td>Show scheduled job health</td><td>Reads the Celery results table, which nothing writes on Lambda, so it always shows "Never run" (<a href="backend-api.html#API-08">API-08</a>). The dropdown opens and closes fine.</td><td><span class="st broken">Misleading</span></td></tr>
+      <tr><td>🔔 Bell with red dot</td><td>Open notifications</td><td>No action. The red "unread" dot is always shown.</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>👤 User icon</td><td>Account menu</td><td>No action (there are no user accounts).</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>Header background</td><td>Translucent bar over content</td><td>The <code>bg-background-secondary/80</code> class isn't generated (<a href="design.html#UI-02">UI-02</a>), so the sticky header is transparent and content scrolls visibly underneath it.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Browser notifications</td><td>Ask permission when the user enables alerts</td><td>Asks for permission automatically on first visit (the default setting is on). Browsers penalise unprompted requests. "Match is live" alerts never fire (<a href="data-sources.html#DATA-05">DATA-05</a>).</td><td><span class="st partial">Partial</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="dashboard">Dashboard <code>/</code></h2>
+  <p class="meta">Files: <code>app/page.tsx</code>, <code>components/predictions/{DailyPicks,PredictionStats,AIEnhancement}.tsx</code>, <code>components/matches/{LiveMatches,UpcomingMatches}.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Element</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Metric: Accuracy rate (30 days)</td><td>Verified pre-match accuracy</td><td>Inherits the counting problems in <a href="ml-model.html#ML-11">ML-11</a>.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Metric: Predictions today</td><td>Number of predictions today</td><td>Actually the number of picks at 55%+ confidence, capped at 10, so it's mislabelled.</td><td><span class="st partial">Wrong label</span></td></tr>
+      <tr><td>Metric: Live matches</td><td>Live count</td><td>Almost always 0 (no live source).</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>Metric: Value bets found</td><td>Count</td><td>Almost always 0 (upcoming fixtures have no odds).</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>Live Matches section</td><td>Show live games</td><td>Hidden when empty, which is almost always.</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>Date pills Today…+6 and ‹ › buttons</td><td>Switch the picks date; the selected pill is highlighted; the badge shows high-confidence count</td><td>Switching works. The selected pill uses <code>bg-brand text-bg</code>, which isn't generated, so it has <em>no</em> background while unselected pills do. The highlight looks inverted.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Pick card (click)</td><td>Open the match</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>"Get AI Enhancement Suggestions"</td><td>Generate an AI write-up</td><td>Often fails with a 504 after about 29 s (<a href="backend-api.html#API-04">API-04</a>). Every card also sends a lookup request on load (mostly 404s), which uses up the rate limit.</td><td><span class="st broken">Often fails</span></td></tr>
+      <tr><td>Model Performance card</td><td>Stats summary</td><td>Heading shown twice: the page wraps a component that renders its own card header. Nested card styling.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Quick Actions (4 links)</td><td>Navigate</td><td>Work. They use <code>&lt;a&gt;</code>, which forces a full page reload instead of <code>next/link</code>.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Upcoming Matches + "View all"</td><td>Next 7 days, grouped by day</td><td>Works for the 8 covered leagues. Heading shown twice. Kickoff times are UTC but unlabelled.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Settings → Default View = Predictions/Matches</td><td>Open that page on first visit</td><td>Redirects <em>every</em> time <code>/</code> loads, including clicks on "Dashboard" in the sidebar, so the dashboard becomes unreachable.</td><td><span class="st broken">Broken</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="predictions">Predictions <code>/predictions</code></h2>
+  <p class="meta">File: <code>app/predictions/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Date strip (−3 to +6 days) and ‹ ›</td><td>Pick a day</td><td>Works. The visible window shifts oddly near the ends: at +6 only four buttons show.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Filter: All Matches</td><td>All predictions for the day</td><td>Only the first 20 (<a href="backend-api.html#API-07">API-07</a>).</td><td><span class="st partial">Truncated</span></td></tr>
+      <tr><td>Filter: High Confidence</td><td>≥ 70%</td><td>Works, but it's usually empty because the model is rarely that confident.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Filter: Value Bets</td><td>Only value bets</td><td>Filters on <code>is_value_bet</code>, which the API never returns, so it's always empty.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Refresh</td><td>Reload</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Pagination ‹ ›</td><td>Page through the day</td><td>Pages through the (at most) 20 items already loaded.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Card: result verification (✓/✗, FT score)</td><td>Show correct or incorrect</td><td>Works for finished matches.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Card: predicted score</td><td>Model score</td><td>Made-up 55/45 split of total goals (<a href="ml-model.html#ML-08">ML-08</a>).</td><td><span class="st partial">Misleading</span></td></tr>
+      <tr><td>Card: probabilities</td><td>Home / Draw / Away %</td><td>Correct, except a real 0 is replaced by 33%/34%.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Card: AI Enhancement</td><td>As on the dashboard</td><td>As on the dashboard.</td><td><span class="st broken">Often fails</span></td></tr>
+      <tr><td>Empty state</td><td>Explain why nothing shows</td><td>Says "once the backend is connected", even when the API works and there are simply no fixtures.</td><td><span class="st partial">Unclear</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="matches">Matches <code>/matches</code></h2>
+  <p class="meta">File: <code>app/matches/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Upcoming / Live / Results buttons</td><td>Switch views</td><td>Work.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Upcoming list</td><td>Next 7 days, with the date shown</td><td>All 7 days are flattened into one list showing only the kickoff <em>time</em>, so you can't tell Saturday's 15:00 from Sunday's. There are no day headers and no league filter.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Live list</td><td>Live games</td><td>Almost always empty.</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>Results: Days filter (1–30)</td><td>Filter the period</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Results: League filter</td><td>Filter by league</td><td>Works, but lists only the first 20 leagues.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Refresh</td><td>Reload</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Match card (click)</td><td>Open detail</td><td>Works. The prediction badge and ✓/✗ show correctly.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Settings → Date format</td><td>Change date display</td><td>Only applies when a match has no kickoff time.</td><td><span class="st partial">Partial</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="match">Match detail <code>/matches/[id]</code></h2>
+  <p class="meta">File: <code>app/matches/[id]/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Element</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>"Back to Matches"</td><td>Go back</td><td>Works. It always goes to <code>/matches</code>, even if you came from a team page.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Header: league, status badge, score, date, time</td><td>Match info</td><td>Works. League name has no country. Time is UTC, unlabelled.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Team names and logos</td><td>Link to team pages</td><td>Not links, so there's no way to get from a match to a team.</td><td><span class="st partial">Missing</span></td></tr>
+      <tr><td>AI Prediction card</td><td>Outcome, probabilities, verification</td><td>Works. The predicted score is fabricated (ML-08).</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Market Odds card</td><td>Current odds</td><td>Appears only for historical matches from CSVs. Upcoming fixtures have none.</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>Head to Head card</td><td>Past meetings</td><td>Never appears (the table is empty, <a href="data-sources.html#DATA-07">DATA-07</a>).</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>AI Enhancement</td><td>As above</td><td>As above.</td><td><span class="st broken">Often fails</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="leagues">Leagues <code>/leagues</code></h2>
+  <p class="meta">File: <code>app/leagues/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Element</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Coverage metric plate</td><td>Totals</td><td>Adds up only the first 20 leagues. The team count includes duplicate teams (DATA-01).</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>League cards (grouped by tier)</td><td>Open a league</td><td>Links work. Every card shows the same trophy icon (no league logos). Frozen leagues look the same as live ones.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Try Again (error state)</td><td>Retry</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="league">League detail <code>/leagues/[code]</code></h2>
+  <p class="meta">File: <code>app/leagues/[code]/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Element</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Stat tiles: Seasons, Teams, Matches, Predictions</td><td>Counts</td><td>Work (the team count includes duplicates).</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Standings table</td><td>Current table</td><td>Correct for the 8 covered leagues. The other 12 show the last season with data (the label shows which). "Form" is computed but not displayed.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Team name in standings</td><td>Open the team</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Upcoming fixtures / predictions for this league</td><td>Expected on a league page</td><td>Not present.</td><td><span class="st none">Missing</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="team">Team <code>/teams/[id]</code></h2>
+  <p class="meta">File: <code>app/teams/[id]/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Element</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Stat tiles: Played / W / D / L</td><td>Current season</td><td>Usually hidden (no season stats, DATA-07). When shown, "Played" is always 0 because the page reads <code>matches_played</code> and the API sends <code>played</code>.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Upcoming Matches</td><td>Next 5 fixtures</td><td>Shows the <em>furthest</em> fixtures (<a href="backend-api.html#API-10">API-10</a>).</td><td><span class="st broken">Wrong order</span></td></tr>
+      <tr><td>Recent Results W/D/L badge</td><td>Result from this team's view</td><td>For home games the badge is reversed (a home win shows L). The page checks <code>match.home_team_id</code> or <code>match.home_team.id</code>, but the API sends <code>home_team</code> as a plain number, so every game is treated as an away game.</td><td><span class="st broken">Wrong</span></td></tr>
+      <tr><td>Match rows (click)</td><td>Open match</td><td>Work.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>"Back to Leagues"</td><td>Go back</td><td>Goes to <code>/leagues</code>, not to the league you came from.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Favourite ☆ button</td><td>Expected on a team page</td><td>Doesn't exist, so there's no way to add favourites anywhere.</td><td><span class="st none">Missing</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="value-bets">Value Bets <code>/value-bets</code></h2>
+  <p class="meta">File: <code>app/value-bets/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>By Day / All Week toggle</td><td>Switch mode</td><td>Works. The selected state uses a missing class (UI-01).</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Date pills and ‹ ›</td><td>Pick a day</td><td>Work. Selected-pill style is broken (UI-01).</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Refresh / "View All Week"</td><td>Reload / switch</td><td>Work.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Value-bet list and stat tiles</td><td>Opportunities</td><td>Almost always empty: upcoming fixtures have no odds (<a href="ml-model.html#ML-01">ML-01</a>).</td><td><span class="st none">No data</span></td></tr>
+      <tr><td>Card styling (strong / good / value)</td><td>Visually ranked</td><td>Depends on <code>bg-brand/5</code>, <code>bg-brand/10</code>, <code>border-brand/40</code>…, which aren't generated.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Card date label</td><td>Weekday</td><td><code>new Date('YYYY-MM-DD')</code> is parsed as UTC, so users west of UTC see the previous day.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Settings → Odds format</td><td>Decimal / fractional / American</td><td>Works on this page (the only page that shows odds in a chosen format).</td><td><span class="st ok">Works</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="analytics">Analytics <code>/analytics</code></h2>
+  <p class="meta">File: <code>app/analytics/page.tsx</code>, <code>components/analytics/AccuracyBarChart.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Element</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Refresh</td><td>Reload</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Overall record plate</td><td>Accuracy</td><td>Inherits <a href="ml-model.html#ML-11">ML-11</a>. No bookmaker baseline to compare against.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>"Accuracy by Outcome" chart</td><td>—</td><td>Actually accuracy by <em>predicted</em> outcome. The label should say so.</td><td><span class="st partial">Unclear</span></td></tr>
+      <tr><td>"Accuracy by Confidence" chart</td><td>Calibration view</td><td>Uses 60% / 45% bands, which differ from other pages (ML-14).</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Period selector</td><td>Expected</td><td>Fixed at 30 days; there's no control.</td><td><span class="st none">Missing</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="favorites">Favorites <code>/favorites</code></h2>
+  <p class="meta">File: <code>app/favorites/page.tsx</code> (an unused <code>useFavoritesStore</code> exists in <code>lib/store.ts</code>)</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Favourite teams list</td><td>Your teams</td><td>Hard-coded demo data: Arsenal "vs Chelsea – Today 15:00", Barcelona, Bayern. It's the same for every visitor and never changes.</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>"Add Team" / "Add League" / empty-state "Add" buttons</td><td>Add favourites</td><td>No click handler.</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>🔔 per team</td><td>Alerts for the team</td><td>No click handler.</td><td><span class="st fake">Fake</span></td></tr>
+      <tr><td>Favourite league links</td><td>Open the league</td><td>Go to <code>/leagues/1</code> and <code>/leagues/2</code>, but the route expects a code (<code>E0</code>), so the page shows "League not found".</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Notification toggles (Match Start, New Predictions, Value Bets)</td><td>Save preferences</td><td>Uncontrolled checkboxes, not saved, and separate from the real toggles in Settings.</td><td><span class="st fake">Fake</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="settings">Settings <code>/settings</code></h2>
+  <p class="meta">Files: <code>app/settings/page.tsx</code>, <code>contexts/SettingsContext.tsx</code> (saved in <code>localStorage</code>)</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Tabs: General, Notifications, Region &amp; Odds, Appearance, Data &amp; Privacy</td><td>Switch panels</td><td>Work. The chosen tab isn't remembered.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Default View</td><td>Landing page</td><td>Traps the Dashboard (see Dashboard table).</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Predictions Per Page (10/25/50)</td><td>Page size</td><td>Works, within the 20-item cap.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Auto-refresh</td><td>Stop polling</td><td>Works for the data hooks. The header task pill still polls every 5 minutes regardless.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Match Live / Prediction / Value Bet alerts</td><td>Browser notifications</td><td>Toggles save. Alerts depend on data that rarely changes (live, value bets).</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Timezone</td><td>"Used for kickoff times shown across the app"</td><td>Not used anywhere. Every page prints the raw kickoff string.</td><td><span class="st broken">No effect</span></td></tr>
+      <tr><td>Odds Format</td><td>Odds display</td><td>Works on Value Bets. The match page ignores it.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Date Format</td><td>Date display</td><td>Only affects one fallback on the Matches page.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Theme: Dark / Light / System</td><td>Switch theme</td><td>Tokens switch, but many components hard-code <code>text-white</code>, so text disappears in light mode (<a href="design.html#UI-03">UI-03</a>).</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Compact Mode / Show Animations</td><td>Density / motion</td><td>Work.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Save Prediction History</td><td>Remember AI analyses viewed</td><td>Works (local only).</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Clear Local Data</td><td>Reset everything</td><td>Resets settings, history and the admin token, then reloads. It leaves the zustand keys (<code>bet-hope-storage</code>, <code>bet-hope-favorites</code>).</td><td><span class="st partial">Partial</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="help">Help <code>/help</code></h2>
+  <p class="meta">File: <code>app/help/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Quick link: Documentation</td><td>Jump to docs</td><td>Links to <code>#docs</code>, but no element has that id, so nothing happens.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Quick links: FAQ, Features, Contact</td><td>Jump to section</td><td>Work.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>FAQ accordion</td><td>Expand answers</td><td>Works, but the answers are wrong: "87% accuracy", "95%+ for high confidence", "retrained weekly" (it's daily), "live data every 15 minutes", "real-time odds from major bookmakers", "Understat xG". None of these is true today.</td><td><span class="st broken">Inaccurate</span></td></tr>
+      <tr><td>"Open Issue"</td><td>GitHub issues</td><td>Points to <code>github.com/your-org/bet-hope</code>, a placeholder URL.</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>"Email Support"</td><td>Email</td><td><code>mailto:support@bet-hope.com</code>. Unverified: confirm this mailbox exists.</td><td><span class="st partial">Unverified</span></td></tr>
+      <tr><td>Layout on mobile</td><td>Stack</td><td><code>grid-cols-4</code> / <code>-3</code> / <code>-2</code> with no breakpoints, so cards are squeezed on phones.</td><td><span class="st partial">Partial</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="admin">Admin <code>/admin</code></h2>
+  <p class="meta">File: <code>app/admin/page.tsx</code></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>Should</th><th>Actually</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Sign in (username / password)</td><td>Get a staff token</td><td>Works (Django staff user). Wrong password shows an error.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Run: <strong>Sync Data</strong></td><td>"Pull upcoming fixtures + generate predictions"</td><td>Sends <code>sync_real_data --fixtures</code>, which <em>first re-imports every historical season for every league</em> and then fixtures. That always exceeds the 15-minute limit; <code>template.yaml</code> itself notes it times out. Use <code>--fixtures-only</code>.</td><td><span class="st broken">Times out</span></td></tr>
+      <tr><td>Run: <strong>Train Model</strong></td><td>Retrain</td><td>Trains on Premier League 2024-25 only (about 380 matches), then <em>activates it for all leagues</em>, replacing the daily full model (<a href="ml-model.html#ML-04">ML-04</a>).</td><td><span class="st broken">Harmful</span></td></tr>
+      <tr><td>Run: <strong>Generate Predictions</strong></td><td>Predict the next 14 days</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>In-progress cards (live log, Dismiss)</td><td>Watch a job</td><td>Work, and survive a page reload.</td><td><span class="st ok">Works</span></td></tr>
+      <tr><td>Recent runs table</td><td>History</td><td>Works (polls every 10 s). It shows only UI-triggered runs; scheduled runs don't create rows.</td><td><span class="st partial">Partial</span></td></tr>
+      <tr><td>Error feedback</td><td>Show failures</td><td>Trigger failures only go to the console. After 60 minutes the token expires and buttons silently do nothing (<a href="backend-api.html#SEC-04">SEC-04</a>).</td><td><span class="st broken">Broken</span></td></tr>
+      <tr><td>Sign out</td><td>Clear token</td><td>Works.</td><td><span class="st ok">Works</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <footer>The frontend was reviewed by reading the source; nothing was run in a browser. Each "Broken" row points to the code responsible. "No data" rows usually fix themselves once the backend and data findings are fixed.</footer>
+</main>
+</body>
+</html>

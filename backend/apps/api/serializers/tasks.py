@@ -41,16 +41,20 @@ class TaskRunCreateSerializer(serializers.Serializer):
     command = serializers.ChoiceField(choices=TaskRun.Command.choices)
     args = serializers.ListField(child=serializers.CharField(max_length=100), required=False, default=list)
 
+    # '--clear' is deliberately absent (Phase 0, SEC-03): on sync_real_data
+    # it deletes every league, team, match and prediction, and on
+    # generate_predictions every prediction. Destructive operations stay
+    # CLI-only, never one API call away.
     ALLOWED_ARGS = {
         TaskRun.Command.SYNC_DATA: {
-            '--fixtures', '--fixtures-only', '--recent-only', '--clear',
+            '--fixtures', '--fixtures-only', '--recent-only',
             '--leagues', '--seasons',
         },
         TaskRun.Command.TRAIN_MODEL: {
             '--leagues', '--seasons', '--tune',
         },
         TaskRun.Command.GENERATE_PREDICTIONS: {
-            '--upcoming', '--historical', '--validate', '--clear',
+            '--upcoming', '--historical', '--validate',
             '--days', '--seasons',
         },
     }

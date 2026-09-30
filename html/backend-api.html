@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backend API Review</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html" class="active">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Backend API and security</h1>
+  <p class="lede">This page lists every endpoint the Django API exposes (<code>/api/v1/…</code>, also served under <code>/api/…</code>), which page uses it, and whether it works. Security and cross-cutting problems follow the table.</p>
+  <p class="meta">Source: <code>backend/apps/api/urls.py</code>, <code>views/*.py</code>, <code>serializers/*.py</code>, <code>config/settings/*.py</code>, <code>config/urls.py</code></p>
+
+  <h2>Endpoint inventory</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Endpoint</th><th>Used by</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /leagues/</code></td><td>Leagues, Matches filter</td><td><span class="st partial">Partial</span></td><td>Paginated at 20, and the UI reads only page 1, so leagues past #20 are missing (API-07). 4 count queries per league (API-09).</td></tr>
+      <tr><td><code>GET /leagues/{code}/</code></td><td>League detail</td><td><span class="st ok">Works</span></td><td></td></tr>
+      <tr><td><code>GET /leagues/{code}/standings/</code></td><td>League detail</td><td><span class="st ok">Works</span></td><td>Computed from matches because <code>TeamSeasonStats</code> is empty. Leagues without current data fall back to the latest season.</td></tr>
+      <tr><td><code>GET /leagues/{code}/seasons/</code></td><td>—</td><td><span class="st ok">Works</span></td><td>Unused.</td></tr>
+      <tr><td><code>GET /leagues/{code}/stats/</code></td><td>—</td><td><span class="st broken">500</span></td><td>API-02.</td></tr>
+      <tr><td><code>GET /seasons/?current=true</code></td><td>—</td><td><span class="st broken">500</span></td><td>API-02.</td></tr>
+      <tr><td><code>GET /teams/</code>, <code>/teams/{id}/</code></td><td>Team page</td><td><span class="st ok">Works</span></td><td><code>current_season_stats</code> is always null (DATA-07).</td></tr>
+      <tr><td><code>GET /teams/{id}/stats/</code></td><td>Team page</td><td><span class="st partial">Empty</span></td><td>Returns <code>played</code>, but the UI reads <code>matches_played</code>.</td></tr>
+      <tr><td><code>GET /teams/{id}/fixtures/</code></td><td>Team page</td><td><span class="st partial">Partial</span></td><td>API-10.</td></tr>
+      <tr><td><code>GET /teams/{id}/form/</code></td><td>—</td><td><span class="st ok">Works</span></td><td>Unused.</td></tr>
+      <tr><td><code>GET /teams/{id}/h2h/{opponent}/</code></td><td>—</td><td><span class="st broken">500</span></td><td>API-03.</td></tr>
+      <tr><td><code>GET /matches/</code>, <code>/matches/{id}/</code></td><td>Match detail</td><td><span class="st ok">Works</span></td><td><code>h2h</code> is always null; no league object (the UI borrows <code>home_team.league_name</code>).</td></tr>
+      <tr><td><code>GET /matches/upcoming|today|results/</code></td><td>Dashboard, Matches</td><td><span class="st ok">Works</span></td><td></td></tr>
+      <tr><td><code>GET /matches/live/</code></td><td>Dashboard, Matches, notifications</td><td><span class="st partial">Almost always empty</span></td><td>DATA-05; polled every 15 s.</td></tr>
+      <tr><td><code>GET /matches/{id}/prediction/</code></td><td>—</td><td><span class="st partial">Risky</span></td><td>API-05.</td></tr>
+      <tr><td><code>GET /matches/with_predictions/</code></td><td>—</td><td><span class="st broken">Bug</span></td><td>API-06.</td></tr>
+      <tr><td><code>GET /predictions/</code></td><td>Predictions</td><td><span class="st partial">Truncated</span></td><td>Only 20 per request (API-07).</td></tr>
+      <tr><td><code>GET /predictions/daily_picks|weekly_availability|upcoming|recent/</code></td><td>Dashboard</td><td><span class="st ok">Works</span></td><td>Daily picks is capped at 10 and needs confidence ≥ 55%.</td></tr>
+      <tr><td><code>GET /predictions/value_bets/</code></td><td>Dashboard, Value Bets, notifications</td><td><span class="st partial">Almost always empty</span></td><td>Upcoming fixtures have no odds (ML-01).</td></tr>
+      <tr><td><code>GET /predictions/stats/</code></td><td>Dashboard, Analytics</td><td><span class="st partial">Miscounted</span></td><td>ML-11.</td></tr>
+      <tr><td><code>GET /predictions/model_info/</code></td><td>Sidebar, Dashboard</td><td><span class="st ok">Works</span></td><td></td></tr>
+      <tr><td><code>POST /predictions/generate/</code>, <code>/batch/</code></td><td>—</td><td><span class="st partial">Open</span></td><td>Anyone can call them, and <code>batch</code> has no size limit (SEC-01).</td></tr>
+      <tr><td><code>POST /ai-recommendations/generate/</code></td><td>"Get AI Enhancement" button</td><td><span class="st broken">Often 504</span></td><td>API-04, SEC-01.</td></tr>
+      <tr><td><code>GET /ai-recommendations/for-prediction/{id}/</code></td><td>Every prediction card</td><td><span class="st ok">Works</span></td><td>Returns 404 when there's no analysis yet. One call per card on load uses up the rate limit (API-01).</td></tr>
+      <tr><td><code>/documents/</code> (full create/update/delete), <code>/upload/</code>, <code>/search/</code>, <code>/refresh/</code>, <code>/scrape-news/</code>, <code>/{id}/embed/</code></td><td>—</td><td><span class="st broken">Open writes</span></td><td>SEC-01. Embedding loads torch inside the web Lambda.</td></tr>
+      <tr><td><code>GET /sync/api_status|leagues|task_status/</code></td><td>Header task pill (<code>task_status</code>)</td><td><span class="st partial">Misleading</span></td><td>API-08.</td></tr>
+      <tr><td><code>POST /sync/sync_fixtures|sync_results|sync_live|sync_all/</code></td><td>—</td><td><span class="st broken">Broken on Lambda</span></td><td>API-08.</td></tr>
+      <tr><td><code>GET/POST /admin-tasks/</code>, <code>GET /admin-tasks/{id}/</code></td><td>Admin</td><td><span class="st ok">Works</span></td><td>Staff only. See SEC-03 and the <a href="frontend.html#admin">Admin page</a>.</td></tr>
+      <tr><td><code>POST /auth/token/</code>, <code>/auth/token/refresh/</code></td><td>Admin sign-in</td><td><span class="st ok">Works</span></td><td>The frontend never calls refresh (SEC-04).</td></tr>
+      <tr><td><code>GET /health/</code></td><td>—</td><td><span class="st ok">Works</span></td><td>Doesn't check the database, so it reports healthy while RDS is stopped.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>API findings</h2>
+
+  <div class="finding" id="API-01">
+    <div class="finding-head"><span class="finding-id">API-01</span><span class="sev crit">Critical</span><span class="finding-title">The rate limit is lower than the app's own polling</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>base.py</code> <code>DEFAULT_THROTTLE_RATES = {'anon': '100/hour'}</code>, applied to every view; polling in <code>hooks/useApi.ts</code></dd>
+      <dt>Math</dt><dd>With one dashboard tab open: live matches every 15 s (240/hour), upcoming every 60 s (60/hour), daily picks ×2 and task status every 5 minutes (about 36/hour). That's roughly 330 requests per hour, before page loads. Each loaded prediction card also fires one AI lookup. The 101st request in an hour gets HTTP 429 and the UI shows "Failed to load". The throttle counter is kept in per-container memory (<code>LocMemCache</code>), so how soon it hits varies from minute to minute.</dd>
+      <dt>Fix</dt><dd>Raise anonymous read limits (e.g. <code>2000/hour</code>) with a separate strict scope for expensive endpoints (AI, generate). Cut polling: no live polling until DATA-05 is fixed, and 5 minutes for the rest. Load AI analysis only when the user expands a card.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-02">
+    <div class="finding-head"><span class="finding-id">API-02</span><span class="sev med">Medium</span><span class="finding-title">The league stats and "current season" filter always crash</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>views/leagues.py</code> <code>stats</code> and <code>SeasonViewSet.get_queryset</code>: <code>Season.objects.filter(is_current=True)</code></dd>
+      <dt>Why</dt><dd><code>is_current</code> is a Python <code>@property</code>, not a database column, so the filter raises <code>FieldError</code>. In <code>stats</code>, <code>F</code> is also used before its <code>import</code> inside the function, which would raise <code>UnboundLocalError</code>.</dd>
+      <dt>Fix</dt><dd>Filter with <code>code=league.current_season</code> and move the import to the top of the file.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-03">
+    <div class="finding-head"><span class="finding-id">API-03</span><span class="sev med">Medium</span><span class="finding-title">The head-to-head endpoint uses field names that don't exist</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>views/teams.py</code> <code>head_to_head</code> and <code>HeadToHeadSerializer</code> use <code>team1/team2/team1_wins…</code>; the model has <code>team_a/team_b/team_a_wins…</code></dd>
+      <dt>Fix</dt><dd>Compute head-to-head directly from <code>Match</code> (the view already queries those matches) and drop the empty <code>HeadToHead</code> table.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-04">
+    <div class="finding-head"><span class="finding-id">API-04</span><span class="sev high">High</span><span class="finding-title">AI analysis runs longer than API Gateway allows</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>ai_recommendation_service.py</code>: <code>deepseek/deepseek-v4-pro</code>, <code>max_tokens=4000</code>, called synchronously; API Gateway and <code>WebFunction</code> <code>Timeout: 29</code></dd>
+      <dt>Effect</dt><dd>Reasoning models spend many tokens "thinking" before answering. When the call passes about 29 s, the browser gets a 504 and shows "Failed to generate AI analysis" (the frontend's 120 s timeout never comes into play). The OpenRouter call may still finish and be billed, and when it does, its result is saved without the user seeing it.</dd>
+      <dt>Fix</dt><dd>Make generation asynchronous: create an <code>AIRecommendation</code> row with status <code>pending</code>, invoke the manage Lambda (already used for admin tasks), and have the UI poll. Alternatively, use a Lambda Function URL, which has no 29 s cap, or a faster non-reasoning model with <code>max_tokens≈600</code>. Also cache: one analysis per prediction per model version.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-05">
+    <div class="finding-head"><span class="finding-id">API-05</span><span class="sev med">Medium</span><span class="finding-title">A GET request can create a prediction, and crashes if a match has two</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>views/matches.py</code> <code>prediction</code>: <code>Prediction.objects.get(match=match)</code>; on <code>DoesNotExist</code> it generates and saves one</dd>
+      <dt>Why</dt><dd><code>Prediction.match</code> is a ForeignKey, and <code>--historical</code> and the simple fallback use <code>create()</code>, so a match can have several. <code>.get()</code> then raises an uncaught <code>MultipleObjectsReturned</code> (500). Writing on GET also lets crawlers generate predictions, including for finished matches.</dd>
+      <dt>Fix</dt><dd>Use <code>.order_by('-created_at').first()</code>, don't generate on GET, and add a unique constraint (one live prediction per match per model version).</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-06">
+    <div class="finding-head"><span class="finding-id">API-06</span><span class="sev low">Low</span><span class="finding-title"><code>/matches/with_predictions/</code> always returns <code>prediction: null</code></span></div>
+    <dl>
+      <dt>Where</dt><dd><code>UpcomingMatchSerializer.get_prediction</code> checks <code>hasattr(obj, 'prediction')</code>; the relation is named <code>predictions</code></dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-07">
+    <div class="finding-head"><span class="finding-id">API-07</span><span class="sev high">High</span><span class="finding-title">Lists silently stop at 20 items</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>PAGE_SIZE: 20</code>; <code>extractResults()</code> in <code>lib/api.ts</code> returns <code>data.results</code> and ignores <code>next</code></dd>
+      <dt>Effect</dt><dd>On a busy Saturday the Predictions page shows only 20 of perhaps 100+ matches, in arbitrary order within the day. Its own "page 1 of N" control then pages through those 20. The Leagues page and the league filter drop leagues past #20.</dd>
+      <dt>Fix</dt><dd>Add a <code>?page_size=</code> override (with a max) and have the frontend request by date with real server-side pagination. Order by kickoff, then league.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-08">
+    <div class="finding-head"><span class="finding-id">API-08</span><span class="sev med">Medium</span><span class="finding-title">The <code>/sync/*</code> endpoints and task-status pill are left over from the Celery setup</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>views/sync.py</code></dd>
+      <dt>Why</dt><dd>The sync actions need <code>API_FOOTBALL_KEY</code> and call <code>.delay()</code>, which runs synchronously on Lambda (<code>CELERY_TASK_ALWAYS_EAGER</code>) inside the 29 s limit. <code>task_status</code> reads Celery's <code>TaskResult</code> table and beat schedule, which nothing writes on Lambda. So the header pill always says "0/18 Tasks · Never run", even when the EventBridge jobs succeed.</dd>
+      <dt>Fix</dt><dd>Replace <code>task_status</code> with a view over the <code>TaskRun</code> table, and have scheduled runs create <code>TaskRun</code> rows too. Delete the Celery-based sync actions.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-09">
+    <div class="finding-head"><span class="finding-id">API-09</span><span class="sev low">Low</span><span class="finding-title">The league list runs about 80 count queries per request</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>LeagueSerializer</code>: 4 <code>SerializerMethodField</code> counts per league (matches and predictions across all seasons)</dd>
+      <dt>Fix</dt><dd>Annotate the counts in the queryset once, or cache the payload for 10 minutes.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-10">
+    <div class="finding-head"><span class="finding-id">API-10</span><span class="sev low">Low</span><span class="finding-title">A team's "upcoming" list returns the furthest fixtures, not the next ones</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>views/teams.py</code> <code>fixtures</code>: the queryset is ordered <code>-match_date</code> and upcoming is sliced from it</dd>
+      <dt>Fix</dt><dd>Order the upcoming list by <code>match_date</code> ascending.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="API-11">
+    <div class="finding-head"><span class="finding-id">API-11</span><span class="sev low">Low</span><span class="finding-title">Dead and confusing configuration</span></div>
+    <dl>
+      <dt>What</dt><dd><code>config/settings/lambda_settings.py</code> (with <code>CORS_ALLOW_ALL_ORIGINS = True</code>) is never loaded; <code>DJANGO_ENV=production</code> selects <code>production.py</code>. <code>next.config.js</code> rewrites <code>/api/*</code> to <code>${NEXT_PUBLIC_API_URL}/api/v1/*</code>, but axios already calls <code>NEXT_PUBLIC_API_URL</code> directly. If that variable ends in <code>/api/v1</code> (as <code>.env.example</code> shows), the rewrite target would be <code>…/api/v1/api/v1</code>. It's harmless today and confusing later. The unused Celery, Redis and allauth apps are also still installed.</dd>
+    </dl>
+  </div>
+
+  <h2>Security findings</h2>
+
+  <div class="finding" id="SEC-01">
+    <div class="finding-head"><span class="finding-id">SEC-01</span><span class="sev high">High</span><span class="finding-title">Paid and write endpoints are open to anyone</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>AIRecommendationViewSet</code>, <code>DocumentViewSet</code> (full create/update/delete), <code>PredictionViewSet.generate/batch</code>: all <code>permission_classes = [AllowAny]</code></dd>
+      <dt>Risk</dt><dd>Anyone who finds the API URL (it's visible in the browser) can loop <code>/ai-recommendations/generate/</code> and spend your OpenRouter balance. They can also edit or delete the knowledge-base documents that feed the AI prompt (prompt injection), trigger scraping and embedding jobs, and run unbounded batch predictions.</dd>
+      <dt>Fix</dt><dd>Documents and batch: <code>IsAdminUser</code>. AI generate: a per-IP throttle (e.g. 5/hour), return the cached result if one exists, and a daily spend cap in code. Set a spending limit on the OpenRouter key as well.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="SEC-02">
+    <div class="finding-head"><span class="finding-id">SEC-02</span><span class="sev med">Medium</span><span class="finding-title">Secrets are stored as plain Lambda environment variables</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>template.yaml</code>: <code>DATABASE_URL</code> contains the DB password; <code>DJANGO_SECRET_KEY</code> and all API keys are passed as plain env vars on both functions</dd>
+      <dt>Risk</dt><dd>Anyone with <code>lambda:GetFunctionConfiguration</code> can read them. They also sit in plain text in <code>infrastructure/*.local.txt</code>. Those files are git-ignored, which is good, but they're on disk.</dd>
+      <dt>Fix</dt><dd>Store them in SSM Parameter Store (SecureString; the standard tier is free) and read them at cold start. Rotate the DB password and API keys after moving.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="SEC-03">
+    <div class="finding-head"><span class="finding-id">SEC-03</span><span class="sev med">Medium</span><span class="finding-title">The admin task runner allows <code>--clear</code></span></div>
+    <dl>
+      <dt>Where</dt><dd><code>serializers/tasks.py</code> <code>ALLOWED_ARGS</code>: <code>sync_data</code> and <code>generate_predictions</code> both accept <code>--clear</code></dd>
+      <dt>Risk</dt><dd><code>sync_real_data --clear</code> deletes every league, team, match, odds row and prediction. One mistaken API call from a stolen admin token wipes the database.</dd>
+      <dt>Fix</dt><dd>Remove <code>--clear</code> from the allowed list. Keep destructive operations CLI-only.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="SEC-04">
+    <div class="finding-head"><span class="finding-id">SEC-04</span><span class="sev med">Medium</span><span class="finding-title">The admin session silently breaks after 60 minutes</span></div>
+    <dl>
+      <dt>Where</dt><dd><code>SIMPLE_JWT</code> access lifetime is 60 min; <code>admin/page.tsx</code> stores only the access token in <code>localStorage</code> and never refreshes; the 401 interceptor removes the token but the page state still shows "signed in"</dd>
+      <dt>Effect</dt><dd>After an hour, the Run buttons do nothing. The error is only written to the browser console.</dd>
+      <dt>Fix</dt><dd>Store the refresh token and refresh on 401, or log out and show the sign-in form on 401. Show trigger errors in the page.</dd>
+    </dl>
+  </div>
+
+  <div class="finding" id="SEC-05">
+    <div class="finding-head"><span class="finding-id">SEC-05</span><span class="sev low">Low</span><span class="finding-title">Broad defaults</span></div>
+    <dl>
+      <dt>What</dt><dd><code>DJANGO_ALLOWED_HOSTS: "*"</code>; API Gateway CORS <code>AllowOrigin: '*'</code> (Django's CORS list is stricter, but the two disagree); the public-read static bucket (COST-08); no security headers such as HSTS. The last point is acceptable behind API Gateway's HTTPS but worth setting.</dd>
+    </dl>
+  </div>
+
+  <footer>"500" means the code raises an exception in that code path, found by reading the code. I didn't call the endpoints against the live API.</footer>
+</main>
+</body>
+</html>

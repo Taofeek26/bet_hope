@@ -8,12 +8,16 @@ export default function HelpPage() {
 
   const faqs = [
     {
+      // Phase 0: the previous answer claimed 87% (95%+ for high
+      // confidence). The measured figure on held-out matches is about
+      // 49–50% (backend/models/*/metadata.json), and even strong football
+      // models rarely beat ~55% on home/draw/away.
       question: 'How accurate are the predictions?',
-      answer: 'Our AI model achieves an average accuracy of 87% across all predictions. High-confidence predictions (90%+) have historically shown accuracy rates above 95%. We continuously train and improve our model with new data.',
+      answer: 'On matches the model had not seen during training, it picks the correct result (home win, draw or away win) about 49–50% of the time. For comparison, simply backing the bookmakers\' favourite is right about 50–54% of the time, and even strong football models rarely go above 55%. Higher-confidence picks are right more often than low-confidence ones; the Analytics page shows the live record. We are rebuilding the model to improve this, and this figure will be updated when it changes.',
     },
     {
       question: 'What data sources do you use?',
-      answer: 'We use historical data from Football-Data.co.uk (10+ years of match data), Understat for expected goals (xG) statistics, and real-time odds from major bookmakers. All data sources are completely free and publicly available.',
+      answer: 'Historical results, match statistics and pre-match average bookmaker odds come from Football-Data.co.uk. Upcoming fixtures, recent results and team crests come from the Football-Data.org API. Odds for upcoming matches and expected-goals (xG) data are not connected yet.',
     },
     {
       question: 'How are value bets calculated?',
@@ -21,11 +25,11 @@ export default function HelpPage() {
     },
     {
       question: 'Which leagues are supported?',
-      answer: 'We support 20 major leagues including the Premier League, La Liga, Serie A, Bundesliga, Ligue 1, and many more. See the Leagues page for a full list of supported competitions.',
+      answer: 'Historical data covers 20 leagues. New fixtures and results currently arrive for 8 of them: Premier League, Championship, La Liga, Serie A, Bundesliga, Ligue 1, Eredivisie and Primeira Liga (plus the Champions League and Europa League). The other leagues show their most recent imported season until their live data source is added.',
     },
     {
       question: 'How often are predictions updated?',
-      answer: 'Predictions are generated daily for upcoming matches. The model is retrained weekly with the latest match data to ensure accuracy. Live match data is refreshed every 15 minutes.',
+      answer: 'Fixtures and results are synced once a day, the model is retrained daily, and predictions for the next 14 days are regenerated right after. Live in-play scores are not available yet, so a match shows its final score after the next daily sync.',
     },
     {
       question: 'Is this gambling advice?',
@@ -88,7 +92,7 @@ export default function HelpPage() {
               <FeatureCard
                 icon={Target}
                 title="AI Predictions"
-                description="Machine learning model trained on 10+ years of football data to predict match outcomes with high accuracy."
+                description="Machine learning model trained on several seasons of football data that estimates the chance of a home win, draw or away win for each match."
               />
               <FeatureCard
                 icon={BarChart3}
@@ -98,7 +102,7 @@ export default function HelpPage() {
               <FeatureCard
                 icon={Shield}
                 title="Value Bets"
-                description="Automatically identifies betting opportunities where our model sees an edge over bookmaker odds."
+                description="Flags matches where the model's probability is at least 5 points above the bookmaker's implied probability. Needs bookmaker odds for the match, which upcoming fixtures don't have yet."
               />
             </div>
           </div>

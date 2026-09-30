@@ -13,8 +13,19 @@ from rest_framework_simplejwt.views import (
 
 
 def health_check(request):
-    """Simple health check endpoint for Railway/load balancers."""
-    return JsonResponse({'status': 'healthy', 'service': 'bet-hope-api'})
+    """Health check that also proves the database answers (503 if not)."""
+    from django.db import connection
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+    except Exception:
+        # Don't echo the driver error: it can contain the database hostname.
+        return JsonResponse(
+            {'status': 'unhealthy', 'service': 'bet-hope-api', 'database': 'unreachable'},
+            status=503,
+        )
+    return JsonResponse({'status': 'healthy', 'service': 'bet-hope-api', 'database': 'ok'})
 
 
 # API URL patterns

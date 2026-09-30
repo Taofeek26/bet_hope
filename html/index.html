@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bet Hope Audit</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html" class="active">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Bet Hope — full system audit</h1>
+  <p class="lede">This audit covers AWS infrastructure and cost, the prediction model, the data sources, every backend endpoint, and every page, tab and button in the frontend, down to colours and logos. Each finding says where it lives in the code, what goes wrong for the user, and how to fix it.</p>
+  <p class="meta">Audited 29 Sep 2026 · commit <code>75165fd</code> (main) · Next.js 14 frontend (Vercel) · Django + Lambda + API Gateway + RDS backend (AWS SAM)</p>
+
+  <div class="callout">
+    <strong>What this audit could and could not check.</strong> I read the code, the SAM template, the CI workflow and the model files saved in <code>backend/models/</code>. I had no access to the AWS bill, the AWS console, the live API or the production database. No builds or tests were run. So the cost figures are estimates from AWS list prices, and a few runtime effects are marked <em>likely</em> in the finding. The <a href="aws-cost.html#verify">verification commands</a> let you confirm each one against your real account.
+  </div>
+
+  <h2>The 10 problems that matter most</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Problem</th><th>Effect on users / cost</th><th>Details</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><span class="sev crit">Critical</span> The whole site goes offline from 16:00 to 04:00 UTC (5pm–5am WAT) every day, because the database is stopped to save money.</td><td>Every page shows "Failed to load" during evenings and weekend nights, when most matches are played.</td><td><a href="aws-cost.html#COST-02">COST-02</a></td></tr>
+      <tr><td>2</td><td><span class="sev crit">Critical</span> The API allows 100 requests per hour per visitor, but the dashboard's auto-refresh uses about 330 per hour.</td><td>After roughly 15–20 minutes, data stops loading for that visitor (HTTP 429).</td><td><a href="backend-api.html#API-01">API-01</a></td></tr>
+      <tr><td>3</td><td><span class="sev crit">Critical</span> The model is trained with bookmaker odds on every match, but upcoming fixtures have no odds (the value is set to 0).</td><td>Live predictions come from an input pattern the model never saw in training, which is a main reason the predictions are weak.</td><td><a href="ml-model.html#ML-01">ML-01</a></td></tr>
+      <tr><td>4</td><td><span class="sev crit">Critical</span> Team names from the two data providers don't match (e.g. "Man United" vs "Manchester United FC"), so duplicate teams get created.</td><td>Upcoming fixtures point at "new" teams with no history, so their form and head-to-head features are all zero.</td><td><a href="data-sources.html#DATA-01">DATA-01</a></td></tr>
+      <tr><td>5</td><td><span class="sev high">High</span> The model is about 49–50% accurate on home/draw/away, below simply picking the bookmaker's favourite. The Help page claims 87%.</td><td>Users are told the product is far more accurate than it is.</td><td><a href="ml-model.html#accuracy">Accuracy</a></td></tr>
+      <tr><td>6</td><td><span class="sev high">High</span> The Admin "Train Model" button trains on Premier League 2024-25 only, then makes that model active for all 20 leagues.</td><td>One click makes predictions worse site-wide.</td><td><a href="frontend.html#admin">Admin page</a></td></tr>
+      <tr><td>7</td><td><span class="sev high">High</span> AI analysis and document endpoints are open to anyone. The AI call often takes longer than API Gateway's 29-second limit.</td><td>Strangers can spend your OpenRouter credit, and users often see "Failed to generate".</td><td><a href="backend-api.html#SEC-01">SEC-01</a>, <a href="backend-api.html#API-04">API-04</a></td></tr>
+      <tr><td>8</td><td><span class="sev high">High</span> The brand colour classes the pages use (<code>bg-brand</code>, <code>bg-brand/10</code>, <code>text-bg</code>…) don't exist in the Tailwind config.</td><td>The selected date pill, team avatars, value-bet highlights and the header background don't render.</td><td><a href="design.html#UI-01">UI-01</a></td></tr>
+      <tr><td>9</td><td><span class="sev high">High</span> Avoidable AWS spend: a NAT Gateway, an oversized 2–3 GB container image, no image clean-up and no log retention.</td><td>Most of the monthly bill is spent keeping a VPC reachable and storing old images.</td><td><a href="aws-cost.html">AWS cost</a></td></tr>
+      <tr><td>10</td><td><span class="sev high">High</span> Season lists are hard-coded and stop at 2025-26. Only 8 of the 20 leagues get new fixtures and results.</td><td>12 leagues are frozen at the last manual import, and the current season is missing from training.</td><td><a href="data-sources.html#DATA-02">DATA-02</a></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Findings by area</h2>
+  <div class="grid">
+    <a class="card" href="aws-cost.html"><div class="stat-label">AWS cost &amp; alternatives</div><div class="stat">9</div><p>Cost breakdown, hidden cost leaks, quick savings, and three cheaper architectures compared.</p></a>
+    <a class="card" href="ml-model.html"><div class="stat-label">ML model</div><div class="stat">14</div><p>Leakage, train/serve mismatch, evaluation, auto-activation, and a plan to reach market-level accuracy.</p></a>
+    <a class="card" href="data-sources.html"><div class="stat-label">Data sources &amp; logos</div><div class="stat">8</div><p>Which provider feeds what, league coverage, team identity, kickoff times, logos.</p></a>
+    <a class="card" href="backend-api.html"><div class="stat-label">Backend API &amp; security</div><div class="stat">16</div><p>Every endpoint, marked working, broken or risky, plus open endpoints and secrets handling.</p></a>
+    <a class="card" href="frontend.html"><div class="stat-label">Frontend pages &amp; buttons</div><div class="stat">13 pages</div><p>Every tab, button, filter and link: what it should do and what it actually does.</p></a>
+    <a class="card" href="design.html"><div class="stat-label">Design: colours, logos, type</div><div class="stat">8</div><p>Missing colour tokens, broken light theme, missing favicon/logo, duplicated headings.</p></a>
+    <a class="card" href="phase-0.html"><div class="stat-label">Phase 0 log</div><div class="stat">Deploy pending</div><p>Rate limits, locked paid endpoints, Admin fixes, honest Help page, ECR and log clean-up, plus the real AWS bill.</p></a>
+    <a class="card" href="phase-1.html"><div class="stat-label">Phase 1 log</div><div class="stat">In progress</div><p>Decisions, changed files, every command run, and the step-by-step AWS runbook with rollbacks.</p></a>
+    <a class="card" href="roadmap.html"><div class="stat-label">Fix plan</div><div class="stat">5 phases</div><p>Ordered plan with a "done when" check for each phase, so fixes land in a safe order.</p></a>
+  </div>
+
+  <h2>How the system fits together today</h2>
+  <div class="panel">
+    <ol>
+      <li><strong>Frontend</strong>: Next.js 14 on Vercel. It calls the API directly through <code>NEXT_PUBLIC_API_URL</code> and polls several endpoints on timers (every 15 s, 60 s and 5 min).</li>
+      <li><strong>API</strong>: API Gateway (REST, 29-second limit) → <code>bet-hope-web</code> Lambda (1 GB, Django via apig-wsgi), running inside a private VPC subnet.</li>
+      <li><strong>Jobs</strong>: EventBridge rules → <code>bet-hope-manage</code> Lambda (2 GB, 15 min). The jobs are: 04:15 sync fixtures and results (football-data.org) and predict + validate; 05:00 retrain; 05:15 predict again.</li>
+      <li><strong>Database</strong>: RDS Postgres db.t4g.micro in private subnets. It is stopped every day at 16:00 UTC and started at 04:00 UTC by <code>bet-hope-infra-toggle</code>.</li>
+      <li><strong>Internet access from the VPC</strong>: a NAT Gateway, created at 04:00 and deleted at 16:00 each day. It is needed only because the Lambdas sit inside the VPC to reach RDS.</li>
+      <li><strong>Model storage</strong>: S3 bucket (versioned) plus a <code>ModelVersion</code> row in Postgres marking the active model.</li>
+      <li><strong>AI analysis</strong>: OpenRouter <code>deepseek/deepseek-v4-pro</code>, called synchronously inside the 29-second web request.</li>
+    </ol>
+  </div>
+
+  <h2>Severity scale</h2>
+  <div class="panel legend">
+    <span><span class="sev crit">Critical</span> wrong results or site unusable</span>
+    <span><span class="sev high">High</span> a main feature broken, or money/security exposure</span>
+    <span><span class="sev med">Medium</span> incorrect behaviour with a workaround</span>
+    <span><span class="sev low">Low</span> polish, clarity, maintainability</span>
+  </div>
+
+  <footer>Generated from a code review of the Bet_Hope repository. Paths are relative to the repository root. The ID next to each finding (e.g. <code>ML-01</code>) is referenced in the fix plan.</footer>
+</main>
+</body>
+</html>

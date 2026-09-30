@@ -101,6 +101,18 @@ else:
         }
     }
 
+# Fail fast instead of hanging: without connect_timeout, a request made while
+# the database is unreachable waits for the OS TCP timeout, which is longer
+# than the 29s API Gateway limit, so every such request was billed ~29s.
+_db_options = DATABASES['default'].setdefault('OPTIONS', {})
+_db_options.setdefault('connect_timeout', int(os.getenv('DB_CONNECT_TIMEOUT', '5')))
+# Managed Postgres (Neon/Supabase) sits behind PgBouncer in transaction mode,
+# which can't hold the server-side cursors Django uses for .iterator().
+DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = (
+    os.getenv('DB_DISABLE_SERVER_SIDE_CURSORS', 'true').lower() == 'true'
+)
+DATABASES['default']['CONN_MAX_AGE'] = int(os.getenv('DB_CONN_MAX_AGE', '0'))
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -146,9 +158,14 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
     ],
+    # Phase 0 (API-01): 100/hour was below what one open dashboard tab
+    # polls on its own (~330/hour), so visitors hit 429 after ~15 minutes.
+    # Reads get a generous limit; the endpoints that cost money or heavy
+    # compute get their own strict scopes (ScopedRateThrottle on the view).
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour',
+        'anon': os.getenv('THROTTLE_ANON', '2000/hour'),
+        'user': os.getenv('THROTTLE_USER', '5000/hour'),
+        'ai_generate': os.getenv('THROTTLE_AI_GENERATE', '10/hour'),
     },
 }
 
@@ -357,6 +374,13 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
 DEFAULT_AI_PROVIDER = os.getenv('DEFAULT_AI_PROVIDER', 'openrouter')
 
 # RAG Configuration
+# Hard cap on AI analyses started per UTC day, across all visitors, so a
+# script looping the public endpoint can't run up the OpenRouter bill.
+AI_DAILY_GENERATION_LIMIT = int(os.getenv('AI_DAILY_GENERATION_LIMIT', '200'))
+# A completed analysis younger than this is returned instead of paying for
+# a new LLM call for the same prediction.
+AI_REUSE_HOURS = int(os.getenv('AI_REUSE_HOURS', '6'))
+
 RAG_CONFIG = {
     'chunk_size': 1000,
     'chunk_overlap': 200,

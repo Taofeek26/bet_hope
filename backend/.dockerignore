@@ -1,0 +1,20 @@
+# Keep the Lambda image to code only (Phase 1, decision D4).
+# On Lambda, models are loaded from S3 into /tmp/models, and feature
+# caches live in /tmp, so none of these local folders are used at runtime.
+venv/
+.venv/
+**/__pycache__/
+*.pyc
+models/
+cache/
+data/
+media/
+ml/
+staticfiles/
+tests/
+db.sqlite3
+celerybeat-schedule
+gunicorn.ctl
+.env
+.env.*
+*.log

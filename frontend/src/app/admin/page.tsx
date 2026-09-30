@@ -20,18 +20,32 @@ function writeActiveIds(ids: string[]) {
   localStorage.setItem(ACTIVE_TASKS_KEY, JSON.stringify(ids));
 }
 
-const TASK_DEFS: { command: string; args: string[]; label: string; description: string }[] = [
+const TASK_DEFS: {
+  command: string;
+  args: string[];
+  label: string;
+  description: string;
+  disabledReason?: string;
+}[] = [
   {
     command: 'sync_real_data',
-    args: ['--fixtures'],
+    // --fixtures-only, not --fixtures: --fixtures first re-imports every
+    // historical season for every league, which always ran past the
+    // 15-minute Lambda limit (Phase 0).
+    args: ['--fixtures-only'],
     label: 'Sync Data',
-    description: 'Pull upcoming fixtures + generate predictions for them',
+    description: 'Pull upcoming fixtures and recent results, then generate and check predictions',
   },
   {
     command: 'train_model',
     args: ['--leagues', 'E0', '--seasons', '2425'],
     label: 'Train Model',
-    description: 'Retrain on Premier League 2024-25 (safe scope — wider scopes can exceed the 15-minute Lambda limit)',
+    description: 'Retrain the prediction model',
+    // Training on one league and making the result live replaced the
+    // full multi-league model for every league (ML-04). Re-enabled in
+    // Phase 3, once new models must beat the current one to go live.
+    disabledReason:
+      'Disabled until Phase 3: a model trained here would replace the live model for every league without being checked first. The daily scheduled training still runs.',
   },
   {
     command: 'generate_predictions',
@@ -101,15 +115,28 @@ export default function AdminPage() {
     refetchInterval: 10000,
   });
 
+  const [triggerError, setTriggerError] = useState('');
+
   const trigger = async (def: typeof TASK_DEFS[number]) => {
+    setTriggerError('');
     try {
       const task = await adminTasksApi.trigger(def.command, def.args);
       addActiveId(task.id);
       refetchHistory();
-    } catch (err) {
-      // surfaced via the failed TaskRun row itself in most cases; a network-
-      // level failure (e.g. not logged in) just no-ops the button here.
-      console.error('Failed to trigger task', err);
+    } catch (err: any) {
+      const code = err?.response?.status;
+      if (code === 401 || code === 403) {
+        // Access token expired (60 min) or not staff: show the sign-in
+        // form again instead of leaving buttons that silently do nothing.
+        localStorage.removeItem('token');
+        setToken(null);
+        setLoginError('Your session expired. Please sign in again.');
+        return;
+      }
+      setTriggerError(
+        err?.response?.data?.error ||
+          (code ? `Could not start "${def.label}" (HTTP ${code}).` : `Could not reach the API to start "${def.label}".`)
+      );
     }
   };
 
@@ -170,12 +197,22 @@ export default function AdminPage() {
               <div className="card-title text-sm mb-1">{def.label}</div>
               <p className="text-xs text-text-muted mb-4">{def.description}</p>
             </div>
-            <button onClick={() => trigger(def)} className="btn btn-primary btn-sm w-full justify-center gap-2">
+            {def.disabledReason && (
+              <p className="text-xs text-amber-400 mb-3">{def.disabledReason}</p>
+            )}
+            <button
+              onClick={() => trigger(def)}
+              disabled={!!def.disabledReason}
+              className="btn btn-primary btn-sm w-full justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               <Play className="w-3.5 h-3.5" /> Run
             </button>
           </div>
         ))}
       </div>
+      {triggerError && (
+        <p className="text-sm text-red-400 -mt-4 mb-8" role="alert">{triggerError}</p>
+      )}
 
       {activeIds.length > 0 && (
         <>

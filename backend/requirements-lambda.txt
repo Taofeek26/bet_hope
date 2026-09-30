@@ -1,0 +1,63 @@
+# Bet_Hope — Lambda image requirements (Phase 1)
+#
+# Only what the Lambda functions actually import. The full
+# requirements.txt is still used by the Docker Compose / EC2 setup.
+#
+# Deliberately left out (see html/phase-1.html, decision D3):
+#   torch, sentence-transformers, transformers, huggingface-hub, tiktoken
+#       Local embeddings never worked here: all-MiniLM-L6-v2 returns 384
+#       dimensions, but DocumentChunk.embedding is VectorField(1536). The
+#       embedding service uses the OpenAI API when OPENAI_API_KEY is set.
+#   google-generativeai  (import is guarded; Gemini isn't configured)
+#   optuna               (import is guarded; only used by train_model --tune)
+#   redis, django-redis  (no Redis on Lambda; cache is LocMem)
+#   gunicorn, uvicorn    (Lambda uses apig-wsgi, not a WSGI server)
+#   aiohttp, httpx, pydantic*, structlog, python-json-logger, Pillow,
+#   python-slugify, drf-spectacular, django-extensions, django-allauth
+#                        (not imported anywhere in the backend)
+
+# Django + API
+Django>=5.0,<5.2
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.1
+django-cors-headers>=4.3.0
+django-filter>=23.5,<25.0
+
+# Still referenced by INSTALLED_APPS / config/__init__.py / tasks/*.py.
+# Tasks run eagerly on Lambda (no broker), so no Redis client is needed.
+celery>=5.3.4
+django-celery-beat>=2.5.0
+django-celery-results>=2.5.1
+
+# Database
+psycopg2-binary>=2.9.9
+dj-database-url>=2.1.0
+pgvector>=0.2.4
+
+# Machine learning. xgboost-cpu is the same library as xgboost (same
+# `import xgboost`, same model files) without the bundled CUDA/NCCL
+# libraries, which are hundreds of MB and unusable on Lambda.
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.3.2
+scipy>=1.11.4
+xgboost-cpu>=2.1.0
+joblib>=1.3.2
+
+# AI providers (OpenRouter uses the openai client with a different base_url)
+openai>=1.3.0
+anthropic>=0.18.0
+
+# HTTP / parsing
+requests>=2.31.0
+feedparser>=6.0.10
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# Runtime
+sentry-sdk>=1.34.0
+whitenoise>=6.6.0
+apig-wsgi>=2.18.0
+# Used for S3 model storage and invoking the manage Lambda. The Lambda base
+# image ships a boto3 too; pinning our own keeps the version reproducible.
+boto3>=1.34.0

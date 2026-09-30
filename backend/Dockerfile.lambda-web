@@ -5,10 +5,12 @@
 # since this sandbox has no local Docker.
 FROM public.ecr.aws/lambda/python:3.13
 
-RUN dnf install -y postgresql-devel gcc gcc-c++ && dnf clean all
-
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/
-RUN pip install --no-cache-dir -r requirements.txt
+# requirements-lambda.txt, not requirements.txt: the full list pulls in
+# torch/transformers/CUDA libraries (several GB) that nothing on Lambda
+# uses. Every dependency there ships as a binary wheel, so no compiler or
+# postgresql-devel is needed in the image either.
+COPY requirements-lambda.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r requirements-lambda.txt
 
 COPY . ${LAMBDA_TASK_ROOT}/
 

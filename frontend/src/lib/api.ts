@@ -9,6 +9,7 @@ import type {
   ValueBet,
   StandingsEntry,
   PredictionStats,
+  AIRecommendation,
 } from '@/types';
 
 // Create axios instance
@@ -274,6 +275,12 @@ export const aiApi = {
     const { data } = await api.post('/ai-recommendations/generate/', params, {
       timeout: 120000, // 2 minute timeout for AI generation
     });
+    return data;
+  },
+
+  // Poll target for an async generation (generate returns 202 + id).
+  getById: async (id: number) => {
+    const { data } = await api.get<AIRecommendation>(`/ai-recommendations/${id}/`);
     return data;
   },
 

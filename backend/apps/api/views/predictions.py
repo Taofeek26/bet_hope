@@ -6,7 +6,7 @@ from datetime import timedelta
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from django.db.models import Q, Avg, Count, F
 from django.utils import timezone
 
@@ -68,7 +68,9 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset.order_by('-match__match_date')
 
-    @action(detail=False, methods=['post'])
+    # Phase 0 (SEC-01): on-demand model runs (batch had no size limit) are
+    # heavy compute and nothing in the frontend calls them — admin only.
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
     def generate(self, request):
         """Generate prediction for a single match."""
         serializer = PredictionRequestSerializer(data=request.data)
@@ -97,7 +99,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
     def batch(self, request):
         """Generate predictions for multiple matches."""
         serializer = BatchPredictionRequestSerializer(data=request.data)

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix Plan</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html" class="active">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+  </nav>
+</div></header>
+<main>
+  <h1>Fix plan</h1>
+  <p class="lede">The phases are ordered so each one makes the next one measurable. There's no point tuning the model while the site is offline half the day, or while the teams it predicts have no history.</p>
+
+  <h2>Phase 0: stop the bleeding (about 1 day)</h2>
+  <div class="panel">
+  <p><strong>Log:</strong> <a href="phase-0.html">Phase 0 decisions, changes, commands and deploy steps</a>. Code done and AWS clean-up applied; deploy pending.</p>
+  <ul>
+    <li>Run the <a href="aws-cost.html#verify">verification commands</a>. Delete stray NAT gateways and unattached EIPs. Add an AWS Budget alert (COST-04).</li>
+    <li>ECR lifecycle (keep 5 images), 14-day log retention, <code>apps</code> logger → INFO (COST-05, COST-06).</li>
+    <li>Raise the anonymous read throttle, add a strict scope for AI/generate, remove 15-second live polling, and load AI analysis on click only (API-01).</li>
+    <li>Lock down <code>DocumentViewSet</code>, <code>generate</code>/<code>batch</code> and AI generate. Set an OpenRouter spend limit. Remove <code>--clear</code> from admin args (SEC-01, SEC-03).</li>
+    <li>Admin buttons: Sync → <code>--fixtures-only</code>; hide Train until the promotion check exists (Admin page, ML-04).</li>
+    <li>Replace the Help page's accuracy claims with the real measured figure and the baseline.</li>
+  </ul>
+  <p><strong>Done when:</strong> a dashboard tab can stay open for 2 hours without a 429; the AI endpoints reject anonymous floods; the AWS console shows at most one NAT and no orphaned EIPs.</p></div>
+
+  <h2>Phase 1: available 24/7 and cheaper (about 3–5 days)</h2>
+  <div class="panel">
+  <p><strong>Log:</strong> <a href="phase-1.html">Phase 1 decisions, changes, commands and runbook</a>. Code done; AWS steps pending.</p>
+  <ul>
+    <li>Pick <a href="aws-cost.html#alternatives">Option A or B</a>. For A: create the Neon/Supabase database, <code>pg_dump</code> → restore, remove <code>VpcConfig</code>, NAT, EIP, infra toggle and RDS (after a final snapshot).</li>
+    <li>A slim <code>requirements-lambda.txt</code> without torch, transformers, Celery or Redis.</li>
+    <li>Async AI analysis (a pending row + the manage Lambda + UI polling), or a Function URL (API-04).</li>
+    <li>DB <code>connect_timeout</code>, and a health check that tests the database.</li>
+  </ul>
+  <p><strong>Done when:</strong> the site loads at 22:00 UTC; the monthly estimate is under your target; an AI analysis completes end to end without a 504.</p></div>
+
+  <h2>Phase 2: correct data (about 1 week)</h2>
+  <div class="panel"><ul>
+    <li>A <code>TeamAlias</code> table, a per-league mapping, and a one-off merge of duplicate teams (DATA-01).</li>
+    <li>A season helper; remove every hard-coded season (DATA-03, ML-09).</li>
+    <li>A twice-weekly current-season CSV sync for all 20 leagues (results, shots, odds); football-data.org for kickoff times and crests; re-sync stale "scheduled" matches (DATA-02, DATA-04).</li>
+    <li>Odds for upcoming fixtures (football-data.co.uk fixtures.csv or an odds API) (ML-01).</li>
+    <li>A timezone-aware <code>kickoff_at</code>, formatted in the browser using the Timezone setting (DATA-06).</li>
+    <li>League emblems and team crests after the merge (DATA-08).</li>
+  </ul>
+  <p><strong>Done when:</strong> no two <code>Team</code> rows share a club; all 20 leagues show this week's fixtures and last weekend's results; kickoff times match the official schedule in the user's timezone.</p></div>
+
+  <h2>Phase 3: rebuild the model properly (about 2 weeks)</h2>
+  <div class="panel"><ul>
+    <li>Delete <code>train_from_export</code> and the "latest directory" fallback (ML-05).</li>
+    <li>Point-in-time features only: season-to-date, Elo, rolling shots and shots on target, xG where available; <code>NaN</code> for unknown (ML-02, ML-07).</li>
+    <li>A time-based train / calibration / test split; walk-forward evaluation; log loss, Brier, RPS and a calibration curve vs the bookmaker baseline (ML-03).</li>
+    <li>A promotion check before activation; weekly retraining (ML-04, COST-07).</li>
+    <li>A Dixon–Coles goals model for score, over/under 2.5 and both-teams-to-score (ML-08).</li>
+    <li>Save the model version and <code>features_json</code>; freeze predictions at kickoff; exclude back-tests from accuracy; one shared set of confidence bands (ML-11, ML-12, ML-14).</li>
+  </ul>
+  <p><strong>Done when:</strong> the test-season log loss is at or below the bookmaker-implied log loss, and accuracy is published next to the baseline and sample size.</p></div>
+
+  <h2>Phase 4: frontend polish (about 1 week, can run alongside Phases 2–3)</h2>
+  <div class="panel"><ul>
+    <li>Colour tokens as RGB channels, a <code>brand</code> DEFAULT, <code>bg</code>; fix every invented class name; add a lint rule (UI-01, UI-02).</li>
+    <li>Header: wire up or remove search, bell, user and ☰; replace the task pill with a <code>TaskRun</code>-based status (API-08).</li>
+    <li>Team page: the <code>played</code> field, home/away detection, next fixtures (API-10).</li>
+    <li>Predictions: server pagination, remove or implement the Value Bets filter, real predicted score (API-07).</li>
+    <li>Matches upcoming: day headers and a league filter. Match page: link team names.</li>
+    <li>Favourites: use <code>useFavoritesStore</code>, add ☆ buttons on team and league pages, remove the demo data.</li>
+    <li>Default View: redirect only on first load of a session.</li>
+    <li>Light theme pass; logo, favicon and OG image; accessibility labels; responsive Help page (UI-03, UI-04, UI-07, UI-08).</li>
+  </ul>
+  <p><strong>Done when:</strong> every row on the <a href="frontend.html">frontend page</a> is marked Works, or has been removed on purpose.</p></div>
+</main>
+</body>
+</html>

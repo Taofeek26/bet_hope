@@ -210,7 +210,16 @@ export interface AIRecommendation {
   key_factors: string[];
   tokens_used: number;
   status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
   created_at: string;
+}
+
+// POST /ai-recommendations/generate/ returns this (HTTP 202) when the
+// analysis is queued in the background instead of generated inline.
+export interface AIGenerationQueued {
+  status: 'pending' | 'processing' | 'failed';
+  id: number;
+  error?: string;
 }
 
 export interface AIRecommendationResponse {
