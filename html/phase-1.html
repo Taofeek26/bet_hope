@@ -162,6 +162,14 @@
 
   <h2 id="runbook">Runbook: what you run, in order</h2>
   <div class="callout crit"><strong>Timing:</strong> steps 3–5 must run while the NAT is up and no scheduled job is writing: between <strong>05:30 and 15:30 UTC</strong> (06:30–16:30 WAT). Do steps 4–5 back to back. Anything written to RDS after the copy (e.g. that day's 05:00 training) isn't carried over.</div>
+  <div class="callout warn"><strong>Learned during the Phase 0 deploy:</strong>
+    <ul>
+      <li><strong>AWS CLI v1:</strong> your CLI is version 1 (1.44.39). Remove <code>--cli-binary-format raw-in-base64-out</code> from every <code>aws lambda invoke</code> below; v1 sends the payload as-is.</li>
+      <li><strong>Rollback by digest, not <code>latest</code>:</strong> the Lambdas used to point at <code>latest</code>, which moves on every build. Step 3's saved image reference is now an explicit tag. Keep using the file it writes.</li>
+      <li><strong>Already done in Phase 0:</strong> the app code for this phase is already live (image <code>11a47c9</code>), which covers async AI, the health check and the copy tool. Step 2 (build) and step 3 (manage image) are already done. Set <code>IMAGE_URI=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:11a47c9a3078fea0fe1e21246c5538a2d69c6823</code> and start at step 4.</li>
+      <li><strong>Frontend deploys aren't automatic:</strong> Vercel isn't connected to git. Phase 1 has no frontend change beyond what Phase 0 already deployed, so nothing to do there.</li>
+    </ul>
+  </div>
   <p>Shell setup used by every step below (run from the repository root):</p>
 <pre><code>export AWS_REGION=us-east-1
 export ACCOUNT=$(aws sts get-caller-identity --query Account --output text)

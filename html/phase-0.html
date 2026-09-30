@@ -35,11 +35,11 @@
       <tr><td>1. Check the AWS account for stray NATs, EIPs and costs</td><td><span class="st ok">Done</span> Read-only; results below</td></tr>
       <tr><td>2. ECR clean-up rule and 14-day log retention</td><td><span class="st ok">Done</span> Applied to AWS with your approval</td></tr>
       <tr><td>3. Budget alert</td><td><span class="st ok">Already existed</span> "My Monthly Cost Budget", $20</td></tr>
-      <tr><td>4. Rate limits and polling</td><td><span class="st ok">Code done</span> Tested; needs deploy</td></tr>
-      <tr><td>5. Lock down paid and write endpoints; remove <code>--clear</code></td><td><span class="st ok">Code done</span> Tested; needs deploy</td></tr>
-      <tr><td>6. Admin buttons</td><td><span class="st ok">Code done</span> Needs deploy</td></tr>
-      <tr><td>7. Honest Help page</td><td><span class="st ok">Code done</span> Needs deploy</td></tr>
-      <tr><td>8. Deploy</td><td><span class="st none">Waiting for your go-ahead</span> See <a href="#deploy">Deploy</a></td></tr>
+      <tr><td>4. Rate limits and polling</td><td><span class="st ok">Live</span> Verified on production, after one extra fix (<a href="#P0-D9">P0-D9</a>)</td></tr>
+      <tr><td>5. Lock down paid and write endpoints; remove <code>--clear</code></td><td><span class="st ok">Live</span> Verified on production</td></tr>
+      <tr><td>6. Admin buttons</td><td><span class="st ok">Live</span> Verified on production</td></tr>
+      <tr><td>7. Honest Help page</td><td><span class="st ok">Live</span> Verified on production</td></tr>
+      <tr><td>8. Deploy</td><td><span class="st ok">Done 30 Sep 08:00–08:30 UTC</span> See <a href="#deploy-log">Deployment record</a></td></tr>
     </tbody>
   </table></div>
 
@@ -140,12 +140,21 @@
     </dl>
   </div>
 
+  <div class="finding" id="P0-D9">
+    <div class="finding-head"><span class="finding-id">P0-D9</span><span class="finding-title">Rate limits keyed on the real visitor IP (found during the live test)</span></div>
+    <dl>
+      <dt>Found</dt><dd>On production, 13 AI calls in a row were all allowed, while the local test had blocked the 11th. The API is <em>edge-optimized</em>, so requests pass through CloudFront. <code>X-Forwarded-For</code> arrives as "<code>&lt;visitor&gt;, &lt;CloudFront edge IP&gt;</code>", and DRF used that whole string as the visitor's identity. The edge part changes between requests, so every request looked like a new visitor and no limit ever accumulated.</dd>
+      <dt>Chose</dt><dd><code>REST_FRAMEWORK['NUM_PROXIES'] = 2</code> on Lambda (<code>DRF_NUM_PROXIES</code>), which uses the second-to-last address, the visitor as seen by CloudFront. Anything a caller prepends is ignored, so it can't be spoofed (tested with four header shapes). A single-entry header, as a regional API would send, still works.</dd>
+      <dt>Also means</dt><dd>Before this fix the old 100/hour limit rarely triggered either, so the audit's claim that visitors hit 429 after ~15 minutes (API-01) was overstated. The endpoint changes and polling cuts still stand. The main effect of this finding is that the new AI limit now actually works.</dd>
+    </dl>
+  </div>
+
   <h2>Files changed</h2>
   <div class="table-wrap"><table>
     <thead><tr><th>File</th><th>Change</th><th>Decision</th></tr></thead>
     <tbody>
       <tr><td><code>backend/config/settings/base.py</code></td><td>Throttle rates via env; <code>ai_generate</code> scope; <code>AI_DAILY_GENERATION_LIMIT</code>, <code>AI_REUSE_HOURS</code></td><td>P0-D1, D3</td></tr>
-      <tr><td><code>backend/config/settings/production.py</code></td><td><code>apps</code> logger → INFO</td><td>P0-D8</td></tr>
+      <tr><td><code>backend/config/settings/production.py</code></td><td><code>apps</code> logger → INFO; <code>NUM_PROXIES = 2</code> on Lambda</td><td>P0-D8, D9</td></tr>
       <tr><td><code>backend/apps/api/views/ai_recommendations.py</code></td><td>Scoped throttle on generate; reuse; daily cap; document endpoints admin-only except list/retrieve/stats</td><td>P0-D1, D3, D4</td></tr>
       <tr><td><code>backend/apps/api/views/predictions.py</code></td><td><code>generate</code> / <code>batch</code> → <code>IsAdminUser</code></td><td>P0-D4</td></tr>
       <tr><td><code>backend/apps/api/serializers/tasks.py</code></td><td><code>--clear</code> removed from allowed args</td><td>P0-D5</td></tr>
@@ -198,13 +207,60 @@ aws lambda invoke --function-name bet-hope-manage --cli-read-timeout 900 --cli-b
   <h3>Frontend</h3>
   <p>Vercel deploys from git. Merge the branch to <code>main</code> (or promote the branch's preview deployment in the Vercel dashboard). Don't merge before the backend image is live: the new Admin "Sync Data" arguments work on either backend, but the "session expired" handling assumes the backend's current errors.</p>
 
+  <h2 id="deploy-log">Deployment record (30 Sep 2026)</h2>
+  <p>This is what was actually run, in order. It differs from the plan above in three places, each marked <strong>Note</strong>.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command (abridged)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>D1</td><td><code>git checkout -b phase-0-1-app-fixes</code>; commit <code>d1e6bc7</code> (app code + docs), commit <code>83b5af4</code> (Phase 1 template, not deployed); <code>git push -u origin phase-0-1-app-fixes</code></td><td>Pushed</td></tr>
+      <tr><td>D2</td><td><code>gh workflow run deploy-lambda-web.yml --ref phase-0-1-app-fixes</code>; <code>gh run watch</code></td><td>Success in 75 s. Image <code>83b5af4</code> is <strong>0.34 GB, down from 1.18 GB</strong> (−71%).</td></tr>
+      <tr><td>D3</td><td>Baseline: <code>curl …/health/</code>, <code>…/leagues/</code>, <code>POST …/documents/refresh/</code>, <code>…/model_info/</code></td><td><strong>Note (my mistake):</strong> the anonymous <code>POST /documents/refresh/</code> returned 200, meaning it ran a real document refresh (scrape + embed) on production. I should have probed without triggering the action. It proved the hole Phase 0 closes, and the refresh is a routine job that doesn't harm data. Cost: at most a few cents of embedding calls (and the OpenAI key turned out to be invalid, see F2). Active model at the time: <code>20260930_050303</code>, accuracy 0.5046.</td></tr>
+      <tr><td>D4</td><td><code>aws lambda update-function-code --function-name bet-hope-web|bet-hope-manage --image-uri …:83b5af4…</code>; <code>aws lambda wait function-updated</code></td><td>Both Successful/Active. <strong>Note:</strong> both functions previously pointed at the tag <code>latest</code>, which CI moves on every build. Roll back by digest <code>sha256:eb0ea0e290dc…</code> (tag <code>75165fdfafe1…</code>), not <code>latest</code>.</td></tr>
+      <tr><td>D5</td><td><code>curl</code> 18 read endpoints used by the pages</td><td>All 200. <code>/health/</code> now returns <code>"database":"ok"</code> (9.5 s on the first call: a cold start of the new image).</td></tr>
+      <tr><td>D6</td><td>Anonymous <code>POST</code> documents/refresh, scrape-news, upload, documents, predictions/generate, predictions/batch; <code>GET</code> documents/search</td><td>All 401. Nothing ran.</td></tr>
+      <tr><td>D7</td><td>150 consecutive <code>GET …/leagues/E0/</code></td><td>150 × 200</td></tr>
+      <tr><td>D8</td><td><code>POST …/ai-recommendations/generate/</code> for prediction 32727, then polling <code>…/ai-recommendations/7/</code></td><td>202 → pending → processing → <strong>completed after ~25 s</strong> (deepseek-v4-pro, 1748 tokens). Previously this was a 504 at 29 s.</td></tr>
+      <tr><td>D9</td><td>12 × the same generate call</td><td>All "reused" (no LLM cost), but <strong>none were throttled</strong>. Cause found (<code>aws apigateway get-rest-api</code> → <code>EDGE</code>; apig-wsgi and DRF source read) → fix <a href="#P0-D9">P0-D9</a>.</td></tr>
+      <tr><td>D10</td><td>Commit <code>11a47c9</code>, push, <code>gh workflow run</code>, <code>update-function-code</code> ×2</td><td>Both functions on <code>11a47c9</code></td></tr>
+      <tr><td>D11</td><td>12 × generate again; 40 × <code>GET …/daily_picks/</code> from the same visitor</td><td><strong>10 × 200, then 429</strong> "Request was throttled". Reads unaffected (40 × 200).</td></tr>
+      <tr><td>D12</td><td><code>aws lambda invoke --function-name bet-hope-manage --payload '{"command":"sync_real_data","args":["--fixtures-only"]}'</code></td><td>Success, 217 s: 108 fixtures updated, 0 results, 108 predictions. <strong>Note:</strong> your AWS CLI is v1 (1.44.39), which rejects <code>--cli-binary-format</code>. Drop that flag from every command in these docs when using v1.</td></tr>
+      <tr><td>D13</td><td><code>…invoke … {"command":"train_model","args":[]}</code>, then <code>generate_predictions --upcoming --days 14</code></td><td>Trained on 33,915 matches with 123 features in 192 s: accuracy 0.500, log loss 1.006, over-2.5 accuracy 0.558. New model <code>20260930_082006</code> is active. 108 predictions updated, 0 errors, so the new xgboost/scikit-learn versions work.</td></tr>
+      <tr><td>D14</td><td><code>git checkout main &amp;&amp; git merge --ff-only phase-0-1-app-fixes &amp;&amp; git push origin main</code></td><td><code>main</code> = <code>11a47c9</code>. The CI run on <code>main</code> only pushes an image; it doesn't change the Lambdas.</td></tr>
+      <tr><td>D15</td><td>Checked Vercel: <code>gh api …/commits/…/status</code>, <code>npx vercel env ls</code>, and the API URL inside the live JS bundle</td><td><strong>Note:</strong> Vercel is <em>not</em> connected to GitHub and has no environment variables. The live site is deployed by hand, with the API URL (<code>https://f7ce941v52.execute-api.us-east-1.amazonaws.com/prod/api</code>) passed at build time.</td></tr>
+      <tr><td>D16</td><td><code>cd frontend &amp;&amp; npx vercel@latest deploy --prod --yes --build-env NEXT_PUBLIC_API_URL=https://f7ce941v52.execute-api.us-east-1.amazonaws.com/prod/api</code></td><td>Production deployment <code>bet-hope-frontend-hqb910dwz…</code> Ready in 1 m. The previous deployment <code>…-91y1rpfb9…</code> is kept for rollback.</td></tr>
+      <tr><td>D17</td><td>Fetched the live pages and their JS bundles; <code>OPTIONS</code> + <code>GET</code> with <code>Origin: https://bet-hope-frontend.vercel.app</code></td><td>Correct API URL; Help shows "49–50%" and no "87%"; Admin sends <code>--fixtures-only</code>; 5-minute polling; CORS allows the site</td></tr>
+      <tr><td>D18</td><td>Admin API: sign in with the staff user, <code>GET admin-tasks/</code>, <code>POST</code> with <code>--clear</code>, a bad token</td><td>Sign-in ok, list 200, <code>--clear</code> refused (400), bad token 401. Nothing was triggered.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Found while testing (for later phases)</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Finding</th><th>Goes to</th></tr></thead>
+    <tbody>
+      <tr><td>F1</td><td>"0 upcoming matches in the next 7 days" is <strong>correct, not a bug</strong>. The data has no matches between 20 Sep and 9 Oct (a break in the fixture list). The 108 upcoming fixtures are 9–14 Oct.</td><td>—</td></tr>
+      <tr><td>F2</td><td>The <strong>OpenAI key returns 401</strong>, so document embeddings fail and the AI analysis quietly runs without its knowledge-base context. Fix: renew the key, or switch embeddings off.</td><td>Phase 2</td></tr>
+      <tr><td>F3</td><td>Live accuracy over the last 30 days is <strong>40.7%</strong> (120/295), below the 49–50% measured in training. By confidence level (all time): weak 42.9%, moderate 62.0%, <strong>strong 51.4%</strong>. The model's most confident picks do worse than its moderate ones, a sign of poor calibration.</td><td>Phase 3</td></tr>
+      <tr><td>F4</td><td>scikit-learn warns "X does not have valid feature names, but StandardScaler was fitted with feature names" at prediction time, so features are passed differently in training and in production.</td><td>Phase 3</td></tr>
+      <tr><td>F5</td><td>Pagination <code>next</code> links omit the <code>/prod</code> stage (e.g. <code>…amazonaws.com/api/v1/leagues/?page=2</code>), so they 404 if followed.</td><td>Phase 4 (API-07)</td></tr>
+      <tr><td>F6</td><td>The AI output shows ML-08/ML-12 in practice: "model vcurrent", "Over 2.5 probability 100%", and a made-up 1.4–1.2 score beside a 77% away-win pick.</td><td>Phase 3</td></tr>
+      <tr><td>F7</td><td>The handler logs don't include command output, so a "successful" sync shows no counts in CloudWatch.</td><td>Phase 2</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Rollback (if needed)</h3>
+<pre><code># Backend: both functions back to the pre-Phase-0 image (by tag = commit 75165fd)
+OLD=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:$(git rev-parse 75165fd)
+for f in bet-hope-web bet-hope-manage; do aws lambda update-function-code --function-name $f --image-uri $OLD; done
+# Frontend: promote the previous production deployment
+cd frontend && npx vercel@latest rollback https://bet-hope-frontend-91y1rpfb9-taofeeks-projects-151246e6.vercel.app</code></pre>
+
   <h2>Done when</h2>
   <div class="table-wrap"><table>
     <thead><tr><th>Check</th><th>How</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>A dashboard tab stays open 2 hours without a 429</td><td>Browser dev tools → Network, filter "429", during 04:00–16:00 UTC (the database is still off at night until Phase 1)</td><td><span class="st none">After deploy</span></td></tr>
-      <tr><td>AI endpoints refuse floods</td><td><code>for i in $(seq 12); do curl -s -o /dev/null -w "%{http_code} " -X POST -H 'Content-Type: application/json' -d '{"prediction_id":1}' ${API}api/v1/ai-recommendations/generate/; done</code> → 429s after the 10th</td><td><span class="st none">After deploy</span></td></tr>
-      <tr><td>Document writes need a token</td><td><code>curl -s -o /dev/null -w "%{http_code}" -X POST ${API}api/v1/documents/refresh/</code> → 401</td><td><span class="st none">After deploy</span></td></tr>
+      <tr><td>A dashboard tab stays open 2 hours without a 429</td><td>Browser dev tools → Network, filter "429", during 04:00–16:00 UTC (the database is still off at night until Phase 1)</td><td><span class="st partial">Mostly verified</span> 150 and 40 consecutive reads all 200; the 2-hour browser soak is yours to do</td></tr>
+      <tr><td>AI endpoints refuse floods</td><td><code>for i in $(seq 12); do curl -s -o /dev/null -w "%{http_code} " -X POST -H 'Content-Type: application/json' -d '{"prediction_id":1}' ${API}api/v1/ai-recommendations/generate/; done</code> → 429s after the 10th</td><td><span class="st ok">Verified</span> D11: 10 allowed, then 429</td></tr>
+      <tr><td>Document writes need a token</td><td><code>curl -s -o /dev/null -w "%{http_code}" -X POST ${API}api/v1/documents/refresh/</code> → 401</td><td><span class="st ok">Verified</span> D6: all 401</td></tr>
       <tr><td>At most 1 NAT and no orphaned EIPs</td><td>Command #2–3</td><td><span class="st ok">Verified</span></td></tr>
       <tr><td>ECR and logs can't grow without limit</td><td>Commands #12–13</td><td><span class="st ok">Verified</span></td></tr>
     </tbody>

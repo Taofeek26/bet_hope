@@ -72,6 +72,7 @@
     <dl>
       <dt>Where</dt><dd><code>base.py</code> <code>DEFAULT_THROTTLE_RATES = {'anon': '100/hour'}</code>, applied to every view; polling in <code>hooks/useApi.ts</code></dd>
       <dt>Math</dt><dd>With one dashboard tab open: live matches every 15 s (240/hour), upcoming every 60 s (60/hour), daily picks ×2 and task status every 5 minutes (about 36/hour). That's roughly 330 requests per hour, before page loads. Each loaded prediction card also fires one AI lookup. The 101st request in an hour gets HTTP 429 and the UI shows "Failed to load". The throttle counter is kept in per-container memory (<code>LocMemCache</code>), so how soon it hits varies from minute to minute.</dd>
+      <dt>Correction (30 Sep)</dt><dd>The Phase 0 live test showed the limit rarely triggered in practice. Behind the edge-optimized API, DRF keyed visitors on a header that changes per request, so the counters never added up (<a href="phase-0.html#P0-D9">P0-D9</a>). The polling waste was real, but "429 after ~15 minutes" was overstated. Fixed in Phase 0 together with the identity problem.</dd>
       <dt>Fix</dt><dd>Raise anonymous read limits (e.g. <code>2000/hour</code>) with a separate strict scope for expensive endpoints (AI, generate). Cut polling: no live polling until DATA-05 is fixed, and 5 minutes for the rest. Load AI analysis only when the user expands a card.</dd>
     </dl>
   </div>
