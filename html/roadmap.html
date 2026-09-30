@@ -41,7 +41,7 @@
 
   <h2>Phase 1: available 24/7 and cheaper (about 3–5 days)</h2>
   <div class="panel">
-  <p><strong>Log:</strong> <a href="phase-1.html">Phase 1 decisions, changes, commands and runbook</a>. Code done; AWS steps pending.</p>
+  <p><strong>Log:</strong> <a href="phase-1.html">Phase 1 decisions, changes, commands and runbook</a>. Stage 1 live 30 Sep 2026 (app on Neon, outside the VPC). Stage 2 clean-up pending.</p>
   <ul>
     <li>Pick <a href="aws-cost.html#alternatives">Option A or B</a>. For A: create the Neon/Supabase database, <code>pg_dump</code> → restore, remove <code>VpcConfig</code>, NAT, EIP, infra toggle and RDS (after a final snapshot).</li>
     <li>A slim <code>requirements-lambda.txt</code> without torch, transformers, Celery or Redis.</li>

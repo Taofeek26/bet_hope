@@ -32,10 +32,10 @@
   <div class="table-wrap"><table>
     <thead><tr><th>Part</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>Code changes (backend, frontend, template)</td><td><span class="st ok">Done</span> Tested locally, not committed yet</td></tr>
-      <tr><td>Step 1: create the Neon database</td><td><span class="st none">To do (you)</span></td></tr>
-      <tr><td>Steps 2–6: build image, copy data, switch the app (stage 1)</td><td><span class="st none">To do (you)</span></td></tr>
-      <tr><td>Step 7: remove VPC, NAT and RDS (stage 2, 1–3 days later)</td><td><span class="st none">To do (you)</span></td></tr>
+      <tr><td>Code changes (backend, frontend, template)</td><td><span class="st ok">Done</span> Live since Phase 0 (image <code>11a47c9</code>)</td></tr>
+      <tr><td>Step 1: create the Neon database</td><td><span class="st ok">Done</span> 30 Sep, by you</td></tr>
+      <tr><td>Steps 2–6: build image, copy data, switch the app (stage 1)</td><td><span class="st ok">Done 30 Sep 11:01–11:10 UTC</span> See <a href="#stage1-log">stage 1 record</a></td></tr>
+      <tr><td>Step 7: remove VPC, NAT and RDS (stage 2)</td><td><span class="st none">Waiting</span> Run on or after 1 Oct, with your OK</td></tr>
     </tbody>
   </table></div>
   <div class="callout">Phase 1 comes after <a href="phase-0.html">Phase 0</a>. The rate limits, locked endpoints, ECR clean-up and log retention are recorded there. Deploying the app code for both phases can happen in one image build (see Phase 0 → Deploy). This phase adds the infrastructure switch.</div>
@@ -307,6 +307,33 @@ aws s3 rb s3://$BUCKET --force     # if versioned objects remain, empty them in 
 aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available --query 'NatGateways[].NatGatewayId'
 aws ec2 describe-addresses --query 'Addresses[?AssociationId==null].[PublicIp,AllocationId]'</code></pre>
   <p><strong>If step 3 fails</strong> on "has a dependent object" (network interfaces not yet released): wait 30 minutes and run the same deploy again. <strong>Rollback (stage 2):</strong> restore the snapshot as a new RDS instance. It's rarely needed, since Neon already holds everything.</p>
+
+  <h2 id="stage1-log">Stage 1 record (30 Sep 2026)</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command (abridged)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>S1</td><td>Appended <code>NEON_POOLED_URL</code> / <code>NEON_DIRECT_URL</code> to <code>infrastructure/LAMBDA_DEPLOY_SECRETS.local.txt</code> (confirmed git-ignored with <code>git check-ignore</code>)</td><td>Saved. The strings were pasted in chat, so reset the password afterwards (see <a href="#rotate">Rotate the Neon password</a>).</td></tr>
+      <tr><td>S2</td><td><code>psql "$NEON_DIRECT_URL" -c "select version()"</code>; same on the pooled URL; <code>pg_available_extensions</code></td><td>Both reachable; the database is empty; pgvector 0.8.6 available. <strong>Note:</strong> the project runs <strong>Postgres 18.6</strong> (not 16). That's compatible: the copy uses plain text and Django's schema works on 18.</td></tr>
+      <tr><td>S3</td><td><code>aws lambda invoke --function-name bet-hope-manage --payload '{"command":"copy_database","args":["--report-only"]}'</code></td><td>RDS is <strong>82 MB</strong>, well under Neon's free 0.5 GB. The largest table is <code>matches_match</code> at 34 MB.</td></tr>
+      <tr><td>S4</td><td>Same function, <code>copy_database --target-url $NEON_DIRECT_URL --yes-overwrite-target</code> (payload via a temporary file, deleted right after)</td><td><strong>success in 13.5 s: "43 tables copied, row counts match."</strong></td></tr>
+      <tr><td>S5</td><td><code>psql "$NEON_POOLED_URL"</code> counts vs the live API (still on RDS)</td><td>Neon: 21 leagues, 857 teams, 91,710 matches, 67,744 odds rows, 6,098 predictions, 63 model versions, 33 documents, 7 AI analyses, 1 user, 65 migrations; same active model <code>20260930_082006</code>. The API from RDS showed the same leagues, predictions, documents and model.</td></tr>
+      <tr><td>S6</td><td><code>sam deploy --template-file template.yaml … --image-repository 294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web --no-execute-changeset --parameter-overrides ImageUri=…:11a47c9… DatabaseUrl="$NEON_POOLED_URL" LegacyNetwork=keep CorsAllowedOrigins=https://bet-hope-frontend.vercel.app CorsAllowedOriginRegexes='^https://bet-hope-frontend-.*\.vercel\.app$' …keys…</code></td><td><strong>Note:</strong> SAM requires <code>--image-repository</code> for image functions even when the image already exists, and nothing is pushed. The change set was <strong>Modify only</strong>: both functions, the IAM role, the REST API, the schedules and their permissions, and the static bucket plus its policy (the new <code>Retain</code> setting). No additions, no deletions; RDS, the VPC and the NAT weren't touched.</td></tr>
+      <tr><td>S7</td><td><code>aws cloudformation execute-change-set</code>; <code>wait stack-update-complete</code></td><td><code>UPDATE_COMPLETE</code> 11:04:03 → 11:06:42. Both functions Active, <strong>0 VPC subnets</strong>.</td></tr>
+      <tr><td>S8</td><td>Hash of each function's <code>DATABASE_URL</code> compared with the hash of <code>NEON_POOLED_URL</code></td><td>Both match; host <code>ep-floral-star-b70qrxqr-pooler…neon.tech</code></td></tr>
+      <tr><td>S9</td><td><code>curl</code> /health/ and 12 page endpoints</td><td>All 200 with the same data as before (21 leagues, 108 upcoming predictions, 296 results in 30 days, 10 picks for 10 Oct). The first <code>/health/</code> call took 25 s (cold Lambda plus Neon waking); warm requests take 0.84–0.96 s.</td></tr>
+      <tr><td>S10</td><td><code>…invoke bet-hope-manage {"command":"generate_predictions","args":["--upcoming","--days","14"]}</code>, then a count on Neon</td><td>Success in 40.7 s: 108 updated, 0 errors. Neon shows 108 rows updated in the last 5 minutes. The manage function reaches S3 (the model), Neon and the internet without a NAT.</td></tr>
+      <tr><td>S11</td><td>AI generate for prediction of Sheffield United vs Lincoln City (10 Oct), then polling</td><td>202 → completed after 23 s (2181 tokens). The web → manage → OpenRouter → Neon chain works outside the VPC.</td></tr>
+      <tr><td>S12</td><td>Anonymous POST documents/refresh and predictions/batch</td><td>401, 401 (Phase 0 locks intact)</td></tr>
+      <tr><td>S13</td><td>CloudWatch <code>AWS/RDS DatabaseConnections</code> for <code>bet-hope-dbinstance-…</code></td><td>1–2 connections 10:50–11:05 (the size check, the copy, and traffic before the switch). Per minute afterwards: 1 until 11:07, then <strong>0 from 11:08</strong> (the last pre-switch containers retired), so nothing uses RDS any more.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="rotate">Rotate the Neon password (you, then me)</h3>
+  <ol>
+    <li>Neon console → your project → <strong>Roles</strong> → <code>neondb_owner</code> → <strong>Reset password</strong>, then copy both new connection strings.</li>
+    <li>Replace the two <code>NEON_…</code> lines in <code>infrastructure/LAMBDA_DEPLOY_SECRETS.local.txt</code>.</li>
+    <li>Redeploy with the step 6 command (only <code>DatabaseUrl</code> changes). Until the redeploy, the API can't connect, so do both within a few minutes.</li>
+  </ol>
 
   <h2>Expected result</h2>
   <div class="table-wrap"><table>
