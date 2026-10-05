@@ -195,7 +195,8 @@ class Command(BaseCommand):
             query = query.filter(season__code__in=seasons)
         else:
             # Default to current season
-            query = query.filter(season__code='2526')
+            from apps.core.seasons import current_season_code
+            query = query.filter(season__code=current_season_code())
 
         # Only matches without predictions
         query = query.exclude(predictions__isnull=False)

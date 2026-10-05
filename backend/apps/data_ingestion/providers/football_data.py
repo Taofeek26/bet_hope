@@ -115,20 +115,13 @@ class FootballDataProvider:
         'PSA': 'pinnacle_away',
     }
 
-    # Seasons to download - Football-Data.co.uk has data from 1993+
-    # Format: YYZZ where 20YY-20ZZ or 19YY-19ZZ for pre-2000
-    SEASONS = [
-        # Current + Recent (2020s)
-        '2526', '2425', '2324', '2223', '2122', '2021',
-        # 2010s
-        '1920', '1819', '1718', '1617', '1516',
-        '1415', '1314', '1213', '1112', '1011',
-        # 2000s
-        '0910', '0809', '0708', '0607', '0506',
-        '0405', '0304', '0203', '0102', '0001',
-        # 1990s (where available)
-        '9900', '9899', '9798', '9697', '9596', '9495', '9394',
-    ]
+    # Seasons to download, newest first: computed from today's date back to
+    # 1993-94, where Football-Data.co.uk starts (Phase 2). The hard-coded
+    # list stopped at 2025-26, so the current season was never imported.
+    @property
+    def SEASONS(self) -> List[str]:
+        from apps.core.seasons import all_season_codes
+        return all_season_codes()
 
     def __init__(self, cache_dir: Optional[Path] = None):
         """
@@ -189,10 +182,11 @@ class FootballDataProvider:
             response = requests.get(url, timeout=30)
             response.raise_for_status()
 
-            # Parse CSV
+            # Parse CSV from the raw bytes. response.text guessed Latin-1
+            # (the server sends no charset), which turned UTF-8 names into
+            # "PreuÃen MÃ¼nster". Older seasons are Latin-1, so fall back.
             df = pd.read_csv(
-                StringIO(response.text),
-                encoding='utf-8',
+                StringIO(self._decode(response.content)),
                 on_bad_lines='skip'
             )
 
@@ -208,6 +202,14 @@ class FootballDataProvider:
         except Exception as e:
             logger.error(f"Parse failed for {league_code}/{season}: {e}")
             return None
+
+    @staticmethod
+    def _decode(raw: bytes) -> str:
+        """CSV bytes -> text: UTF-8 (with or without BOM), else Latin-1."""
+        try:
+            return raw.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            return raw.decode('latin-1')
 
     def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -267,7 +269,8 @@ class FootballDataProvider:
         self,
         league_code: str,
         season: str,
-        df: pd.DataFrame
+        df: pd.DataFrame,
+        resolver=None,
     ) -> Tuple[int, int]:
         """
         Sync DataFrame to database models.
@@ -301,32 +304,23 @@ class FootballDataProvider:
             }
         )
 
-        # Get or create season - handle both 19XX and 20XX years
-        start_year = int(season[:2])
-        end_year = int(season[2:])
-        # Determine century: if start > 90, it's 1990s; otherwise 2000s
-        if start_year > 90:
-            season_name = f"19{season[:2]}-{season[2:]}"
-        else:
-            season_name = f"20{season[:2]}-{season[2:]}"
-
+        from apps.core.seasons import season_name as _season_name
         db_season, _ = Season.objects.get_or_create(
             league=league,
             code=season,
-            defaults={'name': season_name}
+            defaults={'name': _season_name(season)}
         )
 
-        # Team cache
+        # One Team per club per country, found through TeamAlias (Phase 2):
+        # the old get_or_create(fd_name, league) made a new Team every time a
+        # club changed division, splitting its history.
+        from apps.teams.identity import TeamResolver
+        resolver = resolver or TeamResolver(source='football-data.co.uk')
         team_cache = {}
 
         def get_or_create_team(name: str) -> Team:
             if name not in team_cache:
-                team, _ = Team.objects.get_or_create(
-                    fd_name=name,
-                    league=league,
-                    defaults={'name': name}
-                )
-                team_cache[name] = team
+                team_cache[name] = resolver.resolve(name, league)
             return team_cache[name]
 
         # Process each match
@@ -350,7 +344,17 @@ class FootballDataProvider:
                         match_date = match_date.date()
 
                     # Create unique identifier for reference
-                    match_id = f"{league_code}_{season}_{match_date}_{home_team.fd_name}_{away_team.fd_name}"
+                    # Ids, not names: names made this exceed the 50-char column and the
+                    # row silently failed to import (e.g. "Preußen Münster", Phase 2).
+                    match_id = f"{league_code}_{season}_{match_date}_{home_team.pk}_{away_team.pk}"
+
+                    # Kickoff (UK local time in these files), when the season file has it
+                    from apps.matches.timeutil import local_to_utc
+                    kickoff = self._parse_time(row.get('Time'))
+                    kickoff_fields = {
+                        'kickoff_time': kickoff,
+                        'kickoff_at': local_to_utc(match_date, kickoff, 'Europe/London'),
+                    } if kickoff else {}
 
                     # Get or create match using natural key (prevents duplicates)
                     match, match_created = Match.objects.update_or_create(
@@ -359,6 +363,7 @@ class FootballDataProvider:
                         away_team=away_team,
                         match_date=match_date,
                         defaults={
+                            **kickoff_fields,
                             'home_score': self._safe_int(row.get('FTHG')),
                             'away_score': self._safe_int(row.get('FTAG')),
                             'home_halftime_score': self._safe_int(row.get('HTHG')),
@@ -394,16 +399,16 @@ class FootballDataProvider:
                         )
 
                     # Create/update odds if available
-                    home_odds = self._safe_decimal(row.get('AvgH') or row.get('BbAvH') or row.get('PSH'))
+                    home_odds = self._first_decimal(row, 'AvgH', 'BbAvH', 'PSH', 'B365H')
                     if home_odds:
                         MatchOdds.objects.update_or_create(
                             match=match,
                             defaults={
                                 'home_odds': home_odds,
-                                'draw_odds': self._safe_decimal(row.get('AvgD') or row.get('BbAvD') or row.get('PSD')),
-                                'away_odds': self._safe_decimal(row.get('AvgA') or row.get('BbAvA') or row.get('PSA')),
-                                'over_25_odds': self._safe_decimal(row.get('Avg>2.5') or row.get('BbAv>2.5')),
-                                'under_25_odds': self._safe_decimal(row.get('Avg<2.5') or row.get('BbAv<2.5')),
+                                'draw_odds': self._first_decimal(row, 'AvgD', 'BbAvD', 'PSD', 'B365D'),
+                                'away_odds': self._first_decimal(row, 'AvgA', 'BbAvA', 'PSA', 'B365A'),
+                                'over_25_odds': self._first_decimal(row, 'Avg>2.5', 'BbAv>2.5', 'P>2.5', 'B365>2.5'),
+                                'under_25_odds': self._first_decimal(row, 'Avg<2.5', 'BbAv<2.5', 'P<2.5', 'B365<2.5'),
                             }
                         )
 
@@ -535,130 +540,96 @@ class FootballDataProvider:
         from apps.teams.models import Team
         from apps.matches.models import Match, MatchOdds
 
+        from apps.core.seasons import season_code_for, season_name
+        from apps.teams.identity import TeamResolver
+        from apps.matches.timeutil import local_to_utc
+
         df = self.download_fixtures()
         if df is None or df.empty:
             return 0, 0
 
-        created = 0
-        updated = 0
+        created = updated = with_odds = 0
+        resolver = TeamResolver(source='football-data.co.uk')
 
-        # Get current season code
-        from datetime import date
-        today = date.today()
-        year = today.year
-        month = today.month
-        if month >= 8:
-            current_season = f"{str(year)[2:]}{str(year + 1)[2:]}"
-        else:
-            current_season = f"{str(year - 1)[2:]}{str(year)[2:]}"
-
-        with transaction.atomic():
-            for _, row in df.iterrows():
-                try:
-                    # Get league code (Div column)
-                    div = row.get('Div', '')
-                    if not div or div not in self.LEAGUES:
-                        continue
-
-                    # Get or create league
-                    league_info = self.LEAGUES.get(div, {})
+        for _, row in df.iterrows():
+            div = row.get('Div', '')
+            if not div or div not in self.LEAGUES:
+                continue
+            home_name, away_name = row.get('HomeTeam'), row.get('AwayTeam')
+            match_date = row.get('Date')
+            if pd.isna(home_name) or pd.isna(away_name) or pd.isna(match_date):
+                continue
+            match_date = pd.Timestamp(match_date).date()
+            try:
+                # One savepoint per row: a bad row can't abort the rest.
+                with transaction.atomic():
+                    info = self.LEAGUES[div]
                     league, _ = League.objects.get_or_create(
-                        code=div,
-                        defaults={
-                            'name': league_info.get('name', div),
-                            'country': league_info.get('country', 'Unknown'),
-                            'tier': league_info.get('tier', 2),
-                        }
+                        code=div, defaults={'name': info['name'], 'country': info['country'], 'tier': info['tier']},
                     )
-
-                    # Get or create season
-                    season_name = f"20{current_season[:2]}-{current_season[2:]}"
+                    # Season from the match's own date, not today's (a fixture
+                    # list read in July can include August fixtures).
+                    code = season_code_for(match_date, league.season_start_month)
                     db_season, _ = Season.objects.get_or_create(
-                        league=league,
-                        code=current_season,
-                        defaults={'name': season_name}
+                        league=league, code=code, defaults={'name': season_name(code)},
                     )
+                    home_team = resolver.resolve(str(home_name), league)
+                    away_team = resolver.resolve(str(away_name), league)
 
-                    # Parse date and time
-                    date_str = row.get('Date', '')
-                    time_str = row.get('Time', '')
-
-                    if not date_str:
-                        continue
-
-                    match_date = pd.to_datetime(date_str, dayfirst=True).date()
-
-                    kickoff_time = None
-                    if time_str and pd.notna(time_str):
-                        try:
-                            kickoff_time = pd.to_datetime(time_str).time()
-                        except:
-                            pass
-
-                    # Get teams
-                    home_name = row.get('HomeTeam', '')
-                    away_name = row.get('AwayTeam', '')
-
-                    if not home_name or not away_name:
-                        continue
-
-                    home_team, _ = Team.objects.get_or_create(
-                        fd_name=home_name,
-                        league=league,
-                        defaults={'name': home_name}
-                    )
-
-                    away_team, _ = Team.objects.get_or_create(
-                        fd_name=away_name,
-                        league=league,
-                        defaults={'name': away_name}
-                    )
-
-                    # Create unique ID for reference
-                    match_id = f"{div}_{current_season}_{match_date}_{home_name}_{away_name}"
-
-                    # Create or update match using natural key (prevents duplicates)
-                    match, match_created = Match.objects.update_or_create(
-                        season=db_season,
-                        home_team=home_team,
-                        away_team=away_team,
-                        match_date=match_date,
+                    kickoff_time = self._parse_time(row.get('Time'))
+                    match, was_created = Match.objects.get_or_create(
+                        season=db_season, home_team=home_team, away_team=away_team, match_date=match_date,
                         defaults={
-                            'kickoff_time': kickoff_time,
                             'status': Match.Status.SCHEDULED,
-                            'fd_match_id': match_id,  # Store for reference
-                        }
+                            'fd_match_id': f"{div}_{code}_{match_date}_{home_team.pk}_{away_team.pk}",
+                        },
                     )
+                    # Football-Data.co.uk times are UK local time.
+                    if kickoff_time and match.status == Match.Status.SCHEDULED:
+                        match.kickoff_time = kickoff_time
+                        match.kickoff_at = local_to_utc(match_date, kickoff_time, 'Europe/London')
+                        match.save(update_fields=['kickoff_time', 'kickoff_at', 'updated_at'])
+                    created += was_created
+                    updated += not was_created
 
-                    if match_created:
-                        created += 1
-                    else:
-                        updated += 1
-
-                    # Add odds if available
-                    home_odds = self._safe_decimal(
-                        row.get('AvgH') or row.get('BbAvH') or row.get('PSH') or row.get('B365H')
-                    )
-                    if home_odds:
+                    # Pre-match market odds: the input the model was trained
+                    # on and upcoming fixtures never had before (ML-01).
+                    home_odds = self._first_decimal(row, 'AvgH', 'BbAvH', 'PSH', 'B365H')
+                    if home_odds and match.status == Match.Status.SCHEDULED:
                         MatchOdds.objects.update_or_create(
                             match=match,
                             defaults={
                                 'home_odds': home_odds,
-                                'draw_odds': self._safe_decimal(
-                                    row.get('AvgD') or row.get('BbAvD') or row.get('PSD') or row.get('B365D')
-                                ),
-                                'away_odds': self._safe_decimal(
-                                    row.get('AvgA') or row.get('BbAvA') or row.get('PSA') or row.get('B365A')
-                                ),
-                                'over_25_odds': self._safe_decimal(row.get('Avg>2.5') or row.get('BbAv>2.5')),
-                                'under_25_odds': self._safe_decimal(row.get('Avg<2.5') or row.get('BbAv<2.5')),
+                                'draw_odds': self._first_decimal(row, 'AvgD', 'BbAvD', 'PSD', 'B365D'),
+                                'away_odds': self._first_decimal(row, 'AvgA', 'BbAvA', 'PSA', 'B365A'),
+                                'over_25_odds': self._first_decimal(row, 'Avg>2.5', 'BbAv>2.5', 'P>2.5', 'B365>2.5'),
+                                'under_25_odds': self._first_decimal(row, 'Avg<2.5', 'BbAv<2.5', 'P<2.5', 'B365<2.5'),
                                 'bookmaker': 'Average',
-                            }
+                            },
                         )
+                        with_odds += 1
+            except Exception as e:
+                logger.error(f"Error processing fixture {div} {home_name} v {away_name}: {e}")
 
-                except Exception as e:
-                    logger.error(f"Error processing fixture: {e}")
-                    continue
-
-        logger.info(f"Fixtures synced: {created} created, {updated} updated")
+        if resolver.created:
+            logger.warning(f"New teams created from fixtures: {resolver.created}")
+        logger.info(f"Fixtures synced: {created} created, {updated} updated, {with_odds} with odds")
         return created, updated
+
+    def _first_decimal(self, row, *columns) -> Optional[Decimal]:
+        """First of `columns` holding a usable number (NaN is skipped, unlike `a or b`)."""
+        for col in columns:
+            value = self._safe_decimal(row.get(col))
+            if value:
+                return value
+        return None
+
+    @staticmethod
+    def _parse_time(value):
+        """'15:00' / '20:45' -> time, else None."""
+        if value is None or pd.isna(value):
+            return None
+        try:
+            return datetime.strptime(str(value).strip()[:5], '%H:%M').time()
+        except ValueError:
+            return None

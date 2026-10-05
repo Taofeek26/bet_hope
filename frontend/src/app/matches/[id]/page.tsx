@@ -7,10 +7,13 @@ import { matchesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import Link from 'next/link';
+import { formatKickoff } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchDetailPage() {
   const params = useParams();
   const matchId = Number(params.id);
+  const { settings } = useSettings();
 
   const { data: match, isLoading, error } = useQuery<any>({
     queryKey: ['match', matchId],
@@ -87,10 +90,10 @@ export default function MatchDetailPage() {
               <Calendar className="w-4 h-4" />
               {match.match_date}
             </div>
-            {match.kickoff_time && (
+            {(match.kickoff_at || match.kickoff_time) && (
               <div className="text-sm text-text-muted flex items-center justify-center gap-2">
                 <Clock className="w-4 h-4" />
-                {match.kickoff_time}
+                {formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}
               </div>
             )}
           </div>

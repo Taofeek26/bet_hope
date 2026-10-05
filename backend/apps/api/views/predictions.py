@@ -263,6 +263,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                             'away_team_logo': match.away_team.logo_url,
                             'date': match.match_date.isoformat(),
                             'time': match.kickoff_time.isoformat() if match.kickoff_time else None,
+                            'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
                         },
                         'prediction_id': prediction.id,
                         'market': market,
@@ -448,6 +449,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                     'away_team_logo': match.away_team.logo_url,
                     'league': league_display,
                     'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
+                    'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
                 },
                 'prediction': {
                     'id': pred.id,

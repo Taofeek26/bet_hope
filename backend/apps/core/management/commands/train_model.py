@@ -14,7 +14,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--seasons',
             nargs='+',
-            default=['2526', '2425', '2324', '2223', '2122'],
+            default=None,  # None = current season + the 4 before it (apps.core.seasons)
             help='Season codes to use for training',
         )
         parser.add_argument(
@@ -40,7 +40,8 @@ class Command(BaseCommand):
         from apps.ml_pipeline.training.trainer import ModelTrainer
         from apps.matches.models import Match
 
-        seasons = options['seasons']
+        from apps.core.seasons import recent_season_codes
+        seasons = options['seasons'] or recent_season_codes(5)
         leagues = options['leagues']
         tune = options['tune']
         version = options.get('model_version')

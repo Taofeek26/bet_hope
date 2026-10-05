@@ -30,7 +30,12 @@ class Match(SyncedModel):
 
     # Timing
     match_date = models.DateField()
+    # Provider's own clock: UTC from football-data.org, UK local from
+    # football-data.co.uk. Kept for compatibility; use kickoff_at to display.
     kickoff_time = models.TimeField(null=True, blank=True)
+    # The kickoff instant in UTC (Phase 2, DATA-06). The frontend formats it
+    # in the viewer's timezone (Settings > Region > Timezone).
+    kickoff_at = models.DateTimeField(null=True, blank=True)
     matchweek = models.IntegerField(null=True, blank=True)
 
     # Status

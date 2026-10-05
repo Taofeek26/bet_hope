@@ -62,6 +62,7 @@ class PredictionSerializer(serializers.ModelSerializer):
             'away_team_logo': obj.match.away_team.logo_url,
             'match_date': obj.match.match_date.isoformat(),
             'kickoff_time': obj.match.kickoff_time.strftime('%H:%M') if obj.match.kickoff_time else None,
+            'kickoff_at': obj.match.kickoff_at.isoformat() if obj.match.kickoff_at else None,
             'league': league_display,
             'league_country': league.country if league else None,
             'status': obj.match.status,

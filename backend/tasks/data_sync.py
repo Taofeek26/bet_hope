@@ -25,7 +25,7 @@ def sync_all_leagues(self):
         # Sync current season data with fixtures
         call_command(
             'sync_real_data',
-            seasons=['2526'],  # Current season
+            current_season=True,
             fixtures=True,
             verbosity=1
         )
@@ -92,7 +92,9 @@ def update_recent_results(self):
 
 
 @shared_task
-def sync_single_league(league_code: str, season: str = '2526'):
+def sync_single_league(league_code: str, season: str = None):
+    from apps.core.seasons import current_season_code
+    season = season or current_season_code()
     """
     Sync data for a single league.
     Can be triggered manually for specific leagues.

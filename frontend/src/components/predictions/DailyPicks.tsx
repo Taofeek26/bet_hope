@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/Badge';
 import { ProbabilityBar } from '@/components/ui/ProbabilityBar';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
-import { formatProbability, getOutcomeLabel } from '@/lib/utils';
+import { formatProbability, getOutcomeLabel, formatKickoff } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 import { Trophy, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -43,6 +44,7 @@ export function DailyPicks({ date }: DailyPicksProps) {
 }
 
 function PickCard({ pick }: { pick: any }) {
+  const { settings } = useSettings();
   const prediction = pick.prediction;
   const match = pick.match;
 
@@ -54,7 +56,7 @@ function PickCard({ pick }: { pick: any }) {
         {/* League & Time */}
         <div className="flex items-center justify-between mb-2 sm:mb-3">
           <span className="text-[10px] sm:text-xs text-text-secondary truncate max-w-[60%]">{match.league}</span>
-          <span className="text-[10px] sm:text-xs text-text-secondary">{match.time || 'TBD'}</span>
+          <span className="text-[10px] sm:text-xs text-text-secondary">{formatKickoff(match.kickoff_at, match.time, settings.timezone) || 'TBD'}</span>
         </div>
 
         {/* Teams */}

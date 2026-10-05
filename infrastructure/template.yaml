@@ -508,6 +508,28 @@ Resources:
           Id: SyncData
           Input: '{"command": "sync_real_data", "args": ["--fixtures-only"]}'
 
+  # Phase 2 (DATA-02): the daily sync only gets new results for the 8
+  # leagues football-data.org covers. This re-downloads the current-season
+  # CSV for all 20 leagues (results, shots, odds) after the weekend and
+  # midweek rounds; 20 small files, well inside the Lambda time limit.
+  CurrentSeasonSyncSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Current-season results + stats + odds for all 20 leagues, Mon and Thu 03:30 UTC
+      ScheduleExpression: cron(30 3 ? * MON,THU *)
+      Targets:
+        - Arn: !GetAtt ManageFunction.Arn
+          Id: CurrentSeasonSync
+          Input: '{"command": "sync_real_data", "args": ["--current-season"]}'
+
+  CurrentSeasonSyncPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ManageFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CurrentSeasonSyncSchedule.Arn
+
   SyncDataPermission:
     Type: AWS::Lambda::Permission
     Properties:

@@ -6,7 +6,7 @@ import { matchesApi, leaguesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useState } from 'react';
 import Link from 'next/link';
-import { formatDateWithPreset } from '@/lib/utils';
+import { formatDateWithPreset, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchesPage() {
@@ -212,7 +212,8 @@ function MatchCard({ match }: { match: any }) {
           ) : (
             <div className="text-xs sm:text-sm text-text-muted">
               <div className="truncate">
-                {match.kickoff_time || (match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD')}
+                {match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD'}
+                {(match.kickoff_at || match.kickoff_time) && ` · ${formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}`}
               </div>
               {leagueName && <div className="text-[10px] sm:text-xs truncate max-w-[80px] sm:max-w-none">{leagueName}</div>}
             </div>

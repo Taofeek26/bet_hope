@@ -4,7 +4,8 @@ import { useUpcomingMatches } from '@/hooks/useApi';
 import { Card, CardHeader, CardBody, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { formatDate, formatTime, formatRelativeDate } from '@/lib/utils';
+import { formatDate, formatKickoff, formatRelativeDate } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 import { Calendar, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -98,6 +99,7 @@ function DateSection({ date, matches }: { date: string; matches: any[] }) {
 }
 
 function MatchRow({ match }: { match: any }) {
+  const { settings } = useSettings();
   const hasPrediction = match.has_prediction;
 
   return (
@@ -107,7 +109,7 @@ function MatchRow({ match }: { match: any }) {
           {/* Time & League - row on mobile */}
           <div className="flex items-center justify-between sm:block sm:w-14 sm:text-center">
             <span className="text-[10px] sm:text-sm text-text-secondary">
-              {formatTime(match.kickoff_time) || 'TBD'}
+              {formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone) || 'TBD'}
             </span>
             <span className="text-[10px] text-text-muted sm:hidden">{match.league_name}</span>
           </div>

@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import { useState, useMemo, useEffect } from 'react';
 import { useSettings } from '@/contexts/SettingsContext';
+import { formatKickoff } from '@/lib/utils';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -290,7 +291,7 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
             </div>
             <div className="text-xs text-text-muted flex items-center gap-2">
               {isFinished ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-              {match.match_date || 'TBD'} {match.kickoff_time && `• ${match.kickoff_time}`}
+              {match.match_date || 'TBD'} {(match.kickoff_at || match.kickoff_time) && `• ${formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}`}
               {match.league && <span className="text-text-sec">• {match.league}</span>}
               {isFinished && <span className="text-text-sec">• Finished</span>}
             </div>

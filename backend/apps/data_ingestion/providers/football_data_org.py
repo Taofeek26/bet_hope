@@ -369,25 +369,33 @@ class FootballDataOrgProvider:
         from apps.teams.models import Team
         from apps.matches.models import Match
 
+        from apps.teams.identity import TeamResolver
+
         created = 0
         updated = 0
+        resolver = TeamResolver(source='football-data.org')
 
-        with transaction.atomic():
-            for match_data in matches:
-                try:
-                    result = self._sync_match(match_data)
-                    if result == 'created':
-                        created += 1
-                    elif result == 'updated':
-                        updated += 1
-                except Exception as e:
-                    logger.error(f"Error syncing match: {e}")
-                    continue
+        for match_data in matches:
+            try:
+                # One savepoint per match: a failure (e.g. a unique clash)
+                # used to abort the shared transaction and silently fail
+                # every match after it.
+                with transaction.atomic():
+                    result = self._sync_match(match_data, resolver)
+                if result == 'created':
+                    created += 1
+                elif result == 'updated':
+                    updated += 1
+            except Exception as e:
+                logger.error(f"Error syncing match {match_data.get('id')}: {e}")
+                continue
 
+        if resolver.created:
+            logger.warning(f"New teams created: {resolver.created}")
         logger.info(f"Matches synced: {created} created, {updated} updated")
         return created, updated
 
-    def _sync_match(self, match_data: Dict) -> Optional[str]:
+    def _sync_match(self, match_data: Dict, resolver) -> Optional[str]:
         """
         Sync a single match to the database.
 
@@ -421,6 +429,12 @@ class FootballDataOrgProvider:
                 'tier': league_info['tier'],
             }
         )
+        # League logo (DATA-08): every match payload carries the
+        # competition's emblem; nothing ever stored it before.
+        emblem = competition.get('emblem') or ''
+        if emblem and not league.logo_url:
+            league.logo_url = emblem
+            league.save(update_fields=['logo_url', 'updated_at'])
 
         # Parse date and time
         utc_date = match_data.get('utcDate', '')
@@ -436,17 +450,12 @@ class FootballDataOrgProvider:
         # "2526" by that rule) and the same fixtures synced again in
         # August (now "2627") landed under two different Season rows,
         # creating duplicate Match rows for the same real-world fixture.
-        if match_date.month >= 8:
-            season_code = f"{str(match_date.year)[2:]}{str(match_date.year + 1)[2:]}"
-        else:
-            season_code = f"{str(match_date.year - 1)[2:]}{str(match_date.year)[2:]}"
-
-        # Get or create season
-        season_name = f"20{season_code[:2]}-{season_code[2:]}"
+        from apps.core.seasons import season_code_for, season_name
+        season_code = season_code_for(match_date, league.season_start_month)
         db_season, _ = Season.objects.get_or_create(
             league=league,
             code=season_code,
-            defaults={'name': season_name}
+            defaults={'name': season_name(season_code)}
         )
 
         # Get teams
@@ -458,8 +467,8 @@ class FootballDataOrgProvider:
         home_crest = home_team_data.get('crest', '')
         away_crest = away_team_data.get('crest', '')
 
-        home_team = self._find_or_create_team(home_name, league, home_crest)
-        away_team = self._find_or_create_team(away_name, league, away_crest)
+        home_team = resolver.resolve(home_name, league, home_crest)
+        away_team = resolver.resolve(away_name, league, away_crest)
 
         # Get score if available
         score = match_data.get('score', {})
@@ -504,6 +513,7 @@ class FootballDataOrgProvider:
             match_date=match_date,
             defaults={
                 'kickoff_time': kickoff_time,
+                'kickoff_at': match_dt,  # utcDate is already an aware UTC instant
                 'matchweek': matchday,
                 'home_score': home_score,
                 'away_score': away_score,
@@ -516,92 +526,6 @@ class FootballDataOrgProvider:
 
         return 'created' if match_created else 'updated'
 
-    def _normalize_team_name(self, name: str) -> str:
-        """
-        Normalize team name for matching.
-        """
-        import unicodedata
-        import re
-
-        if not name:
-            return ''
-
-        # Remove accents
-        normalized = unicodedata.normalize('NFKD', name)
-        normalized = ''.join(c for c in normalized if not unicodedata.combining(c))
-
-        # Lowercase
-        normalized = normalized.lower().strip()
-
-        # Common abbreviations
-        abbreviations = {
-            ' fc': '',
-            ' cf': '',
-            ' sc': '',
-            ' ac': '',
-            ' afc': '',
-            ' utd': ' united',
-            ' united': ' united',
-            ' city': ' city',
-            ' town': ' town',
-        }
-
-        for abbrev, full in abbreviations.items():
-            normalized = normalized.replace(abbrev, full)
-
-        normalized = re.sub(r'\s+', ' ', normalized).strip()
-        return normalized
-
-    def _find_or_create_team(self, api_name: str, league, logo_url: str = ''):
-        """
-        Find existing team or create new one.
-        """
-        from apps.teams.models import Team
-
-        # 1. Try exact match by name
-        team = Team.objects.filter(name=api_name, league=league).first()
-        if team:
-            if logo_url and not team.logo_url:
-                team.logo_url = logo_url
-                team.save(update_fields=['logo_url'])
-            return team
-
-        # 2. Try exact match by fd_name
-        team = Team.objects.filter(fd_name=api_name, league=league).first()
-        if team:
-            team.name = api_name
-            if logo_url and not team.logo_url:
-                team.logo_url = logo_url
-            team.save(update_fields=['name', 'logo_url'])
-            return team
-
-        # 3. Try normalized name matching
-        normalized_api = self._normalize_team_name(api_name)
-
-        for existing_team in Team.objects.filter(league=league):
-            if self._normalize_team_name(existing_team.name) == normalized_api:
-                if logo_url and not existing_team.logo_url:
-                    existing_team.logo_url = logo_url
-                    existing_team.save(update_fields=['logo_url'])
-                return existing_team
-
-            if existing_team.fd_name and self._normalize_team_name(existing_team.fd_name) == normalized_api:
-                existing_team.name = api_name
-                if logo_url and not existing_team.logo_url:
-                    existing_team.logo_url = logo_url
-                existing_team.save(update_fields=['name', 'logo_url'])
-                return existing_team
-
-        # 4. Create new team
-        team = Team.objects.create(
-            name=api_name,
-            fd_name=api_name,
-            league=league,
-            logo_url=logo_url,
-        )
-        logger.info(f"Created new team: {api_name} in {league.name}")
-        return team
-
     def sync_teams_with_logos(self, league_code: Optional[str] = None) -> Tuple[int, int]:
         """
         Sync teams with their logos.
@@ -613,10 +537,11 @@ class FootballDataOrgProvider:
             Tuple of (created, updated)
         """
         from apps.leagues.models import League
-        from apps.teams.models import Team
+        from apps.teams.identity import TeamResolver
 
         created = 0
         updated = 0
+        resolver = TeamResolver(source='football-data.org')
 
         leagues_to_sync = {}
         if league_code and league_code in self.LEAGUES:
@@ -643,6 +568,10 @@ class FootballDataOrgProvider:
                         'tier': info['tier'],
                     }
                 )
+                emblem = (data.get('competition') or {}).get('emblem') or ''
+                if emblem and not league.logo_url:
+                    league.logo_url = emblem
+                    league.save(update_fields=['logo_url', 'updated_at'])
 
                 for team_data in teams:
                     team_name = team_data.get('name', 'Unknown')
@@ -651,7 +580,7 @@ class FootballDataOrgProvider:
                     team_founded = team_data.get('founded')
                     team_venue = team_data.get('venue', '')
 
-                    existing_team = self._find_or_create_team(team_name, league, team_crest)
+                    existing_team = resolver.resolve(team_name, league, team_crest)
 
                     team_updated = False
                     if team_tla and not existing_team.code:

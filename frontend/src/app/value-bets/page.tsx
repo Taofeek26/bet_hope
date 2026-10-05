@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Target, TrendingUp, AlertCircle, Clock, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { formatOdds } from '@/lib/utils';
+import { formatOdds, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 // Date utilities
@@ -338,7 +338,7 @@ function ValueBetCard({ bet }: { bet: any }) {
             </div>
             <div className="text-xs text-text-muted flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              {dateLabel} {match.time && `• ${match.time}`}
+              {dateLabel} {(match.kickoff_at || match.time) && `• ${formatKickoff(match.kickoff_at, match.time, settings.timezone)}`}
             </div>
           </div>
         </div>

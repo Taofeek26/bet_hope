@@ -93,4 +93,9 @@ def handler(event, context):
         task.save(update_fields=["status", "finished_at", "log_tail", "error", "updated_at"])
 
     print(json.dumps({k: v for k, v in output.items() if k != "stdout"}))
+    # The command's own summary (counts, accuracy, errors) — previously only
+    # returned to the caller, so scheduled runs left nothing useful in
+    # CloudWatch. Last 3000 chars keeps log ingestion small.
+    if output.get("stdout"):
+        print(f"--- {command} output (tail) ---\n{output['stdout'][-3000:]}")
     return output
