@@ -300,11 +300,24 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         days = int(request.query_params.get('days', 30))
         start_date = timezone.now().date() - timedelta(days=days)
 
-        # Get predictions for finished matches
+        # Finished matches with a result, and only predictions made BEFORE
+        # kickoff (ML-11): rows written after a match started (or back-
+        # filled for finished matches) would make the record look better
+        # than any user could have experienced.
+        from django.db.models import F, Q
         predictions = Prediction.objects.filter(
             match__match_date__gte=start_date,
             match__status=Match.Status.FINISHED,
+            match__home_score__isnull=False,
+            match__away_score__isnull=False,
+        ).filter(
+            Q(match__kickoff_at__isnull=False, created_at__lt=F('match__kickoff_at'))
+            | Q(match__kickoff_at__isnull=True, created_at__date__lt=F('match__match_date'))
         ).select_related('match')
+
+        model_version = request.query_params.get('model_version')
+        if model_version:
+            predictions = predictions.filter(model_version=model_version)
 
         if not predictions.exists():
             return Response({
@@ -312,7 +325,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                 'period': f'Last {days} days',
             })
 
-        total = predictions.count()
+        total = predictions.count()  # counted after excluding missing scores
         correct = 0
         by_outcome = {'H': {'total': 0, 'correct': 0}, 'D': {'total': 0, 'correct': 0}, 'A': {'total': 0, 'correct': 0}}
         by_confidence = {}

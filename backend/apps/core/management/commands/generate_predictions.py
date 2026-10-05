@@ -83,6 +83,23 @@ class Command(BaseCommand):
             self.stdout.write('Clearing existing predictions...')
             Prediction.objects.all().delete()
 
+        # Model v2 (Phase 3): its own feature pass and predictor
+        if active_model.model_type == 'v2':
+            if upcoming or (not historical and not validate):
+                from apps.ml_pipeline.v2.predict import predict_upcoming
+                result = predict_upcoming(active_model.version, days=days)
+                self.stdout.write(self.style.SUCCESS(
+                    f"Upcoming predictions ({active_model.version}): {result.get('created', 0)} created, "
+                    f"{result.get('updated', 0)} updated, {result.get('frozen', 0)} frozen at kickoff, "
+                    f"{result.get('with_odds', 0)} used bookmaker odds"))
+            if historical:
+                self.stdout.write(self.style.WARNING(
+                    'Skipping --historical with v2: back-filled predictions on matches the model '
+                    'was trained on are in-sample and would inflate accuracy (ML-11).'))
+            if validate:
+                self._validate_predictions()
+            return
+
         # Initialize predictor
         predictor = MatchPredictor()
         if not predictor.load_model():
