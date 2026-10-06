@@ -17,7 +17,7 @@ import { UpcomingMatches } from '@/components/matches/UpcomingMatches';
 import { LiveMatches } from '@/components/matches/LiveMatches';
 import { PredictionStats } from '@/components/predictions/PredictionStats';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { useDailyPicks, useLiveMatches, useValueBets, usePredictionStats, useWeeklyAvailability } from '@/hooks/useApi';
+import { useDailyPicks, useLiveMatches, useValueBets, usePredictionStats, useWeeklyAvailability, useModelInfo } from '@/hooks/useApi';
 import { MetricPlate } from '@/components/ui/MetricPlate';
 
 // Date utilities
@@ -43,9 +43,24 @@ function DashboardStats() {
   const { data: dailyPicks } = useDailyPicks();
   const { data: liveMatches } = useLiveMatches();
   const { data: valueBets } = useValueBets();
-  const { data: stats } = usePredictionStats({ days: 30 });
+  const { data: modelInfo } = useModelInfo();
+  // The live model's own record only (Phase 4). Mixing in the old v1
+  // predictions showed v1's 39% as if it were the current model's.
+  const family = modelInfo?.version?.split('_')[0];
+  const { data: stats } = usePredictionStats({ days: 30, model_family: family });
+  const live = family && stats && !(stats as any).error && stats.total_predictions > 0 ? stats : null;
+  const tested = modelInfo?.accuracy ? Number(modelInfo.accuracy) : null;
 
-  const accuracy = stats?.accuracy ? `${(stats.accuracy * 100).toFixed(1)}%` : '--';
+  // Until the live model has 50 graded matches, show its tested accuracy on
+  // unseen matches, and the live record so far in the remark.
+  const accuracy = live && live.total_predictions >= 50
+    ? `${(live.accuracy * 100).toFixed(1)}%`
+    : tested ? `${(tested * 100).toFixed(1)}%` : '--';
+  const accuracyRemark = live && live.total_predictions >= 50
+    ? `Live, last 30 days · ${live.correct_predictions}/${live.total_predictions} correct`
+    : live
+    ? `Tested on unseen matches · live so far ${live.correct_predictions}/${live.total_predictions}`
+    : tested ? 'Tested on unseen matches · live record starts with its first results' : 'Trailing 30 days';
   const predictionsToday = dailyPicks?.total_picks ?? '--';
   const liveCount = liveMatches?.count ?? 0;
   const valueBetsCount = valueBets?.total ?? '--';
@@ -54,7 +69,7 @@ function DashboardStats() {
     <MetricPlate
       title="Model performance — live"
       rows={[
-        { metric: 'Accuracy rate', value: accuracy, remark: 'Trailing 30 days' },
+        { metric: 'Accuracy rate', value: accuracy, remark: accuracyRemark },
         { metric: 'Predictions today', value: String(predictionsToday), remark: 'Across all leagues' },
         { metric: 'Live matches', value: String(liveCount), remark: 'Updating in real time' },
         { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Edge over market odds' },

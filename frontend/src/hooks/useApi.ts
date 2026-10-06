@@ -242,7 +242,7 @@ export function useValueBets(params?: Parameters<typeof predictionsApi.getValueB
   });
 }
 
-export function usePredictionStats(params?: { days?: number }) {
+export function usePredictionStats(params?: { days?: number; model_family?: string }) {
   return useQuery({
     queryKey: [...queryKeys.predictions.stats, params],
     queryFn: () => predictionsApi.getStats(params),

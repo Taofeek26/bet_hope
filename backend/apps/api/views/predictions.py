@@ -318,6 +318,11 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         model_version = request.query_params.get('model_version')
         if model_version:
             predictions = predictions.filter(model_version=model_version)
+        # ?model_family=v2: every daily v2 retrain (v2_YYYYMMDD_HHMMSS) together,
+        # so the live model's record isn't mixed with v1's (Phase 4).
+        model_family = request.query_params.get('model_family')
+        if model_family:
+            predictions = predictions.filter(model_version__startswith=f'{model_family}_')
 
         if not predictions.exists():
             return Response({

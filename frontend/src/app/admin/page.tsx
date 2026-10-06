@@ -38,14 +38,12 @@ const TASK_DEFS: {
   },
   {
     command: 'train_model',
-    args: ['--leagues', 'E0', '--seasons', '2425'],
+    // v2 always trains on every league; it goes live only if it beats the
+    // active model on the same unseen matches (Phase 3 promotion check).
+    // --force-promote and --engine are not allowed from the API.
+    args: [],
     label: 'Train Model',
-    description: 'Retrain the prediction model',
-    // Training on one league and making the result live replaced the
-    // full multi-league model for every league (ML-04). Re-enabled in
-    // Phase 3, once new models must beat the current one to go live.
-    disabledReason:
-      'Disabled until Phase 3: a model trained here would replace the live model for every league without being checked first. The daily scheduled training still runs.',
+    description: 'Retrain on all leagues (about 2 minutes). Goes live only if it beats the current model on unseen matches.',
   },
   {
     command: 'generate_predictions',
