@@ -7,6 +7,7 @@ import { SettingsProvider } from '@/contexts/SettingsContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { MainContent } from '@/components/layout/MainContent';
 import { NotificationWatcher } from '@/components/notifications/NotificationWatcher';
+import { BetSlip } from '@/components/betslip/BetSlip';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono', display: 'swap' });
@@ -42,6 +43,7 @@ export default function RootLayout({
                 </MainContent>
               </div>
               <NotificationWatcher />
+              <BetSlip />
             </SidebarProvider>
           </SettingsProvider>
         </Providers>

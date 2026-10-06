@@ -23,6 +23,10 @@ export interface AppSettings {
   showAnimations: boolean;
   // Data & Privacy
   savePredictionHistory: boolean;
+  // Betting tools (Phase 5): the bet slip is optional and can be hidden.
+  bettingTools: boolean;
+  bookmakers: string[];      // ids from lib/bookmakers shown in the slip
+  defaultBookmaker: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -38,6 +42,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   compactMode: false,
   showAnimations: true,
   savePredictionHistory: true,
+  bettingTools: true,
+  bookmakers: ['bet9ja', 'sportybet', 'betking', '1xbet', 'betway', 'betano'],
+  defaultBookmaker: 'bet9ja',
 };
 
 const STORAGE_KEY = 'bethope_settings';

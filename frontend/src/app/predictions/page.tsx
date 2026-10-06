@@ -9,6 +9,7 @@ import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import { useState, useMemo, useEffect } from 'react';
 import { useSettings } from '@/contexts/SettingsContext';
 import { formatKickoff } from '@/lib/utils';
+import { QuickSlip } from '@/components/betslip/QuickSlip';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -309,6 +310,7 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
           {!isFinished && prediction.is_value_bet && (
             <span className="badge badge-brand mt-1" title="The model's probability beats the market odds by more than 5 points on at least one outcome">Value</span>
           )}
+          {!isFinished && <QuickSlip prediction={prediction} />}
         </div>
       </div>
 

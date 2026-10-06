@@ -9,6 +9,7 @@ import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import Link from 'next/link';
 import { formatKickoff, formatDateWithPreset } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
+import { MarketsCard } from '@/components/betslip/MarketsCard';
 
 export default function MatchDetailPage() {
   const params = useParams();
@@ -119,6 +120,8 @@ export default function MatchDetailPage() {
       {match.prices && !isFinished && (
         <OddsComparison prices={match.prices} probs={match.prediction?.probabilities} homeTeam={homeTeam} awayTeam={awayTeam} />
       )}
+
+      {!isFinished && match.markets && <MarketsCard match={match} markets={match.markets} />}
 
       <div className="content-grid">
         {/* Prediction */}

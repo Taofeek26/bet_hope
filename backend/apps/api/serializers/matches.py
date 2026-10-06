@@ -187,6 +187,7 @@ class MatchDetailSerializer(serializers.ModelSerializer):
     prediction = serializers.SerializerMethodField()
     h2h = serializers.SerializerMethodField()
     prices = serializers.SerializerMethodField()
+    markets = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -208,7 +209,18 @@ class MatchDetailSerializer(serializers.ModelSerializer):
             'prediction',
             'h2h',
             'prices',
+            'markets',
         ]
+
+    def get_markets(self, obj):
+        """Popular markets with model probability and fair odds, for the bet slip (Phase 5)."""
+        from apps.predictions.markets import build_markets
+        pred = obj.predictions.order_by('-updated_at').first()
+        if not pred:
+            return None
+        prices = self.get_prices(obj)
+        return build_markets(pred, obj.home_team.name, obj.away_team.name,
+                             best_1x2=(prices or {}).get('best'), avg_odds=getattr(obj, 'odds', None))
 
     def get_prices(self, obj):
         """Bookmaker 1X2 prices from The Odds API (Phase 5): best per outcome + list."""

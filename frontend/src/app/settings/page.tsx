@@ -1,9 +1,10 @@
 'use client';
 
-import { Settings, Bell, Globe, Shield, Palette, Trash2, Check } from 'lucide-react';
+import { Settings, Bell, Globe, Shield, Palette, Trash2, Check, Ticket } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSettings, AppSettings } from '@/contexts/SettingsContext';
 import { readPredictionHistory, clearPredictionHistory } from '@/hooks/usePredictionHistory';
+import { BOOKMAKERS } from '@/lib/bookmakers';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
@@ -39,6 +40,12 @@ export default function SettingsPage() {
                 onClick={() => setActiveTab('region')}
               />
               <SettingsTab
+                icon={Ticket}
+                label="Betting"
+                active={activeTab === 'betting'}
+                onClick={() => setActiveTab('betting')}
+              />
+              <SettingsTab
                 icon={Palette}
                 label="Appearance"
                 active={activeTab === 'appearance'}
@@ -59,6 +66,7 @@ export default function SettingsPage() {
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'region' && <RegionSettings />}
+          {activeTab === 'betting' && <BettingSettings />}
           {activeTab === 'appearance' && <AppearanceSettings />}
           {activeTab === 'privacy' && <PrivacySettings />}
         </div>
@@ -223,6 +231,61 @@ function NotificationSettings() {
         <SettingItem label="Value Bet Alerts" description="Get notified when a new value bet is detected">
           <Toggle checked={settings.valueBetAlerts} onChange={(v) => set('valueBetAlerts', v)} />
         </SettingItem>
+      </div>
+    </div>
+  );
+}
+
+function BettingSettings() {
+  const { settings, updateSetting } = useSettings();
+  const [saved, flash] = useSavedFlash();
+  const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    updateSetting(key, value);
+    flash();
+  };
+  const toggleBook = (id: string) => {
+    const next = settings.bookmakers.includes(id)
+      ? settings.bookmakers.filter((b) => b !== id)
+      : [...settings.bookmakers, id];
+    set('bookmakers', next);
+    if (!next.includes(settings.defaultBookmaker) && next[0]) set('defaultBookmaker', next[0]);
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div className="card-icon"><Ticket className="w-5 h-5" /></div>
+        <div>
+          <h2 className="card-title">Betting tools</h2>
+          <p className="card-desc">The bet slip and markets are optional. Bet Hope never places bets or holds money.</p>
+        </div>
+        <SavedBadge show={saved} />
+      </div>
+      <div className="space-y-6">
+        <SettingItem label="Show bet slip and markets" description="The Slip button, the Markets card on match pages and “+ Slip” on predictions">
+          <Toggle checked={settings.bettingTools} onChange={(v) => set('bettingTools', v)} />
+        </SettingItem>
+        <div className={settings.bettingTools ? '' : 'opacity-50 pointer-events-none'}>
+          <div className="text-sm font-medium text-text mb-1">Bookmakers in the slip</div>
+          <p className="text-xs text-text-muted mb-3">
+            &ldquo;Open&rdquo; copies your slip and opens the bookmaker you pick. Use one licensed for your state.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {BOOKMAKERS.map((b) => (
+              <label key={b.id} className="flex items-center gap-2 p-2 bg-surface rounded-lg border border-border-dim text-sm text-text cursor-pointer">
+                <input type="checkbox" checked={settings.bookmakers.includes(b.id)} onChange={() => toggleBook(b.id)} />
+                {b.name}
+              </label>
+            ))}
+          </div>
+          <div className="mt-4">
+            <SettingItem label="Default bookmaker" description="Selected first in the slip">
+              <select className="input select w-48" value={settings.defaultBookmaker} onChange={(e) => set('defaultBookmaker', e.target.value)}>
+                {BOOKMAKERS.filter((b) => settings.bookmakers.includes(b.id)).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </SettingItem>
+          </div>
+        </div>
       </div>
     </div>
   );
