@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html" class="active">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 2: correct data</h1>
+  <p class="lede">The model can only be as good as its inputs. This phase makes each club one team, brings in the current season for all 20 leagues, adds bookmaker odds for upcoming fixtures, and stores kickoff times unambiguously.</p>
+  <p class="meta">5 Oct 2026 · commit <code>3ca3d29</code> (branch <code>phase-2-data</code>) · findings: DATA-01–08, ML-06, ML-09, plus new finds below</p>
+
+  <h2>Results, measured on a copy of production data</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td>Team rows</td><td class="num">857</td><td class="num">525 (514 after merging + 11 genuinely new clubs)</td></tr>
+      <tr><td>Clubs split across divisions</td><td class="num">181 clubs in 379 rows</td><td class="num">0</td></tr>
+      <tr><td>football-data.org duplicates</td><td class="num">153</td><td class="num">8 (7 clubs from untracked countries + 1 newly promoted)</td></tr>
+      <tr><td>Data lost by the merge</td><td colspan="2">None: matches 91,780, odds 67,744, stats 67,003, predictions 6,168 and AI analyses identical before and after</td></tr>
+      <tr><td>Leagues with 2026-27 results</td><td class="num">8 of 20 (CL included)</td><td class="num">All 20 + CL</td></tr>
+      <tr><td>Upcoming fixtures with odds</td><td class="num">0</td><td>From the fixtures file (it lists the next few days; fills as leagues restart after the break)</td></tr>
+      <tr><td>Kickoff times</td><td>Mixed UTC / UK time, unlabelled</td><td>One UTC instant (<code>kickoff_at</code>), shown in the viewer's timezone</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Decisions</h2>
+  <div class="finding" id="P2-D1"><div class="finding-head"><span class="finding-id">P2-D1</span><span class="finding-title">A club is one team per country, not per league</span></div>
+    <dl><dt>Why</dt><dd>On real data the audit's duplicate problem was bigger than expected. Besides the 153 football-data.org duplicates, the CSV import made a new team every time a club was promoted or relegated (<code>get_or_create(fd_name, league)</code>), splitting 181 clubs. A newly promoted club started with zero history, which matters for the model.</dd>
+    <dt>How</dt><dd><code>TeamAlias</code> (country + normalized name → team) and <code>TeamResolver</code>, used by every provider. Lookup order: exact spelling → alias → known hard cases (<code>KNOWN_ALIASES</code>) → unique token match → otherwise create and log. Exact spelling comes first because normalizing makes "Wimbledon" and "AFC Wimbledon" (different clubs) look alike. <code>Team.league</code> now means the division the club plays in now.</dd></dl></div>
+  <div class="finding" id="P2-D2"><div class="finding-head"><span class="finding-id">P2-D2</span><span class="finding-title">Merge without throwing anything away</span></div>
+    <dl><dt>Why</dt><dd>The old <code>cleanup_duplicate_teams</code> deleted one of two rows for the same match, along with its odds, stats and predictions. It's deleted.</dd>
+    <dt>How</dt><dd><code>merge_duplicate_teams</code> (dry run unless <code>--apply</code>) moves every match and every table that references the team, merges twin match rows field by field, keeps odds, stats and predictions, and records old names as aliases. I reviewed all 145 football-data.org pairings by eye before running it (all correct, e.g. "Club Atlético de Madrid → Ath Madrid", "Lincoln City FC → Lincoln").</dd></dl></div>
+  <div class="finding" id="P2-D3"><div class="finding-head"><span class="finding-id">P2-D3</span><span class="finding-title">The current season for every league, twice a week</span></div>
+    <dl><dt>How</dt><dd><code>sync_real_data --current-season</code> re-downloads this season's CSV for all 20 leagues (results, shots, odds). It's scheduled Mon and Thu 03:30 UTC (<code>CurrentSeasonSyncSchedule</code>), 20 small files taking about 4 minutes. The daily sync now also reads football-data.co.uk's fixtures file (with odds) and re-checks every match past its date that's still "scheduled", up to 60 days back.</dd></dl></div>
+  <div class="finding" id="P2-D4"><div class="finding-head"><span class="finding-id">P2-D4</span><span class="finding-title">Seasons from the date</span></div>
+    <dl><dt>How</dt><dd><code>apps/core/seasons.py</code> (unit-tested, including the 1999-00 / 2000-01 boundary) replaces every hard-coded season list. The CSV provider's season list, training defaults, settings and tasks are all computed now.</dd></dl></div>
+  <div class="finding" id="P2-D5"><div class="finding-head"><span class="finding-id">P2-D5</span><span class="finding-title">Kickoff as one UTC instant</span></div>
+    <dl><dt>How</dt><dd>New <code>Match.kickoff_at</code>, with a migration that backfills existing rows: football-data.org times are already UTC, CSV times are converted from <code>Europe/London</code>. The API returns it, and the frontend shows it via <code>formatKickoff()</code> in the timezone from Settings, in all 6 places that showed a time. The Matches page's upcoming list now shows the date as well as the time.</dd></dl></div>
+
+  <h2>New problems found and fixed</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Problem</th><th>Effect</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>CSV decoded with a guessed encoding</td><td>"Preußen Münster" stored as "PreuÃen MÃ¼nster"</td><td>Decode the bytes as UTF-8, falling back to Latin-1; the merge repairs existing names</td></tr>
+      <tr><td>Match reference built from team names, 50-character column</td><td>Matches with long names <strong>silently failed to import</strong> (5 rows in one run)</td><td>Reference uses team ids</td></tr>
+      <tr><td>Odds fallback <code>row.get('AvgH') or …</code></td><td>NaN counts as true, so missing average odds never fell back to other bookmakers</td><td><code>_first_decimal()</code> skips NaN</td></tr>
+      <tr><td>One transaction for a whole sync</td><td>One bad row aborted every row after it</td><td>A savepoint per row/match</td></tr>
+      <tr><td>Scheduled job output not logged</td><td>CloudWatch showed "success" with no counts</td><td>The handler logs the command's output (tail)</td></tr>
+      <tr><td>Fixture rows reset finished matches to "scheduled"</td><td>Possible on a stale fixtures file</td><td><code>get_or_create</code>; status only set on creation</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Commands run (local, against a copy of production)</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>copy_database --target-url postgres://…:55432/work</code> (from Neon)</td><td>First attempt failed: the local cluster was SQL_ASCII (multi-byte names were too long). Rebuilt as UTF-8 → 43 tables, counts match. Revealed the encoding bug.</td></tr>
+      <tr><td>2</td><td>SQL: teams by source per league; clubs split across divisions</td><td>117 football-data.org-only teams in 8 leagues + 36 CL; 181 split clubs</td></tr>
+      <tr><td>3</td><td>Dry-run matcher; then <code>merge_duplicate_teams --apply</code></td><td>100/153, then 145/153 after division merges; 857 → 514; nothing lost</td></tr>
+      <tr><td>4</td><td><code>migrate</code> as production will run it (after dropping the new column/table locally)</td><td>Both migrations OK; <code>kickoff_at</code> filled for 705/705 matches with a time</td></tr>
+      <tr><td>5</td><td><code>sync_real_data --current-season</code> with the real football-data.org key</td><td>3m47s; all 20 leagues get 2026-27 results; 11 new clubs; 5 rows failed (the 50-character bug)</td></tr>
+      <tr><td>6</td><td>Same, after the fix</td><td>0 errors, 0 new teams (repeatable), results window 467 updated</td></tr>
+      <tr><td>7</td><td>Backup: <code>copy_database</code> into <code>backup_20261005</code> + <code>pg_dump -Fc</code> → <code>infrastructure/neon-backup-20261005-before-phase2.dump</code> (6.2 MB)</td><td>Taken before any production change. <code>*.dump</code> added to <code>.gitignore</code> (it holds user data).</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="deploy">Production deploy</h2>
+  <p>See the deployment record in the <a href="phase-3.html#deploy">Phase 3 log</a>. Phases 2 and 3 ship in one image.</p>
+  <footer>Rollback for the data: restore <code>infrastructure/neon-backup-20261005-before-phase2.dump</code> with <code>pg_restore --clean --no-owner -d "$NEON_DIRECT_URL"</code>.</footer>
+</main>
+</body>
+</html>

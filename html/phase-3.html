@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 3 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html" class="active">Phase 3 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 3: a model you can trust</h1>
+  <p class="lede">The prediction model was rebuilt so that it only learns from the past, is measured on matches it has never seen, goes live only when it's better, and states its confidence honestly.</p>
+  <p class="meta">5 Oct 2026 · commit <code>828b1de</code> · findings: ML-01, ML-02, ML-03, ML-04, ML-07, ML-08, ML-10, ML-11, ML-12</p>
+
+  <h2>The scoreboard</h2>
+  <p>All figures are on the same <strong>8,105 finished matches from 2025-26 and 2026-27 so far</strong>, across all 20 leagues and the Champions League. None of these matches were used to fit or tune the model.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Predictor</th><th class="num">Accuracy</th><th class="num">Log loss ↓</th><th class="num">RPS ↓</th></tr></thead>
+    <tbody>
+      <tr><td>Always pick home</td><td class="num">43.0%</td><td class="num">—</td><td class="num">0.437</td></tr>
+      <tr><td>Historical home/draw/away frequencies</td><td class="num">43.0%</td><td class="num">1.0779</td><td class="num">0.2286</td></tr>
+      <tr><td><strong>Old model (v1), live record</strong>: 266 genuine pre-match predictions, last 30 days</td><td class="num"><strong>39.5%</strong></td><td class="num">—</td><td class="num">—</td></tr>
+      <tr><td>Bookmaker probabilities (average market odds)</td><td class="num">50.2%</td><td class="num">1.0038</td><td class="num">0.2036</td></tr>
+      <tr><td>v2 without odds (fallback for fixtures without odds)</td><td class="num">48.5%</td><td class="num">1.0167</td><td class="num">0.2076</td></tr>
+      <tr><td><strong>v2 (live model)</strong></td><td class="num"><strong>50.35%</strong></td><td class="num"><strong>1.0028</strong></td><td class="num"><strong>0.2034</strong></td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <strong>What this means.</strong> v2 is about 11 points more accurate than the old model's real record, and it edges out the bookmakers on every measure. By league tier it reaches <strong>52.8% (top 5 leagues) and 52.7% (other top divisions)</strong>, and 47–49% in the lower divisions, where football is less predictable. Beating the betting market by a wide margin isn't realistic with public data, so "level with or slightly better than the market, with honest probabilities" is a strong result. Treat any claim far above ~55% across all leagues as a red flag.
+  </div>
+
+  <h3>Confidence you can trust (calibration)</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>When v2 says its pick has…</th><th class="num">Matches</th><th class="num">Average stated</th><th class="num">Actually right</th></tr></thead>
+    <tbody>
+      <tr><td>under 45%</td><td class="num">3,357</td><td class="num">40.0%</td><td class="num">40.6%</td></tr>
+      <tr><td>45–55%</td><td class="num">2,417</td><td class="num">49.6%</td><td class="num">48.3%</td></tr>
+      <tr><td>55–65%</td><td class="num">1,293</td><td class="num">59.4%</td><td class="num">60.0%</td></tr>
+      <tr><td>65% and above</td><td class="num">1,038</td><td class="num">73.6%</td><td class="num">74.5%</td></tr>
+    </tbody>
+  </table></div>
+  <p>The old model's "strong" picks were right only 51% of the time, less often than its "moderate" ones (62%), and its live "high confidence" picks hit 47%.</p>
+
+  <h2>Decisions</h2>
+  <div class="finding" id="P3-D1"><div class="finding-head"><span class="finding-id">P3-D1</span><span class="finding-title">Point-in-time features, built in one pass</span></div>
+    <dl><dt>What</dt><dd><code>apps/ml_pipeline/v2/features.py</code> walks every match in date order. Each match's features use only the state before it, then the state is updated with its result. The features are: Elo ratings (home advantage, goal-margin weighted, starting lower for clubs first seen in lower divisions), last-5/10 form (points, goals, shots, shots on target, home/away split), season-to-date points and goal difference, rest days, the league's recent home-win rate, and normalized market probabilities with the overround.</dd>
+    <dt>Fixes</dt><dd>ML-02: v1's season stats included the match's own result and later matches. ML-07: unknown is NaN with <code>has_odds</code> / history counts, not 0. Building every feature for 92,508 matches takes about 9 s (v1 took ~3 minutes of database queries).</dd></dl></div>
+  <div class="finding" id="P3-D2"><div class="finding-head"><span class="finding-id">P3-D2</span><span class="finding-title">Learn a correction to the market, not a replacement</span></div>
+    <dl><dt>Tested</dt><dd>Four approaches on the same split (scratch scripts <code>eval_v2.py</code>, <code>eval_v2b.py</code>): plain XGBoost with all features (log loss 1.0041), without odds (1.0167), a logistic model on market + Elo + form (1.0031), and <strong>XGBoost with the market's log-probabilities as its starting point</strong> (1.0032, chosen). It learns only where form, Elo and shots disagree with the odds, and it was the best or level in every league tier.</dd>
+    <dt>Fallback</dt><dd>A separate model without market features for fixtures that have no odds yet. The daily run switches a fixture to the odds model as soon as odds appear.</dd></dl></div>
+  <div class="finding" id="P3-D3"><div class="finding-head"><span class="finding-id">P3-D3</span><span class="finding-title">Goals from Poisson models, so every number agrees</span></div>
+    <dl><dt>What</dt><dd>Home and away goal models (XGBoost <code>count:poisson</code>) give a scoreline grid, from which come over 2.5, both-teams-to-score, and the predicted score: the most likely score <em>consistent with the predicted result</em>. v1's "home = total × 0.55" could show "Away win, 1–1" (ML-08).</dd></dl></div>
+  <div class="finding" id="P3-D4"><div class="finding-head"><span class="finding-id">P3-D4</span><span class="finding-title">Time-based evaluation and a promotion check</span></div>
+    <dl><dt>What</dt><dd>Train ≤ 2023-24, validation = 2024-25 (early stopping only), test = the previous season onward. The windows move forward automatically each season. A new model goes live only if its test log loss beats the active model's <em>on the same window</em> (or v1's self-reported figure). Otherwise it's saved as archived with the reason (ML-03, ML-04). The daily schedule stays; a bad day can't replace a good model.</dd></dl></div>
+  <div class="finding" id="P3-D5"><div class="finding-head"><span class="finding-id">P3-D5</span><span class="finding-title">Traceable, frozen predictions and an honest record</span></div>
+    <dl><dt>What</dt><dd>Each prediction stores its real model version and the key inputs (<code>features_json</code>), and isn't overwritten after kickoff. <code>/predictions/stats</code> counts only predictions created before kickoff on matches with a result (ML-11, ML-12). <code>--historical</code> back-filling is refused with v2, because it would be in-sample. Models are saved in XGBoost's own JSON format, which survives library upgrades.</dd></dl></div>
+
+  <h2>Commands run (local, merged production copy)</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>SQL: finished / with odds / with shots per season</td><td>~6,700–6,900 matches per recent season, ~100% with odds and shots</td></tr>
+      <tr><td>2</td><td><code>python eval_v2.py</code></td><td>Baselines and v2 variants (table above); features in 8.6 s</td></tr>
+      <tr><td>3</td><td><code>python eval_v2b.py</code></td><td>Market correction vs logistic vs market, overall and per tier</td></tr>
+      <tr><td>4</td><td><code>manage.py train_model</code> (engine v2)</td><td>22 s; test accuracy 0.5035, log loss 1.0028; promoted over v1 (1.0032 self-reported)</td></tr>
+      <tr><td>5</td><td><code>manage.py generate_predictions --upcoming --days 14</code></td><td>178 updated, 1 frozen at kickoff; scores consistent with outcomes</td></tr>
+      <tr><td>6</td><td><code>GET /api/v1/predictions/stats/?days=30</code> (new counting)</td><td>v1 live record: 105/266 = 39.5%; high-confidence 47.3%</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="deploy">Production deploy (Phases 2 + 3)</h2>
+  <p id="deploy-status"><span class="st ok">Live 6 Oct 2026, 03:37–04:01 UTC</span></p>
+  <div class="finding" id="P3-D6"><div class="finding-head"><span class="finding-id">P3-D6</span><span class="finding-title">Image builds through AWS CodeBuild while GitHub Actions is down</span></div>
+    <dl><dt>Why</dt><dd>Three GitHub builds failed with "The job was not acquired by Runner of type hosted even after multiple attempts", and githubstatus.com showed Actions as degraded. You approved a fallback.</dd>
+    <dt>What</dt><dd><code>infrastructure/codebuild/build.sh --setup</code> created IAM role <code>bet-hope-codebuild</code> (scoped to: push to <code>bet-hope-web</code>, read one S3 key, write its own logs) and project <code>bet-hope-image-build</code> (standard:7.0, medium, privileged for Docker, 30-minute timeout, 14-day logs). <code>infrastructure/codebuild/build.sh</code> zips the <em>committed</em> <code>backend/</code> (<code>git archive</code>), uploads it to the SAM bucket, builds with the same Dockerfile, and tags the image with the commit hash. A build takes about 2.5 minutes and costs about 2–3 cents.</dd></dl></div>
+
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command (abridged)</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>R1</td><td>Backup: <code>copy_database</code> Neon → local <code>backup_20261005</code>; <code>pg_dump -Fc</code> → <code>infrastructure/neon-backup-20261005-before-phase2.dump</code></td><td>43 tables, counts match; 6.2 MB; git-ignored</td></tr>
+      <tr><td>R2</td><td><code>gh workflow run deploy-lambda-web.yml --ref phase-2-data</code> ×3</td><td>Failed: GitHub runner outage</td></tr>
+      <tr><td>R3</td><td><code>infrastructure/codebuild/build.sh --setup</code>; <code>build.sh</code></td><td>Role + project created; image <code>828b1de</code> built and pushed in 2m30s</td></tr>
+      <tr><td>R4</td><td><code>aws lambda update-function-code --function-name bet-hope-manage --image-uri …:828b1de…</code></td><td>Successful</td></tr>
+      <tr><td>R5</td><td>invoke manage <code>{"command":"migrate","args":["--noinput"]}</code></td><td>13 s: <code>matches.0003_match_kickoff_at</code>, <code>teams.0003_teamalias</code> applied</td></tr>
+      <tr><td>R6</td><td>invoke <code>merge_duplicate_teams</code> (dry run), then <code>--apply</code></td><td>Same plan as the local test; applied in 365 s: <strong>857 → 514 teams</strong>, 38,104 matches moved, 0 predictions dropped, 1 name repaired</td></tr>
+      <tr><td>R7</td><td>invoke <code>sync_real_data --current-season</code></td><td>294 s. The 8 football-data.org leagues: "0 created, N updated" (CSV rows matched existing matches, so no duplicates). The 12 other leagues: 727 new 2026-27 results.</td></tr>
+      <tr><td>R8</td><td>invoke <code>train_model</code></td><td>79 s. <strong>Test accuracy 0.5032, log loss 1.0026 vs bookmaker 1.0037</strong>; calibrated; promoted (<code>v2_20261006_035005</code>); 6 files in S3</td></tr>
+      <tr><td>R9</td><td>invoke <code>generate_predictions --upcoming --days 14</code></td><td>188 predictions from v2 (none used odds yet: the fixtures file lists only the next few days)</td></tr>
+      <tr><td>R10</td><td><code>sam deploy … ImageUri=…:828b1de… LegacyNetwork=remove --no-execute-changeset</code>; <code>execute-change-set</code></td><td>Add <code>CurrentSeasonSyncSchedule</code> + permission; Modify only; <code>UPDATE_COMPLETE</code>; schedule <code>cron(30 3 ? * MON,THU *)</code> ENABLED</td></tr>
+      <tr><td>R11</td><td><code>npx vercel@latest deploy --prod --yes --scope taofeeks-projects-151246e6 --build-env NEXT_PUBLIC_API_URL=…/prod/api</code></td><td>The first try without <code>--scope</code> returned "Not authorized" (newer CLI); with the scope: deployed and aliased to <code>bet-hope-frontend.vercel.app</code></td></tr>
+      <tr><td>R12</td><td>Production checks (curl)</td><td>Health ok; E0 lists 21 teams (was 62 rows); 188/188 predictions from v2, <strong>0 scores contradicting the predicted result</strong>, all with <code>kickoff_at</code>; 9/20 leagues with logos; locks 401</td></tr>
+      <tr><td>R13</td><td>Found: relegated clubs still listed under their old division (D1 showed 30). Fix: <code>sync_real_data</code> recomputes every club's division at the end. Commit <code>8f9d581</code>, built with CodeBuild, both functions updated at 04:01 UTC (before the 04:15 job).</td><td>Local test: 31 clubs moved to their current division</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><strong>Note for the next <code>sam deploy</code>:</strong> both functions now run image <code>8f9d581…</code>, set with <code>update-function-code</code>. Pass <code>ImageUri=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:8f9d581ece7df6a0fb09710659b31da5fb2cbd57</code> (or newer), or CloudFormation will put back <code>828b1de</code>.</div>
+
+  <h3>What happens next on its own</h3>
+  <ul>
+    <li>Daily 04:15 UTC: fixtures (with odds from football-data.co.uk) and results, predictions, validation, division refresh.</li>
+    <li>Daily 05:00 UTC: v2 retrains and goes live only if it beats the active model on the same test window.</li>
+    <li>Mon/Thu 03:30 UTC: current-season results, shots and odds for all 20 leagues.</li>
+    <li>From 9 Oct, as matches finish, <code>/predictions/stats</code> (Analytics page) shows v2's genuine pre-match record. Filter by <code>?model_version=v2_…</code> to see v2 alone.</li>
+  </ul>
+
+  <h3>Rollback</h3>
+<pre><code># Model only: make the last v1 model active again (keeps the data changes)
+# (in Django shell on the manage Lambda, or via the admin site)
+ModelVersion.objects.filter(status='active').update(status='archived')
+ModelVersion.objects.filter(version='20261005_050404').update(status='active')
+# Code: both functions back to the Phase 1 image
+for f in bet-hope-web bet-hope-manage; do aws lambda update-function-code --function-name $f \
+  --image-uri 294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:11a47c9a3078fea0fe1e21246c5538a2d69c6823; done
+# Data: restore the pre-Phase-2 dump (destructive, replaces current data)
+pg_restore --clean --no-owner -d "$NEON_DIRECT_URL" infrastructure/neon-backup-20261005-before-phase2.dump</code></pre>
+</main>
+</body>
+</html>

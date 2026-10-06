@@ -20,6 +20,8 @@
     <a href="roadmap.html" class="active">Fix plan</a>
     <a href="phase-0.html">Phase 0 log</a>
     <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
   </nav>
 </div></header>
 <main>
@@ -51,7 +53,8 @@
   <p><strong>Done when:</strong> the site loads at 22:00 UTC; the monthly estimate is under your target; an AI analysis completes end to end without a 504.</p></div>
 
   <h2>Phase 2: correct data (about 1 week)</h2>
-  <div class="panel"><ul>
+  <div class="panel">
+  <p><strong>Log:</strong> <a href="phase-2.html">Phase 2 decisions, results and commands</a>. <strong>Live 6 Oct 2026.</strong></p><ul>
     <li>A <code>TeamAlias</code> table, a per-league mapping, and a one-off merge of duplicate teams (DATA-01).</li>
     <li>A season helper; remove every hard-coded season (DATA-03, ML-09).</li>
     <li>A twice-weekly current-season CSV sync for all 20 leagues (results, shots, odds); football-data.org for kickoff times and crests; re-sync stale "scheduled" matches (DATA-02, DATA-04).</li>
@@ -62,7 +65,8 @@
   <p><strong>Done when:</strong> no two <code>Team</code> rows share a club; all 20 leagues show this week's fixtures and last weekend's results; kickoff times match the official schedule in the user's timezone.</p></div>
 
   <h2>Phase 3: rebuild the model properly (about 2 weeks)</h2>
-  <div class="panel"><ul>
+  <div class="panel">
+  <p><strong>Log:</strong> <a href="phase-3.html">Phase 3 scoreboard, decisions and commands</a>. <strong>Live 6 Oct 2026</strong>: 50.3% accuracy on unseen matches (old model's real record 39.5%), log loss below the bookmakers.</p><ul>
     <li>Delete <code>train_from_export</code> and the "latest directory" fallback (ML-05).</li>
     <li>Point-in-time features only: season-to-date, Elo, rolling shots and shots on target, xG where available; <code>NaN</code> for unknown (ML-02, ML-07).</li>
     <li>A time-based train / calibration / test split; walk-forward evaluation; log loss, Brier, RPS and a calibration curve vs the bookmaker baseline (ML-03).</li>
