@@ -30,14 +30,26 @@
 <main>
   <h1>Plan: pick in Bet Hope, stake on a betting platform</h1>
   <p class="lede">Can a pick made here be staked directly on a real betting platform? Yes, in two ways: a link that opens the bookmaker's bet slip already filled in, or direct placement through a betting exchange's API. This page compares them, says what each needs, and recommends an order. Nothing here has been built yet.</p>
-  <p class="meta">Investigated 6 Oct 2026 · status: proposal, waiting for decisions</p>
+  <p class="meta">Investigated 6 Oct 2026 · approved 6 Oct · <strong>Step 1 done; Step 2 paper betting done, Odds API part waiting for a key</strong></p>
 
   <div class="callout warn">
     <strong>Read this first: the model has no proven edge over the bookmakers.</strong> On 8,086 unseen matches, v2's probabilities never beat the odds by 5+ points. Betting every outcome where it saw <em>any</em> edge returned <strong>−13.9%</strong> (<a href="phase-4.html">Phase 4 log</a>, row 12). The model is good at saying how likely each result is (50.3%, level with the bookmakers), but that isn't the same as making money. Any integration should therefore start with <strong>tracking only (paper betting)</strong>, and real stakes should stay small, capped and manual until the tracked return is positive over many hundreds of bets.
   </div>
 
+  <h2 id="progress">Progress</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Step</th><th>Status</th><th>What was done</th><th>Commands / commits</th></tr></thead>
+    <tbody>
+      <tr><td>1. Analytics</td><td><span class="st ok">Live 6 Oct</span></td><td>Model selector (live v2 by default / old v1 / all) and period selector (7 / 30 / 90 days / 12 months). "Tested on unseen matches" card: v2 50.32% and log loss 1.0026 vs bookmakers 50.20% and 1.0037 on 8,106 matches, plus calibration. "High" confidence = 55%+ (the top-pick rule). Small-sample warning. <code>?model_family=v1</code> on stats; <code>scorecard</code> in <code>model_info</code>; <code>train_model</code> now saves calibration in its notes.</td><td><code>e1bf39d</code>; CodeBuild; <code>update-function-code</code> ×2; manual <code>train_model</code> invoke (125 s; <code>v2_20261006_210355</code> promoted, same scores, calibration saved); Vercel</td></tr>
+      <tr><td>2a. Paper betting</td><td><span class="st ok">Live 6 Oct</span></td><td>New <code>PaperBet</code> table. Every prediction's pick, and any outcome with a 5+ point edge, is logged as a 1-unit bet when its kickoff is within 26 hours (so at the last daily run before kickoff), at the odds stored then. Bets are settled by the daily validation step: won = odds − 1, lost = −1, postponed or cancelled = void. Both steps can safely run twice. <code>GET /predictions/paper_bets/</code> feeds the Analytics panel "Return if you had bet" (every pick / top picks / value bets).</td><td><code>cf9a96b</code>. Local replay of 20 Sep (31 matches, in a rolled-back transaction): 58 bets logged, 0 on the second run; settled 19 won / 39 lost; profit = odds − 1 checked. Production: manage updated → <code>migrate</code> (<code>predictions.0003_paper_bet</code> OK) → web updated → <code>generate_predictions --upcoming</code>: 0 logged (no kickoffs within 26 h; next fixtures 9 Oct).</td></tr>
+      <tr><td>2b. Odds API (more bookmakers, best price, earlier odds)</td><td><span class="st partial">Waiting</span></td><td>Needs an API key. Until then, paper bets use football-data.co.uk average odds, so matches without odds by the day before kickoff are skipped (the job log counts them).</td><td>—</td></tr>
+      <tr><td>3. "Bet at …" buttons</td><td><span class="st none">Not started</span></td><td>Needs 2b (the links come from the Odds API).</td><td>—</td></tr>
+      <tr><td>4. Exchange placement</td><td><span class="st none">On hold</span></td><td>Only if paper betting shows a positive return over 1,000+ settled bets.</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+
   <h2>Is the Analytics page up to date?</h2>
-  <p><span class="st partial">No</span> It still counts old v1 predictions together with v2's (so it shows v1's 39.4%), always uses the last 30 days, and shows nothing about the tested scorecard. Fix (part of step 1 below):</p>
+  <p><span class="st ok">Fixed 6 Oct</span> (see Progress). It was not: It still counts old v1 predictions together with v2's (so it shows v1's 39.4%), always uses the last 30 days, and shows nothing about the tested scorecard. Fix (part of step 1 below):</p>
   <ul>
     <li>A model selector: <strong>Live model (v2)</strong> by default, <strong>Old model (v1)</strong>, or <strong>All</strong>. The backend gets a <code>model_family=v1</code> filter, because v1 versions have no prefix.</li>
     <li>A period selector: 7 / 30 / 90 days / this season.</li>
