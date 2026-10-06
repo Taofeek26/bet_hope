@@ -77,9 +77,10 @@
       <tr><td>8</td><td><code>npx vercel@latest deploy --prod --yes --scope taofeeks-projects-151246e6 --build-env NEXT_PUBLIC_API_URL=…/prod/api</code> (twice: <code>e5bb443</code>, then <code>7dcbd55</code>)</td><td>Aliased to <code>bet-hope-frontend.vercel.app</code></td></tr>
       <tr><td>9</td><td><code>curl</code> on all 14 pages, plus <code>/icon.svg</code> and <code>/opengraph-image</code></td><td>All 200; <code>og:image</code> meta tag present</td></tr>
       <tr><td>10</td><td>05:00 UTC scheduled <code>train_model</code> on the new image (CloudWatch)</td><td>exit 0 in 122 s; test accuracy 0.5032, log loss 1.0026 vs bookmaker 1.0037; <code>v2_20261006_050050</code> active</td></tr>
+        <tr><td>11</td><td>Follow-up: the Dashboard still showed <strong>39.4%</strong>. <code>/predictions/stats/?days=30</code> showed all 226 graded predictions were v1's, and v2 had none graded yet (its first fixtures are after the international break). Added <code>?model_family=v2</code>. The Dashboard and Model Performance card show the live model only, with its tested 50.3% until it has 50 graded matches. The admin <strong>Train Model</strong> button is re-enabled (all leagues, promotion-checked; <code>--force-promote</code> is not allowed from the API). Commit <code>0061671</code>, CodeBuild, both functions updated, Vercel deployed.</td><td>v2 live record: none yet. Dashboard: "50.3%, tested on unseen matches"</td></tr>
     </tbody>
   </table></div>
-  <div class="callout warn"><strong>Note for the next <code>sam deploy</code>:</strong> both functions now run <code>e5bb443…</code>. Pass <code>ImageUri=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:e5bb443f68071e67a5c20dbba8af29dd8aa81448</code> (or newer).</div>
+  <div class="callout warn"><strong>Note for the next <code>sam deploy</code>:</strong> both functions now run <code>0061671…</code>. Pass <code>ImageUri=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:0061671e8710a17211c4c1cb7b621d305480d515</code> (or newer).</div>
 
   <h2>Not done in this phase</h2>
   <ul>
