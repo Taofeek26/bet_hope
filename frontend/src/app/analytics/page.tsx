@@ -29,6 +29,15 @@ const MODELS = [
 ] as const;
 const PERIODS = [7, 30, 90, 365] as const;
 
+// "0.55-0.65" -> "55–65%", "0.00-0.45" -> "under 45%", "0.65-1.00" -> "65%+"
+function bandLabel(band: string) {
+  const [lo, hi] = String(band).split('-').map((v) => Math.round(Number(v) * 100));
+  if (Number.isNaN(lo) || Number.isNaN(hi)) return band;
+  if (lo === 0) return `under ${hi}%`;
+  if (hi === 100) return `${lo}%+`;
+  return `${lo}–${hi}%`;
+}
+
 const pct = (x?: number | null, d = 1) => (x == null ? '--' : `${(x * 100).toFixed(d)}%`);
 
 export default function AnalyticsPage() {
@@ -244,7 +253,7 @@ function TestedScorecard({ info }: { info: any }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {sc.calibration.map((row: any) => (
               <div key={row.band} className="p-3 bg-surface rounded-lg text-center">
-                <div className="text-xs text-text-muted">{row.band}</div>
+                <div className="text-xs text-text-muted">{bandLabel(row.band)}</div>
                 <div className="text-sm text-text">said {pct(row.predicted)} · right {pct(row.actual)}</div>
                 <div className="text-[10px] text-text-muted">{row.n?.toLocaleString()} matches</div>
               </div>
