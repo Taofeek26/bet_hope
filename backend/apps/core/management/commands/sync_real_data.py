@@ -200,6 +200,18 @@ class Command(BaseCommand):
         self.stdout.write('Validating predictions against results...')
         call_command('generate_predictions', validate=True)
 
+        # Each club's division = where it plays now (promotion/relegation).
+        # One Team spans divisions since Phase 2, so this is recomputed
+        # after new matches arrive instead of being fixed at creation.
+        from apps.teams.models import Team
+        from apps.teams.merge import update_current_league
+        moved = 0
+        for team in Team.objects.select_related('league'):
+            before = team.league_id
+            update_current_league(team)
+            moved += team.league_id != before
+        self.stdout.write(f'Clubs whose current division changed: {moved}')
+
     @staticmethod
     def _stale_window_days(org_provider, minimum=7, maximum=60):
         """Days back to the oldest past match still not finished, in football-data.org leagues."""
