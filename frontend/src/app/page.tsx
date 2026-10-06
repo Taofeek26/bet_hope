@@ -6,7 +6,6 @@ import { useSettings } from '@/contexts/SettingsContext';
 import {
   TrendingUp,
   Target,
-  Percent,
   Zap,
   Calendar,
   Trophy,
@@ -72,7 +71,16 @@ export default function HomePage() {
 
   // Settings > General > Default View — "/" is always the entry route, so
   // this is the one place a preferred landing page can actually apply.
+  // Only on the first page of a browser session (Phase 4): redirecting on
+  // every visit to "/" made the Dashboard unreachable from the sidebar.
   useEffect(() => {
+    if (settings.defaultView === 'dashboard') return;
+    try {
+      if (sessionStorage.getItem('bethope_landing_applied')) return;
+      sessionStorage.setItem('bethope_landing_applied', '1');
+    } catch {
+      return; // storage blocked: never trap the user on another page
+    }
     if (settings.defaultView === 'predictions') router.replace('/predictions');
     else if (settings.defaultView === 'matches') router.replace('/matches');
   }, [settings.defaultView, router]);
@@ -200,20 +208,11 @@ export default function HomePage() {
 
         {/* Sidebar Stats - 4 columns */}
         <div className="col-span-4">
-          <div className="card">
-            <div className="card-header">
-              <div className="card-icon">
-                <Percent className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="card-title">Model Performance</h2>
-                <p className="card-desc">Last 30 days accuracy</p>
-              </div>
-            </div>
-            <Suspense fallback={<LoadingSection />}>
-              <PredictionStats />
-            </Suspense>
-          </div>
+          {/* PredictionStats and UpcomingMatches are complete cards with their
+              own headers; wrapping them printed every heading twice. */}
+          <Suspense fallback={<LoadingSection />}>
+            <PredictionStats />
+          </Suspense>
 
           {/* Quick Actions Card */}
           <div className="card">
@@ -252,20 +251,9 @@ export default function HomePage() {
 
         {/* Upcoming Matches - Full Width */}
         <div className="col-span-12">
-          <div className="card">
-            <div className="card-header">
-              <div className="card-icon">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="card-title">Upcoming Matches</h2>
-                <p className="card-desc">Next 7 days fixtures with predictions</p>
-              </div>
-            </div>
-            <Suspense fallback={<LoadingSection />}>
-              <UpcomingMatches />
-            </Suspense>
-          </div>
+          <Suspense fallback={<LoadingSection />}>
+            <UpcomingMatches />
+          </Suspense>
         </div>
       </div>
     </>

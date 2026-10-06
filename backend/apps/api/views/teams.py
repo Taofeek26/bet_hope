@@ -47,10 +47,13 @@ class TeamViewSet(viewsets.ReadOnlyModelViewSet):
         # Search by name
         search = self.request.query_params.get('search')
         if search:
+            # Aliases too (Phase 4): "Manchester" finds "Man United", whose
+            # football-data.org name is recorded as an alias since Phase 2.
             queryset = queryset.filter(
                 Q(name__icontains=search) |
-                Q(short_name__icontains=search)
-            )
+                Q(short_name__icontains=search) |
+                Q(aliases__name__icontains=search)
+            ).distinct()
 
         return queryset.order_by('name')
 
@@ -88,7 +91,9 @@ class TeamViewSet(viewsets.ReadOnlyModelViewSet):
         today = timezone.now().date()
 
         past = matches.filter(match_date__lt=today)[:10]
-        upcoming = matches.filter(match_date__gte=today)[:10]
+        # Soonest first (API-10): the shared newest-first ordering returned
+        # the furthest-away fixtures as "upcoming".
+        upcoming = matches.filter(match_date__gte=today).order_by('match_date', 'kickoff_time')[:10]
 
         return Response({
             'team': TeamSerializer(team).data,

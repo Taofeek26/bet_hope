@@ -44,7 +44,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = Prediction.objects.select_related(
             'match', 'match__home_team', 'match__away_team',
-            'match__season__league'
+            'match__season__league', 'match__odds'
         )
 
         # Filter by league
@@ -66,7 +66,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         if min_conf:
             queryset = queryset.filter(confidence_score__gte=float(min_conf))
 
-        return queryset.order_by('-match__match_date')
+        return queryset.order_by('-match__match_date', 'match__kickoff_at', 'match__id')
 
     # Phase 0 (SEC-01): on-demand model runs (batch had no size limit) are
     # heavy compute and nothing in the frontend calls them — admin only.

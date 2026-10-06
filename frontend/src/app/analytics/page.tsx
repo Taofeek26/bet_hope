@@ -101,16 +101,16 @@ export default function AnalyticsPage() {
                     <Target className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="card-title">Accuracy by Outcome</h2>
-                    <p className="card-desc">{data.period}</p>
+                    <h2 className="card-title">Accuracy by predicted outcome</h2>
+                    <p className="card-desc">When the model picked home / draw / away, how often it was right · {data.period}</p>
                   </div>
                 </div>
 
                 <AccuracyBarChart
                   data={[
-                    { label: 'Home Wins', accuracy: data.by_outcome.H?.accuracy || 0, total: data.by_outcome.H?.total || 0, correct: data.by_outcome.H?.correct || 0 },
-                    { label: 'Draws', accuracy: data.by_outcome.D?.accuracy || 0, total: data.by_outcome.D?.total || 0, correct: data.by_outcome.D?.correct || 0 },
-                    { label: 'Away Wins', accuracy: data.by_outcome.A?.accuracy || 0, total: data.by_outcome.A?.total || 0, correct: data.by_outcome.A?.correct || 0 },
+                    { label: 'Picked home', accuracy: data.by_outcome.H?.accuracy || 0, total: data.by_outcome.H?.total || 0, correct: data.by_outcome.H?.correct || 0 },
+                    { label: 'Picked draw', accuracy: data.by_outcome.D?.accuracy || 0, total: data.by_outcome.D?.total || 0, correct: data.by_outcome.D?.correct || 0 },
+                    { label: 'Picked away', accuracy: data.by_outcome.A?.accuracy || 0, total: data.by_outcome.A?.total || 0, correct: data.by_outcome.A?.correct || 0 },
                   ]}
                 />
               </div>

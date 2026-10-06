@@ -387,7 +387,7 @@ function EmptyState() {
       </div>
       <h3 className="text-lg font-semibold text-text mb-2">No Predictions Available</h3>
       <p className="text-text-muted text-sm max-w-sm mx-auto">
-        Predictions will appear here once the backend is connected and data is available.
+        No predictions match these filters. Predictions are generated every day at 05:15 UTC for fixtures in the next 7 days — during an international break there may be none. Try another date or clear the filters.
       </p>
     </div>
   );

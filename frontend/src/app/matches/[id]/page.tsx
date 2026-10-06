@@ -7,7 +7,7 @@ import { matchesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import Link from 'next/link';
-import { formatKickoff } from '@/lib/utils';
+import { formatKickoff, formatDateWithPreset } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchDetailPage() {
@@ -58,7 +58,7 @@ export default function MatchDetailPage() {
         <div className="flex items-center justify-between mb-4">
           <div className="text-sm text-text-muted flex items-center gap-2">
             <Trophy className="w-4 h-4" />
-            {match.home_team?.league_name || 'League'}
+            {match.league_name || match.home_team?.league_name || 'League'}
           </div>
           {isLive && <span className="badge badge-live">LIVE</span>}
           {isFinished && <span className="badge badge-win">FINISHED</span>}
@@ -74,7 +74,9 @@ export default function MatchDetailPage() {
                 <span className="text-2xl font-bold text-brand">{homeTeam.charAt(0)}</span>
               </div>
             )}
-            <h2 className="text-xl font-bold text-text">{homeTeam}</h2>
+            <h2 className="text-xl font-bold text-text">
+              {match.home_team?.id ? <Link href={`/teams/${match.home_team.id}`} className="hover:text-brand hover:underline">{homeTeam}</Link> : homeTeam}
+            </h2>
             <p className="text-sm text-text-muted">Home</p>
           </div>
 
@@ -88,7 +90,7 @@ export default function MatchDetailPage() {
             )}
             <div className="text-sm text-text-muted mt-2 flex items-center justify-center gap-2">
               <Calendar className="w-4 h-4" />
-              {match.match_date}
+              {match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD'}
             </div>
             {(match.kickoff_at || match.kickoff_time) && (
               <div className="text-sm text-text-muted flex items-center justify-center gap-2">
@@ -106,7 +108,9 @@ export default function MatchDetailPage() {
                 <span className="text-2xl font-bold text-brand">{awayTeam.charAt(0)}</span>
               </div>
             )}
-            <h2 className="text-xl font-bold text-text">{awayTeam}</h2>
+            <h2 className="text-xl font-bold text-text">
+              {match.away_team?.id ? <Link href={`/teams/${match.away_team.id}`} className="hover:text-brand hover:underline">{awayTeam}</Link> : awayTeam}
+            </h2>
             <p className="text-sm text-text-muted">Away</p>
           </div>
         </div>

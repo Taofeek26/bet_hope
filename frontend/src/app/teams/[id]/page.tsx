@@ -6,6 +6,7 @@ import { Trophy, MapPin, Calendar, ArrowLeft, TrendingUp, Target } from 'lucide-
 import { teamsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import Link from 'next/link';
+import { FavoriteButton } from '@/components/ui/FavoriteButton';
 
 export default function TeamDetailPage() {
   const params = useParams();
@@ -69,7 +70,10 @@ export default function TeamDetailPage() {
             </div>
           )}
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-text">{team.name}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold text-text">{team.name}</h1>
+              <FavoriteButton kind="team" id={team.id} label={team.name} />
+            </div>
             <div className="flex items-center gap-4 mt-2 text-text-muted">
               <span className="flex items-center gap-1">
                 <Trophy className="w-4 h-4" />
@@ -90,7 +94,7 @@ export default function TeamDetailPage() {
       {currentStats && (
         <div className="stats-grid mb-6">
           <div className="stat-card">
-            <div className="stat-value">{currentStats.matches_played || 0}</div>
+            <div className="stat-value">{currentStats.played ?? currentStats.matches_played ?? 0}</div>
             <div className="stat-label">Played</div>
           </div>
           <div className="stat-card">
@@ -201,7 +205,11 @@ export default function TeamDetailPage() {
             ) : fixtures?.past_matches && fixtures.past_matches.length > 0 ? (
               <div className="space-y-3">
                 {fixtures.past_matches.slice(0, 5).map((match: any) => {
-                  const isHome = match.home_team_id === teamId || match.home_team?.id === teamId;
+                  // The API sends home_team as a plain id (MatchListSerializer); the old
+                  // check compared .home_team_id / .home_team.id, so every game counted
+                  // as an away game and home results showed reversed (Phase 4).
+                  const homeId = typeof match.home_team === 'object' ? match.home_team?.id : match.home_team;
+                  const isHome = homeId === teamId;
                   const teamScore = isHome ? match.home_score : match.away_score;
                   const oppScore = isHome ? match.away_score : match.home_score;
                   const result = teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'D';

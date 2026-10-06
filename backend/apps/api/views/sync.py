@@ -231,151 +231,63 @@ class DataSyncViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def task_status(self, request):
         """
-        Get status of all scheduled tasks and their last run times.
-
-        Returns:
-            List of scheduled tasks with last run info
+        Health of the scheduled jobs, judged by the data they produce
+        (Phase 4, API-08). The old version read Celery's TaskResult table,
+        which nothing writes since the move to Lambda + EventBridge, so it
+        always reported "never run" even when every job succeeded.
         """
-        from django_celery_results.models import TaskResult
-        from config.celery import app
+        from django.db.models import Max
+        from apps.matches.models import Match
+        from apps.predictions.models import Prediction, ModelVersion
 
-        # Define task groups with friendly names
-        task_groups = {
-            'Data Sync': [
-                ('daily-data-sync', 'Daily Data Sync', 'Daily at 4:00 AM UTC'),
-                ('sync-fixtures-api', 'Fixtures Sync', 'Every 6 hours'),
-                ('sync-results-api', 'Results Sync', 'Every 3 hours'),
-                ('update-match-results', 'Match Results Update', 'Every 3 hours'),
-                ('sync-live-scores-weekend', 'Live Scores (Weekend)', 'Every 15 min (Sat-Sun)'),
-                ('sync-live-scores-weekday', 'Live Scores (Weekday)', 'Every 15 min (evenings)'),
-            ],
-            'Predictions': [
-                ('generate-predictions', 'Generate Predictions', 'Every 6 hours'),
-                ('validate-predictions', 'Validate Predictions', 'Daily at 6:00 AM UTC'),
-            ],
-            'ML & Analytics': [
-                ('daily-model-training', 'Model Retraining', 'Daily at 5:00 AM UTC'),
-                ('calculate-metrics', 'Calculate Metrics', 'Daily at 7:00 AM UTC'),
-            ],
-            'Documents': [
-                ('daily-document-refresh', 'Document Refresh', 'Daily at 4:30 AM UTC'),
-                ('daily-scrape-docs', 'Scrape Documentation', 'Daily at 4:15 AM UTC'),
-                ('daily-update-strategies', 'Update Strategies', 'Daily at 4:20 AM UTC'),
-                ('daily-embed-documents', 'Embed Documents', 'Daily at 4:45 AM UTC'),
-                ('morning-football-news', 'Football News (AM)', 'Daily at 6:00 AM UTC'),
-                ('evening-football-news', 'Football News (PM)', 'Daily at 6:00 PM UTC'),
-                ('daily-cleanup-old-news', 'Cleanup Old News', 'Daily at 5:30 AM UTC'),
-            ],
-            'Maintenance': [
-                ('weekly-historical-sync', 'Historical Sync', 'Weekly on Mondays'),
-                ('cleanup-old-data', 'Cleanup Old Data', 'Weekly on Sundays'),
-                ('weekly-cleanup-embeddings', 'Cleanup Embeddings', 'Weekly on Sundays'),
-            ],
-        }
-
-        # Get the beat schedule from Celery config
-        beat_schedule = app.conf.beat_schedule
-
-        # Get recent task results for each task type
         now = timezone.now()
-        results = []
+        today = now.date()
 
-        for group_name, tasks in task_groups.items():
-            group_tasks = []
-            for task_key, display_name, schedule in tasks:
-                task_info = beat_schedule.get(task_key, {})
-                task_name = task_info.get('task', f'tasks.{task_key}')
+        def entry(key, name, schedule, last, max_age):
+            if last is None:
+                return {'key': key, 'name': name, 'schedule': schedule, 'last_run': None,
+                        'time_ago': None, 'last_status': None, 'health': 'unknown'}
+            delta = now - last
+            if delta.days > 0:
+                ago = f'{delta.days}d ago'
+            elif delta.seconds >= 3600:
+                ago = f'{delta.seconds // 3600}h ago'
+            elif delta.seconds >= 60:
+                ago = f'{delta.seconds // 60}m ago'
+            else:
+                ago = 'just now'
+            return {'key': key, 'name': name, 'schedule': schedule, 'last_run': last.isoformat(),
+                    'time_ago': ago, 'last_status': 'success',
+                    'health': 'healthy' if delta <= max_age else 'stale'}
 
-                # Get last successful run for this task
-                last_result = TaskResult.objects.filter(
-                    task_name=task_name,
-                    status='SUCCESS'
-                ).order_by('-date_done').first()
+        near = Match.objects.filter(match_date__gte=today - timedelta(days=10),
+                                    match_date__lte=today + timedelta(days=14))
+        fixtures_last = near.aggregate(t=Max('updated_at'))['t']
+        csv_last = (Match.objects.exclude(fd_match_id__startswith='fdorg_')
+                    .filter(match_date__gte=today - timedelta(days=30))
+                    .aggregate(t=Max('updated_at'))['t'])
+        training_last = ModelVersion.objects.aggregate(t=Max('created_at'))['t']
+        predictions_last = Prediction.objects.aggregate(t=Max('updated_at'))['t']
 
-                # Get last run regardless of status
-                last_any_result = TaskResult.objects.filter(
-                    task_name=task_name
-                ).order_by('-date_done').first()
-
-                # Calculate time since last run
-                last_run = None
-                time_ago = None
-                last_status = None
-
-                if last_result:
-                    last_run = last_result.date_done.isoformat()
-                    delta = now - last_result.date_done
-                    if delta.days > 0:
-                        time_ago = f"{delta.days}d ago"
-                    elif delta.seconds >= 3600:
-                        time_ago = f"{delta.seconds // 3600}h ago"
-                    elif delta.seconds >= 60:
-                        time_ago = f"{delta.seconds // 60}m ago"
-                    else:
-                        time_ago = "just now"
-
-                if last_any_result:
-                    last_status = last_any_result.status.lower()
-
-                # Determine health status
-                # Tasks that run frequently should have recent runs
-                health = 'unknown'
-                if last_result:
-                    delta = now - last_result.date_done
-                    if 'every 15 min' in schedule.lower():
-                        health = 'healthy' if delta < timedelta(minutes=30) else 'stale'
-                    elif 'every 3 hours' in schedule.lower():
-                        health = 'healthy' if delta < timedelta(hours=4) else 'stale'
-                    elif 'every 6 hours' in schedule.lower():
-                        health = 'healthy' if delta < timedelta(hours=8) else 'stale'
-                    elif 'daily' in schedule.lower():
-                        health = 'healthy' if delta < timedelta(hours=26) else 'stale'
-                    elif 'weekly' in schedule.lower():
-                        health = 'healthy' if delta < timedelta(days=8) else 'stale'
-                    else:
-                        health = 'healthy' if delta < timedelta(days=1) else 'stale'
-
-                group_tasks.append({
-                    'key': task_key,
-                    'name': display_name,
-                    'schedule': schedule,
-                    'last_run': last_run,
-                    'time_ago': time_ago,
-                    'last_status': last_status,
-                    'health': health,
-                })
-
-            results.append({
-                'group': group_name,
-                'tasks': group_tasks,
-            })
-
-        # Calculate overall health
-        all_tasks = []
-        for group in results:
-            all_tasks.extend(group['tasks'])
-
-        healthy_count = sum(1 for t in all_tasks if t['health'] == 'healthy')
-        stale_count = sum(1 for t in all_tasks if t['health'] == 'stale')
-        unknown_count = sum(1 for t in all_tasks if t['health'] == 'unknown')
-
-        if stale_count > 2:
-            overall_health = 'warning'
-        elif stale_count > 0:
-            overall_health = 'partial'
-        elif unknown_count == len(all_tasks):
-            overall_health = 'unknown'
-        else:
-            overall_health = 'healthy'
-
+        groups = [
+            {'group': 'Data', 'tasks': [
+                entry('daily-sync', 'Fixtures, odds & recent results', 'Daily 04:15 UTC', fixtures_last, timedelta(hours=26)),
+                entry('current-season', 'Current-season results (all 20 leagues)', 'Mon & Thu 03:30 UTC', csv_last, timedelta(days=4, hours=12)),
+            ]},
+            {'group': 'Model', 'tasks': [
+                entry('training', 'Model training (promotion-checked)', 'Daily 05:00 UTC', training_last, timedelta(hours=26)),
+                entry('predictions', 'Predictions for the next 14 days', 'Daily 04:15 & 05:15 UTC', predictions_last, timedelta(hours=26)),
+            ]},
+        ]
+        tasks = [t for g in groups for t in g['tasks']]
+        healthy = sum(t['health'] == 'healthy' for t in tasks)
+        stale = sum(t['health'] == 'stale' for t in tasks)
+        unknown = sum(t['health'] == 'unknown' for t in tasks)
+        overall = ('healthy' if healthy == len(tasks) else 'unknown' if unknown == len(tasks)
+                   else 'warning' if stale > 1 else 'partial')
         return Response({
-            'overall_health': overall_health,
-            'summary': {
-                'healthy': healthy_count,
-                'stale': stale_count,
-                'unknown': unknown_count,
-                'total': len(all_tasks),
-            },
+            'overall_health': overall,
+            'summary': {'healthy': healthy, 'stale': stale, 'unknown': unknown, 'total': len(tasks)},
             'last_checked': now.isoformat(),
-            'groups': results,
+            'groups': groups,
         })

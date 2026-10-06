@@ -20,7 +20,7 @@ export function UpcomingMatches() {
         <CardBody>
           <div className="text-center py-8">
             <p className="text-text-muted mb-4">
-              Unable to load upcoming matches. Connect the backend to see data.
+              Couldn’t load upcoming matches. The server may be waking up — try again in a few seconds.
             </p>
             <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
               Try Again
@@ -68,7 +68,7 @@ export function UpcomingMatches() {
           </div>
         ) : (
           <p className="text-text-secondary text-center py-8">
-            No upcoming matches scheduled.
+            No fixtures in the next 7 days. Leagues often pause for international breaks; fixtures are added by the daily 04:15 UTC sync as soon as they are published.
           </p>
         )}
       </CardBody>
@@ -125,13 +125,13 @@ function MatchRow({ match }: { match: any }) {
                     {match.home_team_name?.charAt(0)}
                   </div>
                 )}
-                <span className="text-xs sm:text-sm font-medium text-white truncate">
+                <span className="text-xs sm:text-sm font-medium text-text truncate">
                   {match.home_team_name}
                 </span>
               </div>
               <span className="text-[10px] sm:text-xs text-text-muted mx-1 sm:mx-2 flex-shrink-0">vs</span>
               <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 justify-end">
-                <span className="text-xs sm:text-sm font-medium text-white truncate">
+                <span className="text-xs sm:text-sm font-medium text-text truncate">
                   {match.away_team_name}
                 </span>
                 {match.away_team_logo ? (

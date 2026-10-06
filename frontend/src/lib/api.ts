@@ -53,7 +53,8 @@ const extractResults = <T>(data: T[] | { results: T[] }): T[] => {
 // League endpoints
 export const leaguesApi = {
   getAll: async (params?: { country?: string; tier?: number; active?: boolean }) => {
-    const { data } = await api.get<{ results: League[] } | League[]>('/leagues/', { params });
+    // page_size: the API pages at 20 by default, which dropped leagues past #20 (API-07)
+    const { data } = await api.get<{ results: League[] } | League[]>('/leagues/', { params: { page_size: 100, ...params } });
     return extractResults(data);
   },
 
@@ -87,7 +88,7 @@ export const leaguesApi = {
 // Team endpoints
 export const teamsApi = {
   getAll: async (params?: { league?: string; search?: string }) => {
-    const { data } = await api.get<{ results: Team[] } | Team[]>('/teams/', { params });
+    const { data } = await api.get<{ results: Team[] } | Team[]>('/teams/', { params: { page_size: 100, ...params } });
     return extractResults(data);
   },
 
@@ -142,13 +143,13 @@ export const matchesApi = {
     return data;
   },
 
-  getUpcoming: async () => {
+  getUpcoming: async (params?: { days?: number; league?: string }) => {
     const { data } = await api.get<{
       start_date: string;
       end_date: string;
       total_matches: number;
       matches_by_date: Record<string, Match[]>;
-    }>('/matches/upcoming/');
+    }>('/matches/upcoming/', { params });
     return data;
   },
 
@@ -191,7 +192,8 @@ export const predictionsApi = {
     date_to?: string;
     min_confidence?: number;
   }) => {
-    const { data } = await api.get<{ results: Prediction[] } | Prediction[]>('/predictions/', { params });
+    // A busy Saturday has 100+ matches; page_size keeps the whole day in one response (API-07)
+    const { data } = await api.get<{ results: Prediction[] } | Prediction[]>('/predictions/', { params: { page_size: 500, ...params } });
     return extractResults(data);
   },
 

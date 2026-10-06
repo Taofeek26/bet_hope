@@ -74,6 +74,7 @@ class MatchListSerializer(serializers.ModelSerializer):
     away_team_logo = serializers.CharField(source='away_team.logo_url', read_only=True)
     league_name = serializers.SerializerMethodField()
     league_country = serializers.CharField(source='season.league.country', read_only=True)
+    league_code = serializers.CharField(source='season.league.code', read_only=True)
     has_prediction = serializers.SerializerMethodField()
     prediction = serializers.SerializerMethodField()
 
@@ -95,6 +96,7 @@ class MatchListSerializer(serializers.ModelSerializer):
             'status',
             'league_name',
             'league_country',
+            'league_code',
             'has_prediction',
             'prediction',
         ]

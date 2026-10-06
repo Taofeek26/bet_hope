@@ -28,7 +28,7 @@ export function DailyPicks({ date }: DailyPicksProps) {
           No high-confidence picks available for this date.
         </p>
         <p className="text-text-muted text-sm">
-          Fixtures are synced from data providers. Future matches may not be available yet.
+          Picks need a fixture with a confident prediction (55%+). Days without fixtures — e.g. international breaks — have none; the numbered dates above show where picks exist.
         </p>
       </div>
     );
@@ -69,11 +69,11 @@ function PickCard({ pick }: { pick: any }) {
                 {match.home_team?.charAt(0)}
               </div>
             )}
-            <p className="font-medium text-white text-xs sm:text-sm truncate">{match.home_team}</p>
+            <p className="font-medium text-text text-xs sm:text-sm truncate">{match.home_team}</p>
           </div>
           <div className="px-2 sm:px-4 text-text-muted text-[10px] sm:text-sm flex-shrink-0">vs</div>
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2 min-w-0">
-            <p className="font-medium text-white text-xs sm:text-sm truncate">{match.away_team}</p>
+            <p className="font-medium text-text text-xs sm:text-sm truncate">{match.away_team}</p>
             {match.away_team_logo ? (
               <img src={match.away_team_logo} alt={match.away_team} className="w-5 h-5 sm:w-6 sm:h-6 object-contain flex-shrink-0" />
             ) : (

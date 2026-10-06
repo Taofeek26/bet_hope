@@ -25,7 +25,7 @@ export default function MatchesPage() {
     queryFn: () => {
       if (view === 'live') return matchesApi.getLive();
       if (view === 'results') return matchesApi.getResults({ days: selectedDays, league: selectedLeague || undefined });
-      return matchesApi.getUpcoming();
+      return matchesApi.getUpcoming({ days: Math.min(selectedDays, 14), league: selectedLeague || undefined });
     },
   });
 
@@ -41,6 +41,16 @@ export default function MatchesPage() {
   };
 
   const matches = getMatches();
+
+  // Day headers (Phase 4): one long undivided list made it hard to see
+  // where Saturday ended. Results are newest-day first, fixtures soonest first.
+  const byDay: [string, any[]][] = [];
+  for (const m of matches as any[]) {
+    const day = m.match_date || 'TBD';
+    const last = byDay[byDay.length - 1];
+    if (last && last[0] === day) last[1].push(m);
+    else byDay.push([day, [m]]);
+  }
 
   return (
     <>
@@ -83,8 +93,8 @@ export default function MatchesPage() {
           </button>
         </div>
 
-        {/* Filters - shown for results view */}
-        {view === 'results' && (
+        {/* Filters - upcoming and results (live shows everything) */}
+        {view !== 'live' && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-text-muted" />
@@ -104,7 +114,7 @@ export default function MatchesPage() {
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>
                   <option value={14}>14 days</option>
-                  <option value={30}>30 days</option>
+                  {view === 'results' && <option value={30}>30 days</option>}
                 </select>
               </div>
 
@@ -144,13 +154,43 @@ export default function MatchesPage() {
       ) : matches.length === 0 ? (
         <EmptyState view={view} />
       ) : (
-        <div className="space-y-3">
-          {matches.map((match: any) => (
-            <MatchCard key={match.id} match={match} />
+        <div className="space-y-6">
+          {byDay.map(([day, dayMatches]) => (
+            <section key={day} aria-label={day}>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2 px-1">
+                {day === 'TBD' ? 'Date to be confirmed' : dayLabel(day)} · {dayMatches.length} {dayMatches.length === 1 ? 'match' : 'matches'}
+              </h2>
+              <div className="space-y-3">
+                {dayMatches.map((match: any) => (
+                  <MatchCard key={match.id} match={match} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
     </>
+  );
+}
+
+function dayLabel(iso: string) {
+  const d = new Date(`${iso}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+  const long = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  if (diff === 0) return `Today — ${long}`;
+  if (diff === 1) return `Tomorrow — ${long}`;
+  if (diff === -1) return `Yesterday — ${long}`;
+  return long;
+}
+
+function TeamName({ id, name, className }: { id?: number; name: string; className: string }) {
+  if (!id) return <span className={className}>{name}</span>;
+  return (
+    <Link href={`/teams/${id}`} className={`${className} hover:text-brand hover:underline relative z-10`}>
+      {name}
+    </Link>
   );
 }
 
@@ -165,6 +205,9 @@ function MatchCard({ match }: { match: any }) {
   const homeLogo = match.home_team?.logo_url || match.home_team_logo;
   const awayLogo = match.away_team?.logo_url || match.away_team_logo;
   const leagueName = match.league_name || match.league?.name || '';
+  const teamId = (t: any) => (typeof t === 'object' ? t?.id : t);
+  const homeId = teamId(match.home_team);
+  const awayId = teamId(match.away_team);
 
   // Check prediction verification for finished matches
   const prediction = match.prediction;
@@ -173,7 +216,10 @@ function MatchCard({ match }: { match: any }) {
   const isCorrect = verification?.is_correct;
 
   return (
-    <Link href={`/matches/${match.id}`} className={`match-card hover:border-brand/50 transition-colors flex-col sm:flex-row ${hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : ''}`}>
+    // A card-wide link sits underneath so team names can link to their own
+    // pages (links can't be nested inside a link).
+    <div className={`match-card relative hover:border-brand/50 transition-colors flex-col sm:flex-row ${hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : ''}`}>
+      <Link href={`/matches/${match.id}`} aria-label={`${homeTeam} vs ${awayTeam} — match details`} className="absolute inset-0 rounded-[inherit]" />
       {/* Teams row */}
       <div className="match-teams flex-1 w-full sm:w-auto">
         <div className="match-team flex-1 sm:flex-initial justify-start">
@@ -184,11 +230,11 @@ function MatchCard({ match }: { match: any }) {
               {homeTeam.charAt(0)}
             </div>
           )}
-          <span className="text-text font-medium text-xs sm:text-sm truncate">{homeTeam}</span>
+          <TeamName id={homeId} name={homeTeam} className="text-text font-medium text-xs sm:text-sm truncate" />
         </div>
         <span className="match-vs text-[10px] sm:text-xs flex-shrink-0">vs</span>
         <div className="match-team flex-1 sm:flex-initial justify-end sm:justify-start">
-          <span className="text-text font-medium text-xs sm:text-sm truncate sm:hidden">{awayTeam}</span>
+          <TeamName id={awayId} name={awayTeam} className="text-text font-medium text-xs sm:text-sm truncate sm:hidden" />
           {awayLogo ? (
             <img src={awayLogo} alt={awayTeam} className="w-5 h-5 sm:w-6 sm:h-6 object-contain flex-shrink-0" />
           ) : (
@@ -196,7 +242,7 @@ function MatchCard({ match }: { match: any }) {
               {awayTeam.charAt(0)}
             </div>
           )}
-          <span className="text-text font-medium text-xs sm:text-sm truncate hidden sm:block">{awayTeam}</span>
+          <TeamName id={awayId} name={awayTeam} className="text-text font-medium text-xs sm:text-sm truncate hidden sm:block" />
         </div>
       </div>
 
@@ -241,7 +287,7 @@ function MatchCard({ match }: { match: any }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -259,7 +305,7 @@ function EmptyState({ view }: { view: string }) {
           ? 'No matches are currently being played.'
           : view === 'results'
           ? 'No recent match results to display.'
-          : 'No upcoming matches scheduled.'}
+          : 'No fixtures scheduled for these filters. Leagues pause for international breaks; new fixtures are added by the daily sync.'}
       </p>
     </div>
   );

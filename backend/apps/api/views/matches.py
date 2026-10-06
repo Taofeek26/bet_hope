@@ -82,17 +82,25 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
-        """Get upcoming matches for next 7 days."""
+        """Upcoming matches, grouped by date. ?days=1-14 (default 7), ?league=CODE."""
         today = timezone.now().date()
-        end_date = today + timedelta(days=7)
+        try:
+            days = min(max(int(request.query_params.get('days', 7)), 1), 14)
+        except ValueError:
+            days = 7
+        end_date = today + timedelta(days=days)
 
         matches = Match.objects.filter(
             match_date__gte=today,
             match_date__lte=end_date,
             status=Match.Status.SCHEDULED,
-        ).select_related(
+        )
+        league = request.query_params.get('league')
+        if league:
+            matches = matches.filter(season__league__code=league)
+        matches = matches.select_related(
             'home_team', 'away_team', 'season__league'
-        ).prefetch_related('predictions').order_by('match_date', 'kickoff_time')
+        ).prefetch_related('predictions').order_by('match_date', 'kickoff_at', 'kickoff_time', 'id')
 
         # Group by date
         grouped = {}

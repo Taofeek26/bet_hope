@@ -65,17 +65,17 @@ function LiveMatchCard({ match }: { match: any }) {
                 {(match.home_team?.name || match.home_team)?.charAt(0)}
               </div>
             )}
-            <p className="font-medium text-white text-sm">
+            <p className="font-medium text-text text-sm">
               {match.home_team?.name || match.home_team}
             </p>
           </div>
           <div className="px-4">
-            <span className="text-2xl font-bold text-white">
+            <span className="text-2xl font-bold text-text">
               {match.home_score ?? 0} - {match.away_score ?? 0}
             </span>
           </div>
           <div className="flex-1 flex items-center justify-end gap-2">
-            <p className="font-medium text-white text-sm">
+            <p className="font-medium text-text text-sm">
               {match.away_team?.name || match.away_team}
             </p>
             {(match.away_team?.logo_url || match.away_team_logo) ? (

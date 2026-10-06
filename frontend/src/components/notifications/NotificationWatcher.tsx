@@ -14,7 +14,7 @@ import { useLiveMatches, useDailyPicks, useValueBets } from '@/hooks/useApi';
 function notify(title: string, body: string) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
-  new Notification(title, { body, icon: '/favicon.ico' });
+  new Notification(title, { body, icon: '/icon.svg' });
 }
 
 export function NotificationWatcher() {
@@ -28,13 +28,8 @@ export function NotificationWatcher() {
   const seenValueBetIds = useRef<Set<string>>(new Set());
   const initialized = useRef(false);
 
-  useEffect(() => {
-    if (settings.matchNotifications && typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-  }, [settings.matchNotifications]);
+  // Permission is asked from Settings, when the user switches alerts on
+  // (Phase 4): browsers block or penalise prompts that appear on page load.
 
   useEffect(() => {
     if (!liveMatches?.matches) return;

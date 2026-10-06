@@ -59,7 +59,7 @@ export default function LeaguesPage() {
           </div>
           <h3 className="text-lg font-semibold text-text mb-2">No Leagues Available</h3>
           <p className="text-text-muted text-sm max-w-sm mx-auto">
-            League data will appear here once the backend is connected.
+            Couldn’t load leagues right now. Refresh the page in a few seconds.
           </p>
         </div>
       ) : (

@@ -6,6 +6,7 @@ import { Trophy, MapPin, Calendar, ArrowLeft, TrendingUp } from 'lucide-react';
 import { leaguesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import Link from 'next/link';
+import { FavoriteButton } from '@/components/ui/FavoriteButton';
 
 export default function LeagueDetailPage() {
   const params = useParams();
@@ -61,7 +62,10 @@ export default function LeagueDetailPage() {
             </div>
           )}
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-text">{league.name}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold text-text">{league.name}</h1>
+              <FavoriteButton kind="league" id={league.code} label={league.name} />
+            </div>
             <div className="flex items-center gap-4 mt-2 text-text-muted">
               <span className="flex items-center gap-1">
                 <MapPin className="w-4 h-4" />

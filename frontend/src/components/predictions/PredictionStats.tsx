@@ -15,10 +15,14 @@ export function PredictionStats() {
 
   if (!stats || (stats as any).error) {
     return (
-      <div className="text-text-muted text-center py-8">
-        <p className="mb-2">No verified predictions yet.</p>
-        <p className="text-xs">Statistics will appear after matches are completed.</p>
-      </div>
+      <Card>
+        <CardBody>
+          <div className="text-text-muted text-center py-8">
+            <p className="mb-2">No verified predictions in the last 30 days.</p>
+            <p className="text-xs">Accuracy appears once predicted matches have been played and their results synced.</p>
+          </div>
+        </CardBody>
+      </Card>
     );
   }
 
@@ -39,7 +43,7 @@ export function PredictionStats() {
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs sm:text-sm text-text-secondary">Overall Accuracy</span>
-            <span className="text-base sm:text-lg font-semibold text-white">
+            <span className="text-base sm:text-lg font-semibold text-text">
               {formatProbability(stats.accuracy)}
             </span>
           </div>
@@ -77,7 +81,7 @@ export function PredictionStats() {
                   <span className="text-text-secondary capitalize">{level}</span>
                   <div className="flex items-center gap-1.5 sm:gap-2">
                     <span className="text-text-muted">{data.total} picks</span>
-                    <span className="text-white font-medium">
+                    <span className="text-text font-medium">
                       {formatProbability(data.accuracy)}
                     </span>
                   </div>
@@ -121,7 +125,7 @@ function StatCard({ icon: Icon, label, value, color }: StatCardProps) {
         <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${color}`} />
         <span className="text-[10px] sm:text-xs text-text-secondary">{label}</span>
       </div>
-      <p className="text-lg sm:text-xl font-semibold text-white">{value}</p>
+      <p className="text-lg sm:text-xl font-semibold text-text">{value}</p>
     </div>
   );
 }

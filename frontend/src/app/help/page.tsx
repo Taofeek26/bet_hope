@@ -1,6 +1,6 @@
 'use client';
 
-import { HelpCircle, Book, MessageCircle, Mail, ExternalLink, ChevronRight, Zap, Target, BarChart3, Shield } from 'lucide-react';
+import { HelpCircle, MessageCircle, Mail, ExternalLink, ChevronRight, Zap, Target, BarChart3, Shield } from 'lucide-react';
 import { useState } from 'react';
 
 export default function HelpPage() {
@@ -47,13 +47,7 @@ export default function HelpPage() {
       <div className="content-grid">
         {/* Quick Links */}
         <div className="col-span-12">
-          <div className="grid grid-cols-4 gap-4 mb-8">
-            <QuickLink
-              icon={Book}
-              title="Documentation"
-              description="Learn how to use Bet Hope"
-              href="#docs"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
             <QuickLink
               icon={MessageCircle}
               title="FAQ"
@@ -69,7 +63,7 @@ export default function HelpPage() {
             <QuickLink
               icon={Mail}
               title="Contact"
-              description="Get in touch with us"
+              description="Report a problem or idea"
               href="#contact"
             />
           </div>
@@ -88,7 +82,7 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <FeatureCard
                 icon={Target}
                 title="AI Predictions"
@@ -162,34 +156,20 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6">
               <div className="p-6 bg-surface rounded-lg border border-border-dim">
                 <h3 className="font-semibold text-text mb-2">Report an Issue</h3>
                 <p className="text-sm text-text-muted mb-4">
                   Found a bug or have feedback? Open an issue on GitHub.
                 </p>
                 <a
-                  href="https://github.com/your-org/bet-hope/issues"
+                  href="https://github.com/Taofeek26/bet_hope/issues"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-secondary"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Open Issue
-                </a>
-              </div>
-
-              <div className="p-6 bg-surface rounded-lg border border-border-dim">
-                <h3 className="font-semibold text-text mb-2">General Inquiries</h3>
-                <p className="text-sm text-text-muted mb-4">
-                  For general questions and support, send us an email.
-                </p>
-                <a
-                  href="mailto:support@bet-hope.com"
-                  className="btn btn-primary"
-                >
-                  <Mail className="w-4 h-4" />
-                  Email Support
                 </a>
               </div>
             </div>

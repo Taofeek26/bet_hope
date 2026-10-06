@@ -29,6 +29,7 @@ class PredictionSerializer(serializers.ModelSerializer):
     probabilities = serializers.SerializerMethodField()
     recommended_bet = serializers.SerializerMethodField()
     result_verification = serializers.SerializerMethodField()
+    is_value_bet = serializers.SerializerMethodField()
 
     class Meta:
         model = Prediction
@@ -45,8 +46,26 @@ class PredictionSerializer(serializers.ModelSerializer):
             'predicted_away_score',
             'recommended_bet',
             'result_verification',
+            'is_value_bet',
             'created_at',
         ]
+
+    def get_is_value_bet(self, obj) -> bool:
+        """
+        Model probability at least 5 points above the bookmaker's implied
+        probability for any of home/draw/away, the same rule as
+        /predictions/value_bets/. The Predictions page filter read this
+        field, which didn't exist, so it was always empty (Phase 4).
+        """
+        odds = getattr(obj.match, 'odds', None)
+        if not odds:
+            return False
+        for prob, price in ((obj.home_win_probability, odds.home_odds),
+                            (obj.draw_probability, odds.draw_odds),
+                            (obj.away_win_probability, odds.away_odds)):
+            if price and float(price) > 1 and float(prob) - 1 / float(price) > 0.05:
+                return True
+        return False
 
     def get_match(self, obj) -> dict:
         league = obj.match.season.league if obj.match.season else None
