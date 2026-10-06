@@ -92,6 +92,10 @@ class Command(BaseCommand):
                     f"Upcoming predictions ({active_model.version}): {result.get('created', 0)} created, "
                     f"{result.get('updated', 0)} updated, {result.get('frozen', 0)} frozen at kickoff, "
                     f"{result.get('with_odds', 0)} used bookmaker odds"))
+                from apps.predictions.paper import log_paper_bets
+                paper = log_paper_bets()
+                self.stdout.write(f"Paper bets logged: {paper['created']} "
+                                  f"({paper['skipped_no_odds']} matches skipped: no odds yet)")
             if historical:
                 self.stdout.write(self.style.WARNING(
                     'Skipping --historical with v2: back-filled predictions on matches the model '
@@ -390,6 +394,12 @@ class Command(BaseCommand):
         return home_prob, draw_prob, away_prob
 
     def _validate_predictions(self):
+        self._validate_predictions_inner()
+        from apps.predictions.paper import settle_paper_bets
+        settled = settle_paper_bets()
+        self.stdout.write(f"Paper bets settled: {settled['won']} won, {settled['lost']} lost, {settled['void']} void")
+
+    def _validate_predictions_inner(self):
         """Validate predictions against actual match results."""
         from apps.matches.models import Match
         from apps.predictions.models import Prediction

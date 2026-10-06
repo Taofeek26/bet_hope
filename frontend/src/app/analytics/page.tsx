@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, TrendingUp, Target, Percent, RefreshCw, FlaskConical } from 'lucide-react';
+import { BarChart3, TrendingUp, Target, Percent, RefreshCw, FlaskConical, Wallet } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { useModelInfo } from '@/hooks/useApi';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -87,6 +87,7 @@ export default function AnalyticsPage() {
       </div>
 
       {model === 'live' && <TestedScorecard info={modelInfo} />}
+      {(model !== 'live' || liveFamily) && <PaperBetsPanel days={days} family={family} modelLabel={modelLabel} periodLabel={periodLabel} />}
 
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -263,6 +264,76 @@ function TestedScorecard({ info }: { info: any }) {
       )}
       <p className="text-xs text-text-muted mt-3">
         Football is hard to predict: about 50% is level with the bookmakers. Being accurate is not the same as making money; see Value Bets.
+      </p>
+    </div>
+  );
+}
+
+type PaperGroup = {
+  bets: number; open: number; settled: number; won: number;
+  hit_rate: number | null; avg_odds: number | null; staked: number; profit: number; roi: number | null;
+};
+
+/**
+ * Phase 5, step 2: what following the model would have returned, from
+ * pretend 1-unit bets logged before kickoff at the price available then.
+ */
+function PaperBetsPanel({ days, family, modelLabel, periodLabel }: { days: number; family?: string; modelLabel: string; periodLabel: string }) {
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['paper-bets', { days, family }],
+    queryFn: () => predictionsApi.getPaperBets({ days, model_family: family }),
+  });
+  const groups: [string, string, PaperGroup | undefined][] = [
+    ['all_picks', 'Every model pick', data?.groups?.all_picks],
+    ['top_picks', 'Top picks (55%+)', data?.groups?.top_picks],
+    ['value_bets', 'Value bets (5+ pt edge)', data?.groups?.value_bets],
+  ];
+  const anyBets = groups.some(([, , g]) => g && g.bets > 0);
+  return (
+    <div className="card mb-4 sm:mb-6">
+      <div className="card-header">
+        <div className="card-icon"><Wallet className="w-5 h-5" /></div>
+        <div>
+          <h2 className="card-title">Return if you had bet</h2>
+          <p className="card-desc">Pretend 1-unit bets, logged before kickoff at the odds available then · {modelLabel} · {periodLabel}</p>
+        </div>
+      </div>
+      {isLoading ? <LoadingSpinner /> : !anyBets ? (
+        <p className="text-sm text-text-muted py-4">
+          No paper bets in this period yet. From now on, every prediction is logged as a 1-unit bet the day before kickoff
+          (when the match has odds), and settled after the result. The first ones settle after this weekend’s matches.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {groups.map(([key, label, g]) => (
+              <div key={key} className="p-4 bg-surface rounded-lg">
+                <div className="text-xs text-text-muted mb-1">{label}</div>
+                {g && g.settled > 0 ? (
+                  <>
+                    <div className={`text-2xl font-bold ${(g.roi ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {(g.roi ?? 0) >= 0 ? '+' : ''}{((g.roi ?? 0) * 100).toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {g.profit >= 0 ? '+' : ''}{g.profit.toFixed(2)} units on {g.settled} bets · won {g.won} ({pct(g.hit_rate, 0)}) · avg odds {g.avg_odds?.toFixed(2)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-text-muted">No settled bets yet</div>
+                )}
+                {g && g.open > 0 && <div className="text-[10px] text-text-muted mt-1">{g.open} still to be played</div>}
+              </div>
+            ))}
+          </div>
+          {groups.some(([, , g]) => g && g.settled > 0 && g.settled < 300) && (
+            <p className="text-xs text-text-muted mt-3">
+              Return swings a lot over a few hundred bets; treat anything under ~1,000 settled bets as luck, not proof.
+            </p>
+          )}
+        </>
+      )}
+      <p className="text-xs text-text-muted mt-3">
+        No real money involved. Real returns would also depend on the bookmaker’s price when you bet and any commission.
       </p>
     </div>
   );

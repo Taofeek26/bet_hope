@@ -225,6 +225,11 @@ export const predictionsApi = {
     return data;
   },
 
+  getPaperBets: async (params?: { days?: number; model_family?: string }) => {
+    const { data } = await api.get('/predictions/paper_bets/', { params });
+    return data;
+  },
+
   getStats: async (params?: { days?: number; model_family?: string }) => {
     const { data } = await api.get<PredictionStats>('/predictions/stats/', { params });
     return data;

@@ -417,6 +417,69 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    def paper_bets(self, request):
+        """
+        Return of pretend 1-unit bets (Phase 5, step 2), logged before kickoff
+        at the price available then. ?days=30 (by match date), ?model_family=v2|v1.
+        Groups: every model pick, top picks (55%+), value bets (5+ point edge).
+        """
+        from apps.predictions.models import PaperBet
+        try:
+            days = min(max(int(request.query_params.get('days', 30)), 1), 3650)
+        except ValueError:
+            days = 30
+        start = timezone.now().date() - timedelta(days=days)
+        bets = PaperBet.objects.filter(match__match_date__gte=start)
+        family = request.query_params.get('model_family')
+        if family == 'v1':
+            bets = bets.exclude(model_version__startswith='v2_')
+        elif family:
+            bets = bets.filter(model_version__startswith=f'{family}_')
+
+        def summarise(qs):
+            rows = list(qs.values('status', 'odds', 'profit', 'stake'))
+            settled = [r for r in rows if r['status'] in ('won', 'lost')]
+            staked = sum(float(r['stake']) for r in settled)
+            profit = sum(float(r['profit']) for r in settled)
+            won = sum(r['status'] == 'won' for r in settled)
+            return {
+                'bets': len(rows),
+                'open': sum(r['status'] == 'open' for r in rows),
+                'void': sum(r['status'] == 'void' for r in rows),
+                'settled': len(settled),
+                'won': won,
+                'hit_rate': round(won / len(settled), 4) if settled else None,
+                'avg_odds': round(sum(float(r['odds']) for r in settled) / len(settled), 3) if settled else None,
+                'staked': round(staked, 2),
+                'profit': round(profit, 3),
+                'roi': round(profit / staked, 4) if staked else None,
+            }
+
+        picks = bets.filter(strategy=PaperBet.Strategy.PICK)
+        recent = bets.select_related('match__home_team', 'match__away_team').order_by('-match__match_date', '-id')[:30]
+        return Response({
+            'period': f'Last {days} days',
+            'stake': 1,
+            'groups': {
+                'all_picks': summarise(picks),
+                'top_picks': summarise(picks.filter(confidence__gte=0.55)),
+                'value_bets': summarise(bets.filter(strategy=PaperBet.Strategy.VALUE)),
+            },
+            'recent': [{
+                'match_id': b.match_id,
+                'match': f'{b.match.home_team.name} v {b.match.away_team.name}',
+                'date': b.match.match_date.isoformat(),
+                'strategy': b.strategy,
+                'selection': b.selection,
+                'odds': float(b.odds),
+                'confidence': float(b.confidence),
+                'edge': float(b.edge),
+                'status': b.status,
+                'profit': float(b.profit) if b.profit is not None else None,
+            } for b in recent],
+        })
+
+    @action(detail=False, methods=['get'])
     def model_info(self, request):
         """Get information about the active model."""
         try:
