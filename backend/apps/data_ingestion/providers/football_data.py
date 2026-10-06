@@ -409,6 +409,7 @@ class FootballDataProvider:
                                 'away_odds': self._first_decimal(row, 'AvgA', 'BbAvA', 'PSA', 'B365A'),
                                 'over_25_odds': self._first_decimal(row, 'Avg>2.5', 'BbAv>2.5', 'P>2.5', 'B365>2.5'),
                                 'under_25_odds': self._first_decimal(row, 'Avg<2.5', 'BbAv<2.5', 'P<2.5', 'B365<2.5'),
+                                'bookmaker': 'Average',
                             }
                         )
 

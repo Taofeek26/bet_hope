@@ -186,6 +186,7 @@ class MatchDetailSerializer(serializers.ModelSerializer):
     odds = MatchOddsSerializer(read_only=True)
     prediction = serializers.SerializerMethodField()
     h2h = serializers.SerializerMethodField()
+    prices = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -206,7 +207,33 @@ class MatchDetailSerializer(serializers.ModelSerializer):
             'odds',
             'prediction',
             'h2h',
+            'prices',
         ]
+
+    def get_prices(self, obj):
+        """Bookmaker 1X2 prices from The Odds API (Phase 5): best per outcome + list."""
+        rows = list(obj.bookmaker_prices.order_by('title').values(
+            'bookmaker', 'title', 'home_odds', 'draw_odds', 'away_odds', 'is_exchange', 'last_update'))
+        if not rows:
+            return None
+        books = [r for r in rows if not r['is_exchange']] or rows
+        best = {}
+        for side in ('home', 'draw', 'away'):
+            top = max(books, key=lambda r: r[f'{side}_odds'])
+            best[side] = {'odds': float(top[f'{side}_odds']), 'bookmaker': top['title']}
+        avg = getattr(obj, 'odds', None)
+        return {
+            'best': best,
+            'average': {
+                'home': float(avg.home_odds), 'draw': float(avg.draw_odds), 'away': float(avg.away_odds),
+                'source': avg.bookmaker,
+            } if avg and avg.home_odds and avg.draw_odds and avg.away_odds else None,
+            'bookmakers': [{
+                'bookmaker': r['bookmaker'], 'title': r['title'], 'is_exchange': r['is_exchange'],
+                'home': float(r['home_odds']), 'draw': float(r['draw_odds']), 'away': float(r['away_odds']),
+            } for r in rows],
+            'updated': max((r['last_update'] for r in rows if r['last_update']), default=None),
+        }
 
     def get_prediction(self, obj):
         from .predictions import PredictionSerializer

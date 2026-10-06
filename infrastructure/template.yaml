@@ -78,6 +78,11 @@ Parameters:
     Type: String
     NoEcho: true
     Default: ""
+  OddsApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: The Odds API key (bookmaker prices, Phase 5)
 
   AnthropicApiKey:
     Type: String
@@ -428,6 +433,7 @@ Resources:
           OPENAI_API_KEY: !Ref OpenAIApiKey
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
+          ODDS_API_KEY: !Ref OddsApiKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           OPENROUTER_API_KEY: !Ref OpenRouterApiKey
           DEFAULT_AI_PROVIDER: openrouter
@@ -474,6 +480,7 @@ Resources:
           OPENAI_API_KEY: !Ref OpenAIApiKey
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
+          ODDS_API_KEY: !Ref OddsApiKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           OPENROUTER_API_KEY: !Ref OpenRouterApiKey
           DEFAULT_AI_PROVIDER: openrouter

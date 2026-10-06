@@ -181,6 +181,18 @@ class Command(BaseCommand):
                     self.style.WARNING('FOOTBALL_DATA_ORG_KEY not configured. Skipping fixture sync.')
                 )
 
+        # Bookmaker prices from The Odds API (Phase 5): fills odds for
+        # fixtures football-data.co.uk doesn't list yet, before predictions
+        # and paper bets use them. Skips itself without ODDS_API_KEY.
+        if sync_fixtures or fixtures_only:
+            self.stdout.write('')
+            self.stdout.write('Syncing bookmaker prices from The Odds API...')
+            try:
+                from apps.data_ingestion.providers.the_odds_api import sync_odds
+                sync_odds(stdout=self.stdout)
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'The Odds API failed: {e}'))
+
         # Generate predictions for upcoming matches using the real trained
         # model (falls back to a labeled statistical estimate on its own if
         # no model is active — see generate_predictions.py). This used to

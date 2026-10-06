@@ -116,6 +116,10 @@ export default function MatchDetailPage() {
         </div>
       </div>
 
+      {match.prices && !isFinished && (
+        <OddsComparison prices={match.prices} probs={match.prediction?.probabilities} homeTeam={homeTeam} awayTeam={awayTeam} />
+      )}
+
       <div className="content-grid">
         {/* Prediction */}
         {match.prediction && (
@@ -311,6 +315,86 @@ function OddsBox({ label, odds, prob }: { label: string; odds?: string | number;
       <div className="text-xs text-text-muted mb-1">{label}</div>
       <div className="text-xl font-bold text-brand">{odds || '--'}</div>
       {prob && <div className="text-xs text-text-sec">{(prob * 100).toFixed(1)}%</div>}
+    </div>
+  );
+}
+
+/**
+ * Phase 5: current bookmaker prices (The Odds API) next to the model's fair
+ * odds. Prices only: the international bookmakers listed here are not the
+ * Nigerian-licensed sites, so no bet buttons link to them.
+ */
+function OddsComparison({ prices, probs, homeTeam, awayTeam }: { prices: any; probs?: any; homeTeam: string; awayTeam: string }) {
+  const sides = [
+    { key: 'home', label: homeTeam },
+    { key: 'draw', label: 'Draw' },
+    { key: 'away', label: awayTeam },
+  ] as const;
+  const books = [...(prices.bookmakers || [])].filter((b: any) => !b.is_exchange)
+    .sort((a: any, b: any) => (1 / a.home + 1 / a.draw + 1 / a.away) - (1 / b.home + 1 / b.draw + 1 / b.away));
+  return (
+    <div className="card mb-6">
+      <div className="card-header">
+        <div className="card-icon"><TrendingUp className="w-5 h-5" /></div>
+        <div>
+          <h2 className="card-title">Odds comparison</h2>
+          <p className="card-desc">
+            {books.length} international bookmakers{prices.updated ? ` · updated ${new Date(prices.updated).toLocaleString()}` : ''}.
+            Compare with your own bookmaker before betting.
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        {sides.map(({ key, label }) => {
+          const best = prices.best?.[key];
+          const p = probs?.[key];
+          const fair = p ? 1 / p : null;
+          const edge = p && best ? p - 1 / best.odds : null;
+          return (
+            <div key={key} className="p-4 bg-surface rounded-lg">
+              <div className="text-xs text-text-muted truncate">{label}</div>
+              <div className="text-2xl font-bold text-text">{best?.odds?.toFixed(2) ?? '--'}</div>
+              <div className="text-[11px] text-text-muted">best · {best?.bookmaker}</div>
+              {prices.average && <div className="text-[11px] text-text-muted">average {prices.average[key].toFixed(2)}</div>}
+              {fair && (
+                <div className={`text-[11px] mt-1 ${edge != null && edge > 0.05 ? 'text-green-500' : 'text-text-muted'}`}>
+                  model fair odds {fair.toFixed(2)}{edge != null && edge > 0.05 ? ' · value' : ''}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <details>
+        <summary className="text-xs text-text-muted cursor-pointer">All bookmakers (lowest margin first)</summary>
+        <div className="overflow-x-auto mt-2">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-text-muted text-left">
+                <th className="py-1 pr-3 font-medium">Bookmaker</th>
+                <th className="py-1 pr-3 font-medium text-right">1</th>
+                <th className="py-1 pr-3 font-medium text-right">X</th>
+                <th className="py-1 pr-3 font-medium text-right">2</th>
+                <th className="py-1 font-medium text-right">Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {books.map((b: any) => (
+                <tr key={b.bookmaker} className="border-t border-border-dim">
+                  <td className="py-1 pr-3 text-text-sec">{b.title}</td>
+                  {(['home', 'draw', 'away'] as const).map((k) => (
+                    <td key={k} className={`py-1 pr-3 text-right ${prices.best?.[k]?.odds === b[k] ? 'text-brand font-semibold' : 'text-text'}`}>{b[k].toFixed(2)}</td>
+                  ))}
+                  <td className="py-1 text-right text-text-muted">{((1 / b.home + 1 / b.draw + 1 / b.away - 1) * 100).toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      <p className="text-[11px] text-text-muted mt-3">
+        &quot;Value&quot; means the model&apos;s probability beats the best price by more than 5 points. Prices change; check before you stake. 18+ · bet responsibly.
+      </p>
     </div>
   );
 }
