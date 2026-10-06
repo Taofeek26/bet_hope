@@ -297,7 +297,10 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         from apps.matches.models import Match
 
         # Time period filter
-        days = int(request.query_params.get('days', 30))
+        try:
+            days = min(max(int(request.query_params.get('days', 30)), 1), 3650)
+        except ValueError:
+            days = 30
         start_date = timezone.now().date() - timedelta(days=days)
 
         # Finished matches with a result, and only predictions made BEFORE
@@ -320,8 +323,11 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
             predictions = predictions.filter(model_version=model_version)
         # ?model_family=v2: every daily v2 retrain (v2_YYYYMMDD_HHMMSS) together,
         # so the live model's record isn't mixed with v1's (Phase 4).
+        # v1 versions carry no prefix (e.g. 20261005_050404), so v1 = "not v2".
         model_family = request.query_params.get('model_family')
-        if model_family:
+        if model_family == 'v1':
+            predictions = predictions.exclude(model_version__startswith='v2_')
+        elif model_family:
             predictions = predictions.filter(model_version__startswith=f'{model_family}_')
 
         if not predictions.exists():
@@ -366,7 +372,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Track by confidence level
             conf = float(pred.confidence_score)
-            if conf >= 0.6:
+            # 55% = the top-pick threshold used by daily_picks (one rule app-wide)
+            if conf >= 0.55:
                 conf_level = 'high'
             elif conf >= 0.45:
                 conf_level = 'medium'

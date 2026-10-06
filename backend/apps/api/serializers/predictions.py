@@ -9,6 +9,8 @@ from apps.predictions.models import Prediction, ModelVersion
 class ModelVersionSerializer(serializers.ModelSerializer):
     """Serializer for model versions."""
 
+    scorecard = serializers.SerializerMethodField()
+
     class Meta:
         model = ModelVersion
         fields = [
@@ -18,7 +20,25 @@ class ModelVersionSerializer(serializers.ModelSerializer):
             'accuracy',
             'status',
             'trained_at',
+            'scorecard',
         ]
+
+    def get_scorecard(self, obj):
+        """v2's tested results on unseen matches, from the training notes (Analytics)."""
+        import json
+        try:
+            notes = json.loads(obj.notes or '{}')
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(notes, dict) or 'test' not in notes:
+            return None
+        return {
+            'test': notes.get('test'),
+            'bookmaker': (notes.get('baselines') or {}).get('bookmaker'),
+            'samples': notes.get('samples'),
+            'windows': notes.get('windows'),
+            'calibration': notes.get('calibration'),
+        }
 
 
 class PredictionSerializer(serializers.ModelSerializer):

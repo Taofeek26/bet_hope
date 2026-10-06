@@ -109,7 +109,7 @@ class Command(BaseCommand):
             training_samples=meta['samples']['train'],
             accuracy=round(t['accuracy'], 4), log_loss=round(t['log_loss'], 6), brier_score=round(t['brier'], 6),
             feature_names=meta['features'], hyperparameters=meta['best_iterations'],
-            notes=json.dumps({k: meta[k] for k in ('windows', 'samples', 'test', 'baselines', 'promotion', 'over25')}),
+            notes=json.dumps({k: meta.get(k) for k in ('windows', 'samples', 'test', 'baselines', 'promotion', 'over25', 'calibration')}),
         )
         self.stdout.write(self.style.SUCCESS(
             f"Saved {version} ({'ACTIVE' if promote else 'archived, not promoted'}): {reason}"))
