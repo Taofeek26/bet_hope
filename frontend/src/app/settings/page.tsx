@@ -160,7 +160,7 @@ function GeneralSettings() {
 
         <SettingItem
           label="Auto-refresh"
-          description="Automatically poll for new live scores, picks, and predictions in the background"
+          description="Automatically check for new picks and predictions in the background"
         >
           <Toggle checked={settings.autoRefresh} onChange={(v) => set('autoRefresh', v)} />
         </SettingItem>
@@ -200,7 +200,7 @@ function NotificationSettings() {
           <h2 className="card-title">Notification Settings</h2>
           <p className="card-desc">
             Browser notifications while this tab is open — there's no email or push
-            infrastructure behind this app, so alerts only fire live, in-session
+            infrastructure behind this app, so alerts only fire while the app is open
           </p>
         </div>
         <SavedBadge show={saved} />
@@ -217,9 +217,6 @@ function NotificationSettings() {
       )}
 
       <div className="space-y-6">
-        <SettingItem label="Match Live Alerts" description="Get notified the moment a match goes live">
-          <Toggle checked={settings.matchNotifications} onChange={(v) => set('matchNotifications', v)} />
-        </SettingItem>
         <SettingItem label="Prediction Alerts" description="Get notified when a new high-confidence pick appears">
           <Toggle checked={settings.predictionAlerts} onChange={(v) => set('predictionAlerts', v)} />
         </SettingItem>

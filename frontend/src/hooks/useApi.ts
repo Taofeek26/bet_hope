@@ -35,7 +35,6 @@ export const queryKeys = {
     detail: (id: number) => ['matches', id] as const,
     upcoming: ['matches', 'upcoming'] as const,
     today: ['matches', 'today'] as const,
-    live: ['matches', 'live'] as const,
     results: ['matches', 'results'] as const,
     withPredictions: ['matches', 'with-predictions'] as const,
   },
@@ -173,14 +172,6 @@ export function useTodayMatches() {
   return useQuery({
     queryKey: queryKeys.matches.today,
     queryFn: () => matchesApi.getToday(),
-    refetchInterval: useAutoRefreshInterval(POLL_MS),
-  });
-}
-
-export function useLiveMatches() {
-  return useQuery({
-    queryKey: queryKeys.matches.live,
-    queryFn: () => matchesApi.getLive(),
     refetchInterval: useAutoRefreshInterval(POLL_MS),
   });
 }

@@ -108,20 +108,3 @@ export const useFavoritesStore = create<FavoritesState>()(
   )
 );
 
-// Live matches store (non-persisted)
-interface LiveMatchesState {
-  liveMatches: Match[];
-  setLiveMatches: (matches: Match[]) => void;
-  updateMatch: (id: number, data: Partial<Match>) => void;
-}
-
-export const useLiveMatchesStore = create<LiveMatchesState>((set) => ({
-  liveMatches: [],
-  setLiveMatches: (matches) => set({ liveMatches: matches }),
-  updateMatch: (id, data) =>
-    set((state) => ({
-      liveMatches: state.liveMatches.map((m) =>
-        m.id === id ? { ...m, ...data } : m
-      ),
-    })),
-}));

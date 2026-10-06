@@ -10,7 +10,7 @@ import { formatDateWithPreset, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchesPage() {
-  const [view, setView] = useState<'upcoming' | 'live' | 'results'>('upcoming');
+  const [view, setView] = useState<'upcoming' | 'results'>('upcoming');
   const [selectedDays, setSelectedDays] = useState<number>(7);
   const [selectedLeague, setSelectedLeague] = useState<string>('');
 
@@ -23,7 +23,6 @@ export default function MatchesPage() {
   const { data, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['matches', view, selectedDays, selectedLeague],
     queryFn: () => {
-      if (view === 'live') return matchesApi.getLive();
       if (view === 'results') return matchesApi.getResults({ days: selectedDays, league: selectedLeague || undefined });
       return matchesApi.getUpcoming({ days: Math.min(selectedDays, 14), league: selectedLeague || undefined });
     },
@@ -32,7 +31,6 @@ export default function MatchesPage() {
   // Handle different response structures
   const getMatches = () => {
     if (!data) return [];
-    if (view === 'live') return data.matches || [];
     if (view === 'results') return data.results || [];
     if (view === 'upcoming' && data.matches_by_date) {
       return Object.values(data.matches_by_date).flat();
@@ -72,13 +70,6 @@ export default function MatchesPage() {
               <span className="xs:hidden">Soon</span>
             </button>
             <button
-              onClick={() => setView('live')}
-              className={`btn btn-sm text-xs sm:text-sm ${view === 'live' ? 'btn-primary' : 'btn-secondary'}`}
-            >
-              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              Live
-            </button>
-            <button
               onClick={() => setView('results')}
               className={`btn btn-sm text-xs sm:text-sm ${view === 'results' ? 'btn-primary' : 'btn-secondary'}`}
             >
@@ -93,8 +84,8 @@ export default function MatchesPage() {
           </button>
         </div>
 
-        {/* Filters - upcoming and results (live shows everything) */}
-        {view !== 'live' && (
+        {/* Filters */}
+        {(
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-text-muted" />
@@ -298,12 +289,10 @@ function EmptyState({ view }: { view: string }) {
         <Calendar className="w-8 h-8" />
       </div>
       <h3 className="text-lg font-semibold text-text mb-2">
-        No {view === 'live' ? 'Live' : view === 'results' ? 'Recent' : 'Upcoming'} Matches
+        No {view === 'results' ? 'Recent' : 'Upcoming'} Matches
       </h3>
       <p className="text-text-muted text-sm max-w-sm mx-auto">
-        {view === 'live'
-          ? 'No matches are currently being played.'
-          : view === 'results'
+        {view === 'results'
           ? 'No recent match results to display.'
           : 'No fixtures scheduled for these filters. Leagues pause for international breaks; new fixtures are added by the daily sync.'}
       </p>

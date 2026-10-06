@@ -11,7 +11,6 @@ export interface AppSettings {
   // browser Notification API while a tab is open). There's no email/push
   // infrastructure in this deployment, so no "email digest" option here —
   // that would be a toggle for a feature that doesn't exist.
-  matchNotifications: boolean;
   predictionAlerts: boolean;
   valueBetAlerts: boolean;
   // Region & Odds
@@ -30,7 +29,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultView: 'dashboard',
   predictionsPerPage: 25,
   autoRefresh: true,
-  matchNotifications: true,
   predictionAlerts: true,
   valueBetAlerts: true,
   timezone: 'local',

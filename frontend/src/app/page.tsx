@@ -14,10 +14,9 @@ import {
 } from 'lucide-react';
 import { DailyPicks } from '@/components/predictions/DailyPicks';
 import { UpcomingMatches } from '@/components/matches/UpcomingMatches';
-import { LiveMatches } from '@/components/matches/LiveMatches';
 import { PredictionStats } from '@/components/predictions/PredictionStats';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { useDailyPicks, useLiveMatches, useValueBets, usePredictionStats, useWeeklyAvailability, useModelInfo } from '@/hooks/useApi';
+import { useDailyPicks, useValueBets, usePredictionStats, useWeeklyAvailability, useModelInfo } from '@/hooks/useApi';
 import { MetricPlate } from '@/components/ui/MetricPlate';
 
 // Date utilities
@@ -41,7 +40,6 @@ function formatDateDisplay(date: Date, today: Date): string {
 
 function DashboardStats() {
   const { data: dailyPicks } = useDailyPicks();
-  const { data: liveMatches } = useLiveMatches();
   const { data: valueBets } = useValueBets();
   const { data: modelInfo } = useModelInfo();
   // The live model's own record only (Phase 4). Mixing in the old v1
@@ -62,7 +60,6 @@ function DashboardStats() {
     ? `Tested on unseen matches · live so far ${live.correct_predictions}/${live.total_predictions}`
     : tested ? 'Tested on unseen matches · live record starts with its first results' : 'Trailing 30 days';
   const predictionsToday = dailyPicks?.total_picks ?? '--';
-  const liveCount = liveMatches?.count ?? 0;
   const valueBetsCount = valueBets?.total ?? '--';
 
   return (
@@ -70,9 +67,8 @@ function DashboardStats() {
       title="Model performance — live"
       rows={[
         { metric: 'Accuracy rate', value: accuracy, remark: accuracyRemark },
-        { metric: 'Predictions today', value: String(predictionsToday), remark: 'Across all leagues' },
-        { metric: 'Live matches', value: String(liveCount), remark: 'Updating in real time' },
-        { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Edge over market odds' },
+        { metric: 'Top picks today', value: String(predictionsToday), remark: '55%+ confidence, all leagues' },
+        { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Model beats the odds by 5+ points' },
       ]}
     />
   );
@@ -146,12 +142,6 @@ export default function HomePage() {
 
       {/* Main Content Grid */}
       <div className="content-grid">
-        {/* Live Matches - Full Width */}
-        <div className="col-span-12">
-          <Suspense fallback={<LoadingSection />}>
-            <LiveMatches />
-          </Suspense>
-        </div>
 
         {/* Daily Picks - 8 columns */}
         <div className="col-span-8">
