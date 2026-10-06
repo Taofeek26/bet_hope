@@ -302,8 +302,13 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
             {(confidence * 100).toFixed(0)}% confidence
           </div>
           <div className="text-xs text-text-muted">
-            Predicted: {prediction.recommended_outcome || 'HOME'}
+            Predicted: {prediction.recommended_outcome || '—'}
+            {!hasVerification && prediction.predicted_home_score != null && prediction.predicted_away_score != null &&
+              ` · ${Math.round(prediction.predicted_home_score)}–${Math.round(prediction.predicted_away_score)}`}
           </div>
+          {!isFinished && prediction.is_value_bet && (
+            <span className="badge badge-brand mt-1" title="The model's probability beats the market odds by more than 5 points on at least one outcome">Value</span>
+          )}
         </div>
       </div>
 

@@ -15,6 +15,13 @@ export const metadata: Metadata = {
   title: 'Bet Hope - AI Football Predictions',
   description: 'AI-powered football match predictions and analytics platform',
   keywords: ['football', 'predictions', 'betting', 'AI', 'analytics', 'soccer'],
+  metadataBase: new URL('https://bet-hope-frontend.vercel.app'),
+  openGraph: {
+    title: 'Bet Hope - AI Football Predictions',
+    description: 'Match predictions for 20 leagues, measured honestly against the bookmakers.',
+    siteName: 'Bet Hope',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({
