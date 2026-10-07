@@ -21,7 +21,23 @@ export function MetricPlate({ title, rows }: MetricPlateProps) {
       <div className="metric-plate-header">
         <span>{title}</span>
       </div>
-      <table className="w-full">
+      {/* Phones: one stacked row per metric. A 4-column table left the remark
+          about 60px wide, one word per line. */}
+      <ul className="sm:hidden divide-y divide-border-dim">
+        {rows.map((row, i) => (
+          <li key={row.metric} className="px-4 py-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm text-text-sec">
+                <span className="metric-row-num mr-2">{String(i + 1).padStart(2, '0')}</span>
+                {row.metric}
+              </span>
+              <span className="metric-row-value text-right">{row.value}</span>
+            </div>
+            <div className="metric-row-remark text-xs mt-1">{row.remark}</div>
+          </li>
+        ))}
+      </ul>
+      <table className="w-full hidden sm:table">
         <thead>
           <tr className="border-b border-border text-left text-xs text-text-muted">
             <th className="px-5 py-2 font-normal">No.</th>

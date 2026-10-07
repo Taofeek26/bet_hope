@@ -9,6 +9,11 @@ export interface SlipSelection {
   match: string;        // "Arsenal v Leeds"
   kickoff?: string;     // ISO or date
   league?: string;
+  // For "Load on SportyBet" (browser extension): find the same match there.
+  home?: string;
+  away?: string;
+  leagueCode?: string;  // E0, SP1, ... (Bet Hope codes)
+  kickoffAt?: string | null; // exact UTC kickoff, if known
   group: string;        // "1X2", "GG/NG", "Over/Under", ...
   key: string;          // "1", "GG", "O2.5", ...
   label: string;        // "Arsenal to win"

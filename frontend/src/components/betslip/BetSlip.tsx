@@ -21,7 +21,32 @@ export function BetSlip() {
   const { selections, open, stake, remove, setYourOdds, setStake, clear, setOpen } = useBetSlip();
   const [ready, setReady] = useState(false);
   const [copied, setCopied] = useState(false);
-  useEffect(() => setReady(true), []);
+  const [ext, setExt] = useState(false);
+  const [sb, setSb] = useState<{ busy?: boolean; msg?: string; ok?: boolean; misses?: string[] } | null>(null);
+  useEffect(() => {
+    setReady(true);
+    // The desktop extension marks the page when it is installed.
+    const check = () => setExt(!!document.documentElement.dataset.bethopeExt);
+    check();
+    const t = setTimeout(check, 800);
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== window || e.data?.source !== 'bethope-ext' || e.data.type !== 'LOAD_SPORTYBET_RESULT') return;
+      const r = e.data.result || {};
+      // Fill in SportyBet's own prices for the picks it found.
+      for (const row of r.report || []) if (row.ok && row.odds) useBetSlip.getState().setYourOdds(row.matchId, row.odds);
+      const misses = (r.report || []).filter((row: any) => !row.ok).map((row: any) => `${row.label}: ${row.reason}`);
+      setSb(r.ok
+        ? { ok: true, msg: `Loaded ${r.loaded} of ${r.total} on SportyBet (code ${r.code}). Enter your stake there and place the bet yourself.`, misses }
+        : { ok: false, msg: r.error || 'SportyBet could not be loaded', misses });
+    };
+    window.addEventListener('message', onMsg);
+    return () => { clearTimeout(t); window.removeEventListener('message', onMsg); };
+  }, []);
+
+  const loadOnSportyBet = () => {
+    setSb({ busy: true, msg: 'Opening SportyBet…' });
+    window.postMessage({ source: 'bethope', type: 'LOAD_SPORTYBET', selections: useBetSlip.getState().selections }, window.location.origin);
+  };
 
   if (!ready || !settings.bettingTools) return null;
 
@@ -57,11 +82,13 @@ export function BetSlip() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-4 right-4 z-40 btn btn-primary shadow-lg"
+          className="fixed z-40 btn btn-primary shadow-lg rounded-full right-3 sm:right-4 h-12 sm:h-auto px-4"
+          style={{ bottom: 'max(12px, env(safe-area-inset-bottom))' }}
           aria-label={`Open bet slip (${n} selections)`}
         >
           <Ticket className="w-4 h-4" />
-          Slip{n > 0 && <span className="ml-1 px-1.5 rounded-full bg-bg text-brand text-xs font-bold">{n}</span>}
+          <span className="hidden sm:inline">Slip</span>
+          {n > 0 && <span className="ml-1 px-1.5 rounded-full bg-bg text-brand text-xs font-bold">{n}</span>}
         </button>
       )}
 
@@ -181,6 +208,17 @@ export function BetSlip() {
                   Open
                 </a>
               </div>
+              {settings.bookmakers.includes('sportybet') && (
+                ext ? (
+                  <div className="space-y-1">
+                    <button onClick={loadOnSportyBet} disabled={sb?.busy} className="btn btn-primary btn-sm w-full">
+                      <Ticket className="w-4 h-4" /> {sb?.busy ? 'Loading on SportyBet…' : 'Load on SportyBet'}
+                    </button>
+                    {sb?.msg && !sb.busy && <p className={`text-[11px] ${sb.ok ? 'text-green-500' : 'text-red-400'}`}>{sb.msg}</p>}
+                    {!!sb?.misses?.length && <ul className="text-[10px] text-text-muted list-disc pl-4">{sb.misses.map((m) => <li key={m}>{m}</li>)}</ul>}
+                  </div>
+                ) : null
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-[10px] text-text-muted">
                   Copies the slip, then opens {bookie?.name}; add the picks and stake there. 18+ · bet only what you can afford to lose.

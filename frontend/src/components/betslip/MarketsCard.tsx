@@ -57,6 +57,7 @@ export function MarketsCard({ match, markets }: { match: any; markets: MarketRow
                         match: `${home} v ${away}`,
                         kickoff: match.kickoff_at || match.match_date,
                         league: match.league_name,
+                        home, away, leagueCode: match.league_code, kickoffAt: match.kickoff_at,
                         group: m.group, key: m.key, label: m.label,
                         probability: m.probability, fairOdds: m.fair_odds, bestOdds: m.best_odds,
                       })

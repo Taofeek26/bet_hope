@@ -103,6 +103,7 @@ class PredictionSerializer(serializers.ModelSerializer):
             'kickoff_time': obj.match.kickoff_time.strftime('%H:%M') if obj.match.kickoff_time else None,
             'kickoff_at': obj.match.kickoff_at.isoformat() if obj.match.kickoff_at else None,
             'league': league_display,
+            'league_code': league.code if league else None,
             'league_country': league.country if league else None,
             'status': obj.match.status,
         }

@@ -116,7 +116,7 @@ export default function LeagueDetailPage() {
           </div>
         ) : standings?.standings && standings.standings.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm sm:text-base [&_td]:px-1.5 sm:[&_td]:px-2 [&_th]:px-1.5 sm:[&_th]:px-2">
               <thead>
                 <tr className="text-xs text-text-muted border-b border-border">
                   <th className="text-left py-3 px-2">#</th>
@@ -137,16 +137,16 @@ export default function LeagueDetailPage() {
                   return (
                     <tr key={team.team_id || index} className="border-b border-border-dim hover:bg-surface">
                       <td className="py-3 px-2 text-text-muted">{team.position || index + 1}</td>
-                      <td className="py-3 px-2">
-                        <Link href={`/teams/${team.team_id}`} className="flex items-center gap-2 text-text hover:text-brand">
+                      <td className="py-3 px-2 max-w-[150px] sm:max-w-none">
+                        <Link href={`/teams/${team.team_id}`} className="flex items-center gap-2 text-text hover:text-brand min-w-0">
                           {teamLogo ? (
-                            <img src={teamLogo} alt={teamName} className="w-5 h-5 object-contain" />
+                            <img src={teamLogo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
                           ) : (
-                            <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
+                            <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand flex-shrink-0">
                               {teamName.charAt(0)}
                             </div>
                           )}
-                          {teamName}
+                          <span className="truncate">{teamName}</span>
                         </Link>
                       </td>
                       <td className="text-center py-3 px-2 text-text-sec">{team.matches_played || team.played || 0}</td>

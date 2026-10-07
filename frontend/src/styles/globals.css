@@ -950,11 +950,15 @@
       grid-template-columns: repeat(6, 1fr);
     }
 
-    .col-span-3 { grid-column: span 3; }
-    .col-span-4 { grid-column: span 6; }
-    .col-span-6 { grid-column: span 6; }
-    .col-span-8 { grid-column: span 6; }
-    .col-span-9 { grid-column: span 6; }
+    /* ".content-grid >" on purpose: Tailwind ships utilities with the same
+       names (col-span-8 = span 8) that load later and silently kept the
+       desktop spans on tablets and phones, squeezing cards side by side. */
+    .content-grid > .col-span-3 { grid-column: span 3; }
+    .content-grid > .col-span-4,
+    .content-grid > .col-span-6,
+    .content-grid > .col-span-8,
+    .content-grid > .col-span-9,
+    .content-grid > .col-span-12 { grid-column: 1 / -1; }
   }
 
   @media (max-width: 768px) {
@@ -1005,7 +1009,9 @@
 
     .main-content {
       margin-left: 0;
-      padding: 20px 16px 60px;
+      /* room at the bottom so the floating Slip button never covers the last card */
+      padding: 20px 16px 96px;
+      min-width: 0;
     }
 
     .stats-grid {
@@ -1016,13 +1022,14 @@
       grid-template-columns: 1fr;
     }
 
-    .col-span-3,
-    .col-span-4,
-    .col-span-6,
-    .col-span-8,
-    .col-span-9,
-    .col-span-12 {
-      grid-column: span 1;
+    .content-grid > .col-span-3,
+    .content-grid > .col-span-4,
+    .content-grid > .col-span-6,
+    .content-grid > .col-span-8,
+    .content-grid > .col-span-9,
+    .content-grid > .col-span-12 {
+      grid-column: 1 / -1;
+      min-width: 0;
     }
 
     .sidebar-toggle {
@@ -1131,7 +1138,7 @@
      ═══════════════════════════════════════════════════════════════════════════ */
   @media (max-width: 480px) {
     .main-content {
-      padding: 16px 12px 50px;
+      padding: 16px 12px 96px;
     }
 
     /* Stats grid to single column on very small screens */

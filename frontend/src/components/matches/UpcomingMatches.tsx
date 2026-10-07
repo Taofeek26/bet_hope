@@ -111,7 +111,10 @@ function MatchRow({ match }: { match: any }) {
             <span className="text-[10px] sm:text-sm text-text-secondary">
               {formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone) || 'TBD'}
             </span>
-            <span className="text-[10px] text-text-muted sm:hidden">{match.league_name}</span>
+            <span className="text-[10px] text-text-muted sm:hidden flex items-center gap-1.5 min-w-0">
+              <span className="truncate">{match.league_name}</span>
+              {hasPrediction && <span className="w-2 h-2 rounded-full bg-brand1 inline-block flex-shrink-0" aria-label="Predicted" />}
+            </span>
           </div>
 
           {/* Teams */}
@@ -155,12 +158,6 @@ function MatchRow({ match }: { match: any }) {
             )}
           </div>
 
-          {/* Mobile prediction indicator - inline with time */}
-          <div className="sm:hidden absolute right-2 top-2">
-            {hasPrediction && (
-              <span className="w-2 h-2 rounded-full bg-brand1 inline-block"></span>
-            )}
-          </div>
         </div>
       </div>
     </Link>

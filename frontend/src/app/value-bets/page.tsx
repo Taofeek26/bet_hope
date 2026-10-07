@@ -125,7 +125,7 @@ export default function ValueBetsPage() {
             <div className="flex items-center gap-1 bg-surface rounded-lg p-1">
               <button
                 onClick={() => setViewMode('day')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap ${
                   viewMode === 'day'
                     ? 'bg-brand text-bg'
                     : 'text-text-muted hover:text-text'
@@ -135,7 +135,7 @@ export default function ValueBetsPage() {
               </button>
               <button
                 onClick={() => setViewMode('week')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap ${
                   viewMode === 'week'
                     ? 'bg-brand text-bg'
                     : 'text-text-muted hover:text-text'

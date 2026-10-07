@@ -32,6 +32,7 @@ export function QuickSlip({ prediction }: { prediction: any }) {
       <button
         onClick={() => toggle({
           matchId, match: `${home} v ${away}`, kickoff: m.kickoff_at || m.match_date, league: m.league,
+          home, away, leagueCode: m.league_code, kickoffAt: m.kickoff_at,
           group: '1X2', key, label, probability: p, fairOdds: Math.round((1 / p) * 100) / 100,
         })}
         className={`btn btn-sm text-xs ${added ? 'btn-primary' : 'btn-secondary'}`}

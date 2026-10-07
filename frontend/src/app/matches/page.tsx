@@ -239,7 +239,7 @@ function MatchCard({ match }: { match: any }) {
 
       {/* Score/Time and Prediction row - stacks on mobile */}
       <div className="flex items-center justify-between w-full sm:w-auto gap-3 sm:gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-dim mt-2 sm:mt-0">
-        <div className="text-center min-w-[70px] sm:min-w-[100px]">
+        <div className="text-left sm:text-center flex-shrink-0 min-w-[96px] max-w-[60%] sm:max-w-none sm:min-w-[100px]">
           {isFinished ? (
             <div className="text-base sm:text-xl font-bold text-text">
               {match.home_score} - {match.away_score}
@@ -247,17 +247,24 @@ function MatchCard({ match }: { match: any }) {
           ) : isLive ? (
             <div className="badge badge-live text-[10px] sm:text-xs">LIVE</div>
           ) : (
-            <div className="text-xs sm:text-sm text-text-muted">
+            <div className="text-xs sm:text-sm text-text-muted min-w-0">
+              {/* The day header above already shows the date; on phones show
+                  the kickoff time and the full league name instead. */}
               <div className="truncate">
-                {match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD'}
-                {(match.kickoff_at || match.kickoff_time) && ` · ${formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}`}
+                <span className="hidden sm:inline">
+                  {match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD'}
+                  {(match.kickoff_at || match.kickoff_time) && ' · '}
+                </span>
+                {(match.kickoff_at || match.kickoff_time)
+                  ? <span className="text-text font-medium sm:font-normal sm:text-text-muted">{formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}</span>
+                  : <span className="sm:hidden">Time TBC</span>}
               </div>
-              {leagueName && <div className="text-[10px] sm:text-xs truncate max-w-[80px] sm:max-w-none">{leagueName}</div>}
+              {leagueName && <div className="text-[11px] sm:text-xs truncate">{leagueName}</div>}
             </div>
           )}
         </div>
 
-        <div className="match-prediction min-w-[90px] sm:min-w-[120px] flex-row sm:flex-col items-center sm:items-end">
+        <div className="match-prediction !w-auto !border-t-0 !pt-0 min-w-0 sm:min-w-[120px] flex-row sm:flex-col items-center sm:items-end justify-end">
           {prediction && (
             <div className="flex items-center gap-1.5 sm:gap-2">
               {hasVerification && (
