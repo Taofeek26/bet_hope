@@ -1332,12 +1332,13 @@
   }
 }
 
-/* Bet slip docked on the right (Phase 5): the app narrows to make room. */
-@media (min-width: 640px) {
+/* Bet slip docked on the right (Phase 5): the app narrows to make room.
+   Below 1024px the slip is a full-screen sheet instead. */
+@media (min-width: 1024px) {
   body.slip-open .app { padding-right: 400px; }
   body.slip-open .main-content { padding-left: 24px; padding-right: 24px; }
   body.slip-open .match-card { flex-wrap: wrap; }
 }
-@media (max-width: 639px) {
+@media (max-width: 1023px) {
   body.slip-open { overflow: hidden; }
 }

@@ -25,11 +25,11 @@ export function Header() {
           <Logo />
         </Link>
 
-        <div className="flex-1 max-w-xl hidden md:block">
+        <div className="flex-1 min-w-0 max-w-xl hidden md:block">
           <TeamSearch />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="md:hidden p-2 rounded-lg hover:bg-surface text-text-secondary"

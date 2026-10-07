@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Ticket, X, Copy, ExternalLink, Trash2, Check } from 'lucide-react';
 import { useBetSlip } from '@/lib/betslip';
+import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { BOOKMAKERS, bookmakerById } from '@/lib/bookmakers';
 
@@ -46,11 +47,26 @@ export function BetSlip() {
   // Docked, not on top: while the slip is open the page makes room for it on
   // wider screens (globals.css: body.slip-open), so nothing is hidden behind
   // it. On phones it is a full-screen sheet and the page behind can't scroll.
+  const { collapsed, setCollapsed } = useSidebar();
+  const [autoCollapsed, setAutoCollapsed] = useState(false);
   useEffect(() => {
     const on = open && settings.bettingTools;
     document.body.classList.toggle('slip-open', on);
     return () => document.body.classList.remove('slip-open');
   }, [open, settings.bettingTools]);
+  // Below 1280px wide there isn't room for the full sidebar, the page and
+  // the slip, so the sidebar folds to icons while the slip is open and comes
+  // back when it closes (only if we were the ones who folded it).
+  useEffect(() => {
+    if (open && !collapsed && window.innerWidth >= 1024 && window.innerWidth < 1280) {
+      setCollapsed(true);
+      setAutoCollapsed(true);
+    } else if (!open && autoCollapsed) {
+      setCollapsed(false);
+      setAutoCollapsed(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const loadOnSportyBet = () => {
     setSb({ busy: true, msg: 'Opening SportyBet…' });
@@ -90,7 +106,7 @@ export function BetSlip() {
     <>
       {open && (
         <aside
-          className="fixed inset-y-0 right-0 z-50 w-full sm:w-[400px] bg-card border-l border-border shadow-2xl flex flex-col"
+          className="fixed inset-y-0 right-0 z-50 w-full lg:w-[400px] bg-card lg:border-l border-border shadow-2xl flex flex-col"
           aria-label="Bet slip"
         >
           <div className="flex items-center justify-between p-4 border-b border-border-dim">
