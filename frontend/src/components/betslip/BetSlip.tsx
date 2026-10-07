@@ -43,6 +43,15 @@ export function BetSlip() {
     return () => { clearTimeout(t); window.removeEventListener('message', onMsg); };
   }, []);
 
+  // Docked, not on top: while the slip is open the page makes room for it on
+  // wider screens (globals.css: body.slip-open), so nothing is hidden behind
+  // it. On phones it is a full-screen sheet and the page behind can't scroll.
+  useEffect(() => {
+    const on = open && settings.bettingTools;
+    document.body.classList.toggle('slip-open', on);
+    return () => document.body.classList.remove('slip-open');
+  }, [open, settings.bettingTools]);
+
   const loadOnSportyBet = () => {
     setSb({ busy: true, msg: 'Opening SportyBet…' });
     window.postMessage({ source: 'bethope', type: 'LOAD_SPORTYBET', selections: useBetSlip.getState().selections }, window.location.origin);

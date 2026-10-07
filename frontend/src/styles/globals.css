@@ -1330,3 +1330,11 @@
     animation: fadeIn 0.25s ease;
   }
 }
+
+/* Bet slip docked on the right (Phase 5): the app narrows to make room. */
+@media (min-width: 640px) {
+  body.slip-open .app { padding-right: 400px; }
+}
+@media (max-width: 639px) {
+  body.slip-open { overflow: hidden; }
+}
