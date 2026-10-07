@@ -8,6 +8,7 @@ import { Search, X } from 'lucide-react';
 import { teamsApi } from '@/lib/api';
 import { Logo } from '@/components/ui/Logo';
 import { TaskStatusIndicator } from '@/components/ui/TaskStatusIndicator';
+import { SlipButton } from '@/components/betslip/BetSlip';
 
 /**
  * Phase 4: the search box now searches teams (it had no handler), and the
@@ -37,6 +38,7 @@ export function Header() {
             {mobileOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
           </button>
           <TaskStatusIndicator />
+          <SlipButton />
         </div>
       </div>
 

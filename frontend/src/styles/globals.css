@@ -1009,8 +1009,7 @@
 
     .main-content {
       margin-left: 0;
-      /* room at the bottom so the floating Slip button never covers the last card */
-      padding: 20px 16px 96px;
+      padding: 20px 16px 60px;
       min-width: 0;
     }
 
@@ -1138,7 +1137,7 @@
      ═══════════════════════════════════════════════════════════════════════════ */
   @media (max-width: 480px) {
     .main-content {
-      padding: 16px 12px 96px;
+      padding: 16px 12px 50px;
     }
 
     /* Stats grid to single column on very small screens */

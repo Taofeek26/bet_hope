@@ -79,19 +79,6 @@ export function BetSlip() {
 
   return (
     <>
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="fixed z-40 btn btn-primary shadow-lg rounded-full right-3 sm:right-4 h-12 sm:h-auto px-4"
-          style={{ bottom: 'max(12px, env(safe-area-inset-bottom))' }}
-          aria-label={`Open bet slip (${n} selections)`}
-        >
-          <Ticket className="w-4 h-4" />
-          <span className="hidden sm:inline">Slip</span>
-          {n > 0 && <span className="ml-1 px-1.5 rounded-full bg-bg text-brand text-xs font-bold">{n}</span>}
-        </button>
-      )}
-
       {open && (
         <aside
           className="fixed inset-y-0 right-0 z-50 w-full sm:w-[400px] bg-card border-l border-border shadow-2xl flex flex-col"
@@ -232,5 +219,29 @@ export function BetSlip() {
         </aside>
       )}
     </>
+  );
+}
+
+/**
+ * Slip button for the header (replaces the floating button, which covered
+ * page content on phones with no way to scroll past it).
+ */
+export function SlipButton() {
+  const { settings } = useSettings();
+  const { selections, setOpen } = useBetSlip();
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  if (!ready || !settings.bettingTools) return null;
+  const n = selections.length;
+  return (
+    <button
+      onClick={() => setOpen(true)}
+      className="btn btn-primary btn-sm h-9 px-3 relative"
+      aria-label={`Open bet slip (${n} selection${n === 1 ? '' : 's'})`}
+    >
+      <Ticket className="w-4 h-4" />
+      <span className="hidden sm:inline">Slip</span>
+      {n > 0 && <span className="px-1.5 rounded-full bg-bg text-brand text-xs font-bold leading-5">{n}</span>}
+    </button>
   );
 }
