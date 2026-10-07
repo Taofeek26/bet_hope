@@ -70,6 +70,15 @@
   <p><strong>Nigerian odds:</strong> no official odds feed was found for Bet9ja, SportyBet or BetKing. An open-source scraper, <a href="https://github.com/jayteealao/NaijaBet_Api">NaijaBet_Api</a>, reads 1X2 and double-chance odds from Bet9ja, BetKing and NairaBet. It is unofficial (it may break, and may breach their terms), so treat it as an experiment at most. Paid marketplace "APIs" for these sites are third-party scrapers with the same problems.</p>
   <div class="callout warn"><strong>Conflict of interest:</strong> revenue share pays you a cut of what referred players <em>lose</em>. That sits awkwardly with an app that tells people which bets look good, especially since the model has no proven edge. If you join, say so clearly in the app, keep betting tools optional, and check your state's rules on gambling advertising (e.g. LSLGA in Lagos).</div>
 
+  <h2 id="automation">Logging in to a bookmaker account for the user (assessed 7 Oct 2026)</h2>
+  <p><span class="st broken">Not recommended</span> Idea: the user enters their bookmaker login in Bet Hope; a headless browser logs in as them, finds the match, adds the selection and places the stake.</p>
+  <ul>
+    <li><strong>Terms:</strong> Nigerian bookmakers' terms ban bots and automated or third-party account access. The usual penalty is a closed account and voided bets or winnings.</li>
+    <li><strong>Security and law:</strong> Bet Hope would hold passwords to accounts that hold money. A leak means drained wallets. Storing them makes you a data controller under Nigeria's Data Protection Act 2023. Asking for another site's password is also exactly what phishing looks like.</li>
+    <li><strong>Technical:</strong> OTP / 2FA by SMS, captchas, bot detection and frequent site changes. Getting around those means evading the bookmaker's security, which we won't build.</li>
+    <li><strong>Safer alternative, if ever needed:</strong> a browser extension that runs in the user's own logged-in tab (no password leaves their browser). It adds the slip's selections, and the user presses "Place bet" themselves. It is still at the bookmaker's discretion; an official booking code (SportyBet) or deep link (1xBet) via the partner programmes is better.</li>
+  </ul>
+
   <h2>Is the Analytics page up to date?</h2>
   <p><span class="st ok">Fixed 6 Oct</span> (see Progress). It was not: It still counts old v1 predictions together with v2's (so it shows v1's 39.4%), always uses the last 30 days, and shows nothing about the tested scorecard. Fix (part of step 1 below):</p>
   <ul>
