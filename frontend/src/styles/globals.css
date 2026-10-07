@@ -374,6 +374,7 @@
   /* ─── MAIN CONTENT ─── */
   .main-content {
     flex: 1;
+    min-width: 0; /* lets the page narrow (e.g. beside the docked bet slip) instead of spilling under it */
     margin-left: 260px;
     padding: 40px 48px 80px;
     min-height: 100vh;
@@ -1334,6 +1335,8 @@
 /* Bet slip docked on the right (Phase 5): the app narrows to make room. */
 @media (min-width: 640px) {
   body.slip-open .app { padding-right: 400px; }
+  body.slip-open .main-content { padding-left: 24px; padding-right: 24px; }
+  body.slip-open .match-card { flex-wrap: wrap; }
 }
 @media (max-width: 639px) {
   body.slip-open { overflow: hidden; }
