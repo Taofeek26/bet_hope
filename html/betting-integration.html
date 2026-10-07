@@ -79,6 +79,13 @@
     <li><strong>Safer alternative, if ever needed:</strong> a browser extension that runs in the user's own logged-in tab (no password leaves their browser). It adds the slip's selections, and the user presses "Place bet" themselves. It is still at the bookmaker's discretion; an official booking code (SportyBet) or deep link (1xBet) via the partner programmes is better.</li>
   </ul>
 
+  <h2 id="extension">SportyBet desktop extension and mobile pass (7 Oct 2026)</h2>
+  <ul>
+    <li><strong>Extension</strong> (<code>extension/sportybet</code>, local only; not committed, because the repo is public): with SportyBet open in your own browser, it finds each pick in SportyBet's match list (all 21 competitions mapped to Sportradar tournament ids and checked; every Bet Hope market mapped), creates a booking code, and opens it. It fills SportyBet's odds into the Bet Hope slip and shows a banner. It never logs in or places bets. The "Load on SportyBet" slip button appears only when the extension is installed. <span class="st partial">Not yet tested end to end</span> (the automated live test was blocked by the tool's safety check; test it in your browser).</li>
+    <li><strong>Bet9ja:</strong> no public booking-code method and Akamai bot protection; further investigation was blocked. Only the partner programme remains.</li>
+    <li><strong>Mobile:</strong> Tailwind's <code>col-span-*</code> utilities overrode the phone/tablet grid (cards squeezed side by side). Also fixed: logo gradient id (the header logo showed as a dot), stacked metric list, match-card kickoff and league, standings name truncation, two-line team fixture rows, slip button and bottom spacing. Every page checked at 390 px on production: no sideways scrolling. Commit <code>eea6ce9</code>, image <code>eea6ce9…</code> on both functions, Vercel deployed.</li>
+  </ul>
+
   <h2>Is the Analytics page up to date?</h2>
   <p><span class="st ok">Fixed 6 Oct</span> (see Progress). It was not: It still counts old v1 predictions together with v2's (so it shows v1's 39.4%), always uses the last 30 days, and shows nothing about the tested scorecard. Fix (part of step 1 below):</p>
   <ul>
