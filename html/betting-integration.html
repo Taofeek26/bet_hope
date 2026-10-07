@@ -55,6 +55,21 @@
     <li><strong>Bookmakers:</strong> licensed locally: e.g. 1xBet Nigeria and Betway Nigeria (LSLGA), Betano (NLRC) (<a href="https://nlrc-gov.ng/list-of-approved-gaming-operators/">NLRC list</a>), plus Bet9ja, SportyBet and BetKing. None offers a public API for pre-filled bet slips.</li>
   </ul>
 
+  <h2 id="partners">Nigerian bookmaker partner programmes (researched 7 Oct 2026)</h2>
+  <p>Why this route: getting around geo-blocking with a VPN was ruled out. KYC, payment and VPN checks catch it, and the exchanges' terms let them void bets and keep balances. The legitimate way to get closer to one-click betting from Nigeria is through the bookmakers' own partner programmes.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Bookmaker</th><th>Programme</th><th>Pay</th><th>Useful tools for Bet Hope</th><th>Pre-filled slip?</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1xBet</strong></td><td><a href="https://1xaffiliate.partners/">1xBet Partners</a></td><td>Up to 40% revenue share; weekly payouts, NGN supported</td><td>Tracking links, promo codes, <strong>deep links to specific events</strong>, an <strong>API feed</strong> and postback (S2S) for partners</td><td>Event deep links: <strong>yes</strong>. Slip: ask them</td></tr>
+      <tr><td><strong>SportyBet</strong></td><td><a href="https://www.sportybet.com/ng/partner/index.html#/">SportyBet Partner</a></td><td>20–40% revenue share or CPA; monthly</td><td>Tracking links. SportyBet's own site creates <strong>booking codes</strong> (a shareable slip: no stake, no login, expires at the first kickoff) via an internal endpoint, <code>/api/ng/orders/share</code>.</td><td><strong>Technically yes</strong>, but the endpoint is undocumented (<a href="https://github.com/Tolar07/framework/pull/14">example</a>). Ask the partner team for permission first.</td></tr>
+      <tr><td><strong>Bet9ja</strong></td><td><a href="https://www.incomeaccess.com/press-room/bet9ja-affiliate-programme-income-access/">Bet9ja Affiliates</a> (run by Income Access)</td><td>20–35% revenue share by volume, or CPA; $500 minimum payout</td><td>Banners, tracking links, landing pages, reporting API (<a href="https://statsdrone.com/affiliate-programs/bet9ja-affiliates/">review</a>)</td><td>No public way to create booking codes; users can <em>load</em> a code. Ask them</td></tr>
+      <tr><td><strong>BetKing</strong></td><td><a href="https://www.betkingspartners.com/">BetKing Partners</a></td><td>About 25% of net gaming revenue; 0% in any month with fewer than 5 new depositing players (<a href="https://statsdrone.com/affiliate-programs/betking-affiliates/">review</a>)</td><td>Tracking links, banners, landing pages</td><td>No</td></tr>
+      <tr><td><strong>Betway Nigeria</strong></td><td><a href="https://statsdrone.com/affiliate-programs/betway-partners-africa/">Betway Partners Africa</a></td><td>25% revenue share, or CPA</td><td>Banners, tracking links, landing pages, SMS. No reporting API listed</td><td>No</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Nigerian odds:</strong> no official odds feed was found for Bet9ja, SportyBet or BetKing. An open-source scraper, <a href="https://github.com/jayteealao/NaijaBet_Api">NaijaBet_Api</a>, reads 1X2 and double-chance odds from Bet9ja, BetKing and NairaBet. It is unofficial (it may break, and may breach their terms), so treat it as an experiment at most. Paid marketplace "APIs" for these sites are third-party scrapers with the same problems.</p>
+  <div class="callout warn"><strong>Conflict of interest:</strong> revenue share pays you a cut of what referred players <em>lose</em>. That sits awkwardly with an app that tells people which bets look good, especially since the model has no proven edge. If you join, say so clearly in the app, keep betting tools optional, and check your state's rules on gambling advertising (e.g. LSLGA in Lagos).</div>
+
   <h2>Is the Analytics page up to date?</h2>
   <p><span class="st ok">Fixed 6 Oct</span> (see Progress). It was not: It still counts old v1 predictions together with v2's (so it shows v1's 39.4%), always uses the last 30 days, and shows nothing about the tested scorecard. Fix (part of step 1 below):</p>
   <ul>
