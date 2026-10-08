@@ -7,6 +7,7 @@ import { Wallet, Trash2 } from 'lucide-react';
 import { matchesApi } from '@/lib/api';
 import { useMyBets, legResult, betResult, type LegResult } from '@/lib/mybets';
 import { bookmakerById } from '@/lib/bookmakers';
+import { useAuth } from '@/lib/auth';
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
 const ICON: Record<LegResult, string> = { won: '✅', lost: '❌', void: '➖', pending: '⏳' };
@@ -51,7 +52,7 @@ export default function MyBetsPage() {
     <>
       <div className="content-header">
         <h1>My bets</h1>
-        <p>Bets you placed at your bookmaker, settled from the final scores. Saved on this device only.</p>
+        <p>Bets you placed at your bookmaker, settled from the final scores. <SavedWhere /></p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -126,6 +127,13 @@ export default function MyBetsPage() {
       <p className="text-[11px] text-text-muted mt-4">18+. Bet only what you can afford to lose. If betting stops being fun, take a break.</p>
     </>
   );
+}
+
+function SavedWhere() {
+  const { user } = useAuth();
+  return user
+    ? <>Saved to your account ({user.email}).</>
+    : <>Saved on this device only. <Link href="/account" className="text-brand hover:underline">Sign in</Link> to keep them on any device.</>;
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {

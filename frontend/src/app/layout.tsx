@@ -10,6 +10,7 @@ import { NotificationWatcher } from '@/components/notifications/NotificationWatc
 import { BetSlip } from '@/components/betslip/BetSlip';
 import { PwaSetup } from '@/components/pwa/PwaSetup';
 import { ExtensionInbox } from '@/components/betslip/ExtensionInbox';
+import { AccountSync } from '@/components/account/AccountSync';
 import { TicketWatcher } from '@/components/betslip/TicketWatcher';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -51,6 +52,7 @@ export default function RootLayout({
               <BetSlip />
               <PwaSetup />
               <ExtensionInbox />
+              <AccountSync />
               <TicketWatcher />
             </SidebarProvider>
           </SettingsProvider>

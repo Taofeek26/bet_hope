@@ -29,15 +29,40 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
+// Response interceptor (Phase 7): an expired sign-in is refreshed once with
+// the refresh token; if that fails the user is signed out and the request is
+// retried without a token (public pages must keep working).
+let refreshing: Promise<string | null> | null = null;
+async function refreshAccess(): Promise<string | null> {
+  const refresh = typeof window !== 'undefined' ? localStorage.getItem('refresh') : null;
+  if (!refresh) return null;
+  try {
+    const { data } = await axios.post(`${api.defaults.baseURL}/auth/token/refresh/`, { refresh });
+    localStorage.setItem('token', data.access);
+    if (data.refresh) localStorage.setItem('refresh', data.refresh);
+    return data.access;
+  } catch {
+    return null;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized
-      if (typeof window !== 'undefined') {
+  async (error) => {
+    const cfg = error.config || {};
+    if (error.response?.status === 401 && typeof window !== 'undefined' && !cfg._retried && !String(cfg.url || '').includes('/auth/token')) {
+      cfg._retried = true;
+      refreshing = refreshing || refreshAccess().finally(() => { refreshing = null; });
+      const access = await refreshing;
+      if (access) {
+        cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${access}` };
+      } else {
         localStorage.removeItem('token');
+        localStorage.removeItem('refresh');
+        window.dispatchEvent(new Event('bethope-signed-out'));
+        if (cfg.headers) delete cfg.headers.Authorization;
       }
+      return api.request(cfg);
     }
     return Promise.reject(error);
   }
@@ -362,6 +387,27 @@ export const documentsApi = {
     });
     return data;
   },
+};
+
+// Accounts (Phase 7)
+export interface Me {
+  id: number; email: string; name: string; is_staff: boolean; joined: string;
+  favourite_teams: number[]; favourite_leagues: string[]; weekly_limit: number | null;
+}
+export const accountApi = {
+  register: async (email: string, password: string, name: string) =>
+    (await api.post<{ access: string; refresh: string; user: Me }>('/auth/register/', { email, password, name })).data,
+  me: async () => (await api.get<Me>('/me/')).data,
+  update: async (patch: Partial<Me>) => (await api.patch<Me>('/me/update/', patch)).data,
+  changePassword: async (old_password: string, new_password: string) => (await api.post('/me/password/', { old_password, new_password })).data,
+  deleteAccount: async (password: string) => (await api.post('/me/delete/', { password })).data,
+  bets: async () => (await api.get<{ bets: any[] }>('/me/bets/')).data.bets,
+  saveBets: async (bets: any[]) => (await api.post('/me/bets/', { bets })).data,
+  deleteBet: async (id: string) => (await api.post('/me/bets/delete/', { id })).data,
+  adminUsers: async (search?: string) => (await api.get('/admin-users/', { params: search ? { search } : undefined })).data,
+  adminUser: async (id: number) => (await api.get(`/admin-users/${id}/`)).data,
+  adminSetActive: async (id: number, active: boolean) => (await api.post(`/admin-users/${id}/set_active/`, { active })).data,
+  adminResetPassword: async (id: number) => (await api.post(`/admin-users/${id}/reset_password/`)).data as { temporary_password: string },
 };
 
 // Auth endpoints

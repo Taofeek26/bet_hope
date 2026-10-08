@@ -44,6 +44,7 @@ LOCAL_APPS = [
     'apps.ml_pipeline',
     'apps.documents',
     'apps.engage',
+    'apps.accounts',
     'apps.api',
 ]
 
@@ -173,7 +174,8 @@ REST_FRAMEWORK = {
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # users stay signed in for a month (Phase 7)
+    'UPDATE_LAST_LOGIN': True,                      # admin user list shows last sign-in
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),

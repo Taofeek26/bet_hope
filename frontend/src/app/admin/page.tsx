@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Play, Lock, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 import { authApi, adminTasksApi, TaskRun, TaskRunStatus } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { UsersPanel } from '@/components/account/UsersPanel';
 
 const ACTIVE_TASKS_KEY = 'bethope_active_task_ids';
 
@@ -71,9 +73,13 @@ export default function AdminPage() {
     setLoginError('');
     setLoggingIn(true);
     try {
-      const { access } = await authApi.login(username, password);
+      // Phase 7: keep the refresh token too (the 60-minute access token alone
+      // made the admin session drop every hour, SEC-04) and load the user.
+      const { access, refresh } = await authApi.login(username.trim(), password);
       localStorage.setItem('token', access);
+      localStorage.setItem('refresh', refresh);
       setToken(access);
+      useAuth.getState().load();
     } catch (err: any) {
       setLoginError(
         err?.response?.status === 401
@@ -86,7 +92,7 @@ export default function AdminPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    useAuth.getState().logout();
     setToken(null);
   };
 
@@ -254,6 +260,8 @@ export default function AdminPage() {
           </tbody>
         </table>
       </div>
+
+      <UsersPanel />
     </>
   );
 }

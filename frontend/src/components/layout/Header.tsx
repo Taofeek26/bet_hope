@@ -9,6 +9,7 @@ import { teamsApi } from '@/lib/api';
 import { Logo } from '@/components/ui/Logo';
 import { TaskStatusIndicator } from '@/components/ui/TaskStatusIndicator';
 import { SlipButton } from '@/components/betslip/BetSlip';
+import { AccountButton } from '@/components/account/AccountButton';
 
 /**
  * Phase 4: the search box now searches teams (it had no handler), and the
@@ -39,6 +40,7 @@ export function Header() {
           </button>
           <TaskStatusIndicator />
           <SlipButton />
+          <AccountButton />
         </div>
       </div>
 
