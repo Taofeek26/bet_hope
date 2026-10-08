@@ -148,16 +148,6 @@ export default function HomePage() {
       {/* Stats Grid */}
       <DashboardStats />
 
-      {/* Phase 6: something new every morning */}
-      <div className="content-grid">
-        <div className="col-span-8">
-          <FlashFeed limit={15} />
-        </div>
-        <div className="col-span-4">
-          <AccaOfDay />
-          <ResultsCard />
-        </div>
-      </div>
 
       {/* Main Content Grid */}
       <div className="content-grid">
@@ -278,6 +268,20 @@ export default function HomePage() {
           <Suspense fallback={<LoadingSection />}>
             <UpcomingMatches />
           </Suspense>
+        </div>
+      </div>
+
+      {/* Acca of the day and yesterday's results, then the flash feed last:
+          top picks come first on the Dashboard. */}
+      <div className="content-grid">
+        <div className="col-span-6">
+          <AccaOfDay />
+        </div>
+        <div className="col-span-6">
+          <ResultsCard />
+        </div>
+        <div className="col-span-12">
+          <FlashFeed limit={15} />
         </div>
       </div>
     </>
