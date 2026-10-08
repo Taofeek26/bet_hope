@@ -10,8 +10,8 @@ interface AuthState {
   setSyncing: (v: boolean) => void;
   setUser: (u: Me | null) => void;
   load: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  login: (usernameOrEmail: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -25,14 +25,15 @@ export const useAuth = create<AuthState>((set) => ({
     if (typeof window === 'undefined' || !localStorage.getItem('token')) return set({ user: null, loading: false });
     try { set({ user: await accountApi.me(), loading: false }); } catch { set({ user: null, loading: false }); }
   },
-  login: async (email, password) => {
-    const { access, refresh } = await authApi.login(email.trim().toLowerCase(), password);
+  login: async (usernameOrEmail, password) => {
+    // The server matches usernames and emails case-insensitively.
+    const { access, refresh } = await authApi.login(usernameOrEmail.trim(), password);
     localStorage.setItem('token', access);
     localStorage.setItem('refresh', refresh);
     set({ user: await accountApi.me() });
   },
-  register: async (email, password, name) => {
-    const r = await accountApi.register(email.trim().toLowerCase(), password, name);
+  register: async (username, email, password, name) => {
+    const r = await accountApi.register(username.trim(), email.trim().toLowerCase(), password, name);
     localStorage.setItem('token', r.access);
     localStorage.setItem('refresh', r.refresh);
     set({ user: r.user });

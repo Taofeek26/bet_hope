@@ -30,6 +30,8 @@ function SignIn() {
   const router = useRouter();
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [ident, setIdent] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,11 +40,11 @@ function SignIn() {
     e.preventDefault();
     setBusy(true); setMsg('');
     try {
-      if (mode === 'in') await login(email, password);
-      else await register(email, password, name);
+      if (mode === 'in') await login(ident, password);
+      else await register(username, email, password, name);
       router.push('/my-bets');
     } catch (e2: any) {
-      setMsg(mode === 'in' ? (e2?.response?.status === 401 ? 'Wrong email or password, or the account is disabled.' : err(e2, 'Could not sign in')) : err(e2, 'Could not create the account'));
+      setMsg(mode === 'in' ? (e2?.response?.status === 401 ? 'Wrong username/email or password, or the account is disabled.' : err(e2, 'Could not sign in')) : err(e2, 'Could not create the account'));
     } finally { setBusy(false); }
   };
   return (
@@ -52,14 +54,23 @@ function SignIn() {
         <button onClick={() => setMode('up')} className={`btn btn-sm ${mode === 'up' ? 'btn-primary' : 'btn-secondary'}`}>Create account</button>
       </div>
       <form onSubmit={submit} className="space-y-3">
-        {mode === 'up' && (
-          <label className="block text-sm"><span className="text-text-muted">Name (optional)</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className="input w-full mt-1" autoComplete="name" />
+        {mode === 'in' ? (
+          <label className="block text-sm"><span className="text-text-muted">Username or email</span>
+            <input required value={ident} onChange={(e) => setIdent(e.target.value)} className="input w-full mt-1" autoComplete="username" autoCapitalize="none" autoCorrect="off" />
           </label>
+        ) : (
+          <>
+            <label className="block text-sm"><span className="text-text-muted">Username (3-30 letters, numbers, . _ -)</span>
+              <input required minLength={3} maxLength={30} pattern="[A-Za-z0-9._\-]{3,30}" value={username} onChange={(e) => setUsername(e.target.value)} className="input w-full mt-1" autoComplete="username" autoCapitalize="none" autoCorrect="off" />
+            </label>
+            <label className="block text-sm"><span className="text-text-muted">Email</span>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input w-full mt-1" autoComplete="email" autoCapitalize="none" />
+            </label>
+            <label className="block text-sm"><span className="text-text-muted">Name (optional)</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className="input w-full mt-1" autoComplete="name" />
+            </label>
+          </>
         )}
-        <label className="block text-sm"><span className="text-text-muted">Email</span>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input w-full mt-1" autoComplete="email" />
-        </label>
         <label className="block text-sm"><span className="text-text-muted">Password{mode === 'up' ? ' (at least 8 characters, not all numbers)' : ''}</span>
           <input type="password" required minLength={mode === 'up' ? 8 : 1} value={password} onChange={(e) => setPassword(e.target.value)} className="input w-full mt-1" autoComplete={mode === 'up' ? 'new-password' : 'current-password'} />
         </label>
@@ -68,7 +79,7 @@ function SignIn() {
       </form>
       <p className="text-xs text-text-muted mt-4">
         {mode === 'up'
-          ? 'Bets and favourites already saved on this device are added to your new account. We store your email, a hashed password and what you save in the app. Bet Hope admins can see your email and saved bets. You can delete your account at any time. 18+ only.'
+          ? 'Bets and favourites already saved on this device are added to your new account. We store your username, email, a hashed password and what you save in the app. Bet Hope admins can see your username, email and saved bets. You can delete your account at any time. 18+ only.'
           : 'Forgot your password? Ask the Bet Hope admin for a temporary one (there is no email reset yet).'}
       </p>
     </div>
@@ -97,8 +108,8 @@ function Profile() {
           <div className="card-header">
             <div className="card-icon"><UserCircle2 className="w-5 h-5" /></div>
             <div className="min-w-0">
-              <h2 className="card-title truncate">{user.name || user.email}</h2>
-              <p className="card-desc truncate">{user.email} · since {new Date(user.joined).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</p>
+              <h2 className="card-title truncate">{user.name || user.username}</h2>
+              <p className="card-desc truncate">@{user.username} · {user.email} · since {new Date(user.joined).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</p>
             </div>
           </div>
           <p className="text-sm text-text-sec mb-4">{bets.length} bet{bets.length === 1 ? '' : 's'} saved · <Link href="/my-bets" className="text-brand">My bets</Link></p>

@@ -391,12 +391,12 @@ export const documentsApi = {
 
 // Accounts (Phase 7)
 export interface Me {
-  id: number; email: string; name: string; is_staff: boolean; joined: string;
+  id: number; username: string; email: string; name: string; is_staff: boolean; joined: string;
   favourite_teams: number[]; favourite_leagues: string[]; weekly_limit: number | null;
 }
 export const accountApi = {
-  register: async (email: string, password: string, name: string) =>
-    (await api.post<{ access: string; refresh: string; user: Me }>('/auth/register/', { email, password, name })).data,
+  register: async (username: string, email: string, password: string, name: string) =>
+    (await api.post<{ access: string; refresh: string; user: Me }>('/auth/register/', { username, email, password, name })).data,
   me: async () => (await api.get<Me>('/me/')).data,
   update: async (patch: Partial<Me>) => (await api.patch<Me>('/me/update/', patch)).data,
   changePassword: async (old_password: string, new_password: string) => (await api.post('/me/password/', { old_password, new_password })).data,

@@ -20,7 +20,7 @@ export function UsersPanel() {
     <div className="mt-8">
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted flex items-center gap-2"><Users className="w-4 h-4" /> Users</h2>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search email or name" className="input input-sm w-56" aria-label="Search users" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search username, email or name" className="input input-sm w-56" aria-label="Search users" />
       </div>
       {isLoading ? <LoadingSpinner /> : error ? <p className="text-sm text-red-400">Could not load users (staff only).</p> : (
         <>
@@ -41,8 +41,8 @@ export function UsersPanel() {
                 {data.users.map((u: any) => (
                   <tr key={u.id} className="border-b border-border-dim last:border-b-0 hover:bg-surface cursor-pointer" onClick={() => setOpenId(u.id)}>
                     <td className="px-4 py-2">
-                      <div className="text-text">{u.name || u.email}</div>
-                      <div className="text-[11px] text-text-muted">{u.email}{u.is_staff ? ' · admin' : ''}{!u.is_active ? ' · disabled' : ''}</div>
+                      <div className="text-text">{u.name || u.username}</div>
+                      <div className="text-[11px] text-text-muted">@{u.username}{u.email && u.email !== u.username ? ` · ${u.email}` : ''}{u.is_staff ? ' · admin' : ''}{!u.is_active ? ' · disabled' : ''}</div>
                     </td>
                     <td className="px-4 py-2 text-xs text-text-muted">{day(u.joined)}</td>
                     <td className="px-4 py-2 text-xs text-text-muted">{day(u.last_login)}</td>

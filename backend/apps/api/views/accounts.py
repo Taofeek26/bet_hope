@@ -1,8 +1,8 @@
 """
 User accounts (Phase 7).
 
-  POST   /auth/register/            {email, password, name} -> JWT pair
-  POST   /auth/token/               existing: {username: email, password}
+  POST   /auth/register/            {username, email, password, name} -> JWT pair
+  POST   /auth/token/               {username: <username or email>, password}
   GET    /me/  PATCH /me/  DELETE /me/
   POST   /me/password/              {old_password, new_password}
   GET    /me/bets/  POST /me/bets/  {bets: [...]} (upsert by client_id)
@@ -13,6 +13,7 @@ User accounts (Phase 7).
   POST   /admin-users/<id>/set_active/      {active}
   POST   /admin-users/<id>/reset_password/  -> temporary password (shown once)
 """
+import re
 import secrets
 from decimal import Decimal, InvalidOperation
 
@@ -34,6 +35,7 @@ from apps.accounts.models import UserBet, UserProfile
 from apps.accounts.settle import settle_bets
 
 User = get_user_model()
+USERNAME_RE = re.compile(r'^[A-Za-z0-9._-]{3,30}$')
 
 
 class RegisterThrottle(AnonRateThrottle):
@@ -47,7 +49,7 @@ def _profile(user):
 def _me(user):
     p = _profile(user)
     return {
-        'id': user.id, 'email': user.email, 'name': p.display_name or user.first_name,
+        'id': user.id, 'username': user.username, 'email': user.email, 'name': p.display_name or user.first_name,
         'is_staff': user.is_staff, 'joined': user.date_joined.isoformat(),
         'favourite_teams': p.favourite_teams, 'favourite_leagues': p.favourite_leagues,
         'weekly_limit': p.weekly_limit,
@@ -68,20 +70,25 @@ def _bet_row(b, st=None, profit=None):
 @throttle_classes([RegisterThrottle])
 def register(request):
     email = (request.data.get('email') or '').strip().lower()
+    username = (request.data.get('username') or '').strip()
     password = request.data.get('password') or ''
     name = (request.data.get('name') or '').strip()[:60]
+    if not USERNAME_RE.match(username):
+        return Response({'error': 'Username: 3-30 letters, numbers, dots, dashes or underscores (no spaces or @)'}, status=400)
     try:
         validate_email(email)
     except ValidationError:
         return Response({'error': 'Enter a valid email address'}, status=400)
+    if User.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).exists():
+        return Response({'error': 'That username is taken'}, status=409)
     if User.objects.filter(Q(username__iexact=email) | Q(email__iexact=email)).exists():
         return Response({'error': 'An account with this email already exists. Sign in instead.'}, status=409)
     try:
-        password_validation.validate_password(password, User(username=email, email=email, first_name=name))
+        password_validation.validate_password(password, User(username=username, email=email, first_name=name))
     except ValidationError as e:
         return Response({'error': ' '.join(e.messages)}, status=400)
     with transaction.atomic():
-        user = User.objects.create_user(username=email, email=email, password=password, first_name=name)
+        user = User.objects.create_user(username=username, email=email, password=password, first_name=name)
         UserProfile.objects.create(user=user, display_name=name)
     refresh = RefreshToken.for_user(user)
     return Response({'access': str(refresh.access_token), 'refresh': str(refresh), 'user': _me(user)}, status=201)
@@ -173,7 +180,7 @@ class AdminUsersViewSet(viewsets.ViewSet):
         qs = User.objects.all().select_related('profile').annotate(n_bets=Count('bets')).order_by('-date_joined')
         q = (request.query_params.get('search') or '').strip()
         if q:
-            qs = qs.filter(Q(email__icontains=q) | Q(first_name__icontains=q) | Q(profile__display_name__icontains=q))
+            qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q) | Q(first_name__icontains=q) | Q(profile__display_name__icontains=q))
         users = list(qs[:500])
         bets = list(UserBet.objects.filter(user__in=users))
         stats = {}
@@ -187,7 +194,7 @@ class AdminUsersViewSet(viewsets.ViewSet):
             p = getattr(u, 'profile', None)
             s = stats.get(u.id, {'staked': 0.0, 'profit': 0.0, 'won': 0, 'lost': 0, 'pending': 0})
             rows.append({
-                'id': u.id, 'email': u.email or u.username, 'name': (p.display_name if p else '') or u.first_name,
+                'id': u.id, 'username': u.username, 'email': u.email or u.username, 'name': (p.display_name if p else '') or u.first_name,
                 'joined': u.date_joined.isoformat(), 'last_login': u.last_login.isoformat() if u.last_login else None,
                 'is_active': u.is_active, 'is_staff': u.is_staff, 'bets': u.n_bets,
                 'favourites': len(p.favourite_teams) if p else 0,

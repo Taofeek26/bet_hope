@@ -62,6 +62,7 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [activeIds, setActiveIds] = useState<string[]>([]);
+  const authUser = useAuth((st) => st.user);
 
   useEffect(() => {
     setToken(typeof window !== 'undefined' ? localStorage.getItem('token') : null);
@@ -83,7 +84,7 @@ export default function AdminPage() {
     } catch (err: any) {
       setLoginError(
         err?.response?.status === 401
-          ? 'Invalid username or password.'
+          ? 'Wrong username/email or password, or not an admin account.'
           : 'Login failed — check the API is reachable.'
       );
     } finally {
@@ -159,7 +160,7 @@ export default function AdminPage() {
             </div>
             <input
               className="w-full bg-input border border-border px-3 py-2 text-sm"
-              placeholder="Username"
+              placeholder="Username or email"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
@@ -177,6 +178,20 @@ export default function AdminPage() {
               {loggingIn ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign in'}
             </button>
           </form>
+        </div>
+      </>
+    );
+  }
+
+  // Signed in, but not an admin: show nothing of the admin tools (the API
+  // refuses non-admins too). Phase 7.
+  if (authUser && !authUser.is_staff) {
+    return (
+      <>
+        <div className="content-header"><h1>Admins only</h1><p>This page is for Bet Hope administrators.</p></div>
+        <div className="card max-w-md text-sm text-text-sec">
+          You&apos;re signed in as <strong>@{authUser.username}</strong>, which isn&apos;t an admin account.{' '}
+          <a href="/" className="text-brand">Back to the Dashboard</a>
         </div>
       </>
     );

@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useModelInfo, useValueBets } from '@/hooks/useApi';
 import { LogoMark } from '@/components/ui/Logo';
+import { useAuth } from '@/lib/auth';
 
 const navItems = [
   { href: '/', icon: Home, label: 'Dashboard', num: '1' },
@@ -50,6 +51,8 @@ export function Sidebar() {
   const { data: modelInfo } = useModelInfo();
 
   const { data: valueBets } = useValueBets();
+  // The Admin item is only for admin accounts (the API also refuses others).
+  const isStaff = !!useAuth((st) => st.user?.is_staff);
   // No made-up fallback: show the version only once the API has answered.
   const modelVersion = modelInfo?.version;
   const valueCount = valueBets?.total;
@@ -105,7 +108,7 @@ export function Sidebar() {
         {/* Divider */}
         <div className="my-3 mx-2 border-t border-border-dim" />
 
-        {bottomItems.map((item) => (
+        {bottomItems.filter((item) => item.href !== '/admin' || isStaff).map((item) => (
           <NavItem
             key={item.href}
             {...item}
