@@ -63,5 +63,5 @@ export function TicketWatcher() {
   }, [ready, signature, watch.length]);
 
   if (!toast) return null;
-  return <Toast text={toast.text} tone={toast.tone} href="/my-bets" onClose={() => setToast(null)} />;
+  return <Toast text={toast.text} tone={toast.tone} href="/my-bets" onClose={() => setToast(null)} second />;
 }

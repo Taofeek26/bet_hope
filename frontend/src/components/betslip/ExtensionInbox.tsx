@@ -39,10 +39,10 @@ export function ExtensionInbox() {
   return <Toast text={toast} href="/my-bets" onClose={() => setToast(null)} tone="good" />;
 }
 
-export function Toast({ text, href, onClose, tone }: { text: string; href?: string; onClose: () => void; tone?: 'good' | 'bad' }) {
+export function Toast({ text, href, onClose, tone, second = false }: { text: string; href?: string; onClose: () => void; tone?: 'good' | 'bad'; second?: boolean }) {
   useEffect(() => { const t = setTimeout(onClose, 9000); return () => clearTimeout(t); }, [onClose]);
   return (
-    <div role="status" className={`fixed left-3 right-3 sm:left-auto sm:right-4 sm:w-96 top-20 z-[70] p-3 rounded-xl border shadow-2xl bg-card flex items-start gap-2 ${tone === 'bad' ? 'border-red-500/50' : 'border-brand/50'}`}>
+    <div role="status" className={`fixed left-3 right-3 sm:left-auto sm:right-4 sm:w-96 ${second ? 'top-40' : 'top-20'} z-[70] p-3 rounded-xl border shadow-2xl bg-card flex items-start gap-2 ${tone === 'bad' ? 'border-red-500/50' : 'border-brand/50'}`}>
       <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${tone === 'bad' ? 'text-red-400' : 'text-brand'}`} />
       <div className="flex-1 text-sm text-text whitespace-pre-line">
         {text}
