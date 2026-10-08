@@ -254,11 +254,12 @@ export default function AdminPage() {
               <th className="px-5 py-2 font-normal">Status</th>
               <th className="px-5 py-2 font-normal">Started</th>
               <th className="px-5 py-2 font-normal">Duration</th>
+              <th className="px-5 py-2 font-normal">Started by</th>
             </tr>
           </thead>
           <tbody>
             {(history || []).length === 0 && (
-              <tr><td colSpan={4} className="px-5 py-6 text-center text-text-muted text-sm">No tasks run yet</td></tr>
+              <tr><td colSpan={5} className="px-5 py-6 text-center text-text-muted text-sm">No tasks run yet</td></tr>
             )}
             {(history || []).map((t) => (
               <tr key={t.id} className="border-b border-border-dim last:border-b-0">
@@ -269,6 +270,11 @@ export default function AdminPage() {
                 </td>
                 <td className="px-5 py-3 text-xs text-text-muted">
                   {t.duration_seconds != null ? `${t.duration_seconds}s` : '—'}
+                </td>
+                <td className="px-5 py-3 text-xs">
+                  {t.triggered_by === 'schedule'
+                    ? <span className="px-1.5 py-0.5 rounded bg-brand/15 text-brand">Scheduled</span>
+                    : <span className="text-text-muted">{t.triggered_by || '—'}</span>}
                 </td>
               </tr>
             ))}
@@ -311,11 +317,14 @@ function LiveTaskCard({ id, onSettled, onDismiss }: { id: string; onSettled: () 
   });
 
   const settled = task && task.status !== 'pending' && task.status !== 'running';
+  const stale = settled && task.finished_at && Date.now() - new Date(task.finished_at).getTime() > 24 * 3600 * 1000;
 
   useEffect(() => {
     if (settled) onSettled();
+    // Old finished runs (e.g. from weeks ago) shouldn't sit under "In progress".
+    if (stale) onDismiss();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settled]);
+  }, [settled, stale]);
 
   if (!task) return null;
 

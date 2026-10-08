@@ -35,6 +35,20 @@ def _get_task_run(task_id):
         return None
 
 
+RECORDED = {"sync_real_data", "train_model", "generate_predictions"}
+
+
+def _new_scheduled_run(command, args):
+    try:
+        import django
+        django.setup()
+        from apps.core.models import TaskRun
+        return TaskRun.objects.create(command=command, args=list(args), triggered_by="schedule")
+    except Exception as e:  # recording must never stop the job itself
+        print(f"could not record run: {e}")
+        return None
+
+
 def handler(event, context):
     command = event.get("command", "migrate")
     args = event.get("args", [])
@@ -42,6 +56,12 @@ def handler(event, context):
     timeout = min(context.get_remaining_time_in_millis() / 1000 - 5, 850) if context else 600
 
     task = _get_task_run(task_id) if task_id else None
+    # Scheduled (EventBridge) and direct runs of the main jobs are recorded
+    # too, so the admin page's history shows the automatic daily runs, not
+    # only button presses (Phase 7). The 5-minute live-score check is left
+    # out on purpose: it would bury everything else.
+    if not task and command in RECORDED:
+        task = _new_scheduled_run(command, args)
     start = datetime.utcnow()
     if task:
         from apps.core.models import TaskRun
