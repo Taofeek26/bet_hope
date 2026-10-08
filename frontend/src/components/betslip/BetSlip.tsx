@@ -73,6 +73,12 @@ export function BetSlip() {
   const loadOnSportyBet = () => {
     setSb({ busy: true, msg: 'Opening SportyBet…' });
     window.postMessage({ source: 'bethope', type: 'LOAD_SPORTYBET', selections: useBetSlip.getState().selections }, window.location.origin);
+    // Never spin forever: if the extension doesn't answer (e.g. it was just
+    // reloaded and this page still has the old connection), say so.
+    window.setTimeout(() => setSb((cur) => (cur?.busy ? {
+      ok: false,
+      msg: 'No answer from the extension. Refresh this page (after reloading the extension at chrome://extensions) and try again.',
+    } : cur)), 45000);
   };
 
   if (!ready || !settings.bettingTools) return null;
