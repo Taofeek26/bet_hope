@@ -2,7 +2,7 @@
 Popular betting markets from one prediction (Phase 5, step 3 / bet slip).
 
 - Result markets (1X2, double chance, draw no bet) come from the model's
-  calibrated home/draw/away probabilities.
+  calibrated home/draw/away probabilities (sums of them), so they count as tested.
 - Goal markets (GG/NG, over/under, team goals, correct score) come from the
   same Poisson score grid v2 uses for its tested over 2.5 figure, built from
   the expected goals stored with the prediction (features_json xg_home/away).
@@ -50,14 +50,14 @@ def build_markets(prediction, home, away, best_1x2=None, avg_odds=None):
         _row('1X2', '1', f'{home} to win', ph, best_1x2.get('home'), True),
         _row('1X2', 'X', 'Draw', pd, best_1x2.get('draw'), True),
         _row('1X2', '2', f'{away} to win', pa, best_1x2.get('away'), True),
-        _row('Double chance', '1X', f'{home} or draw', ph + pd),
-        _row('Double chance', '12', f'{home} or {away}', ph + pa),
-        _row('Double chance', 'X2', f'Draw or {away}', pd + pa),
+        _row('Double chance', '1X', f'{home} or draw', ph + pd, measured=True),
+        _row('Double chance', '12', f'{home} or {away}', ph + pa, measured=True),
+        _row('Double chance', 'X2', f'Draw or {away}', pd + pa, measured=True),
     ]
     if pd < 0.999:
         rows += [
-            _row('Draw no bet', 'DNB1', f'{home} (draw = stake back)', ph / (1 - pd)),
-            _row('Draw no bet', 'DNB2', f'{away} (draw = stake back)', pa / (1 - pd)),
+            _row('Draw no bet', 'DNB1', f'{home} (draw = stake back)', ph / (1 - pd), measured=True),
+            _row('Draw no bet', 'DNB2', f'{away} (draw = stake back)', pa / (1 - pd), measured=True),
         ]
 
     feats = prediction.features_json or {}
