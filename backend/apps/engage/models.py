@@ -98,3 +98,14 @@ class PushSent(models.Model):
 
     class Meta:
         db_table = 'engage_push_sent'
+
+
+class MatchPreview(TimeStampedModel):
+    """A short AI-written preview of a big match, generated once a day (Phase 6)."""
+    match = models.OneToOneField('matches.Match', on_delete=models.CASCADE, related_name='ai_preview')
+    text = models.TextField()
+    model_name = models.CharField(max_length=80, blank=True)
+    prediction_version = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        db_table = 'engage_match_preview'

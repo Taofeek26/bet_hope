@@ -8,6 +8,7 @@ import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { BOOKMAKERS, bookmakerById } from '@/lib/bookmakers';
 import { ShareButton } from '@/components/engage/ShareButton';
+import { useMyBets } from '@/lib/mybets';
 
 const pct = (p: number) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
@@ -233,6 +234,7 @@ export function BetSlip() {
                   </div>
                 ) : null
               )}
+              <PlacedButton stake={stake} odds={yours} bookmaker={bookie?.id || ''} onSaved={() => { clear(); setOpen(false); }} />
               <div className="flex items-center justify-between">
                 <p className="text-[10px] text-text-muted">
                   Copies the slip, then opens {bookie?.name}; add the picks and stake there. 18+ · bet only what you can afford to lose.
@@ -270,5 +272,29 @@ export function SlipButton() {
       <span className="hidden sm:inline">Slip</span>
       {n > 0 && <span className="px-1.5 rounded-full bg-bg text-brand text-xs font-bold leading-5">{n}</span>}
     </button>
+  );
+}
+
+/** Save the slip to My bets once it's placed at the bookmaker (Phase 6). */
+function PlacedButton({ stake, odds, bookmaker, onSaved }: { stake: number; odds: number | null; bookmaker: string; onSaved: () => void }) {
+  const { selections } = useBetSlip();
+  const add = useMyBets((s) => s.add);
+  const [asking, setAsking] = useState(false);
+  const [total, setTotal] = useState<string>('');
+  const save = () => {
+    const o = odds || Number(total);
+    if (!o || o <= 1 || !stake) return;
+    add({ bookmaker, stake, odds: Math.round(o * 100) / 100, selections });
+    onSaved();
+  };
+  if (!asking) {
+    return <button onClick={() => (odds ? save() : setAsking(true))} className="btn btn-secondary btn-sm w-full">I placed this bet</button>;
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <label htmlFor="placed-odds" className="text-text-muted">Total odds you got</label>
+      <input id="placed-odds" type="number" step="0.01" min="1.01" value={total} onChange={(e) => setTotal(e.target.value)} className="input input-sm w-24 text-xs" />
+      <button onClick={save} className="btn btn-primary btn-sm">Save</button>
+    </div>
   );
 }

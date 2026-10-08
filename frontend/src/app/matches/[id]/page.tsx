@@ -128,6 +128,19 @@ export default function MatchDetailPage() {
         </div>
       )}
 
+      {match.preview?.text && !isFinished && (
+        <div className="card mb-6">
+          <div className="card-header">
+            <div className="card-icon"><TrendingUp className="w-5 h-5" /></div>
+            <div>
+              <h2 className="card-title">AI match preview</h2>
+              <p className="card-desc">Written from the model&apos;s numbers and the bookmakers&apos; prices · {new Date(match.preview.written_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p>
+            </div>
+          </div>
+          <p className="text-sm text-text-sec leading-relaxed whitespace-pre-line">{match.preview.text}</p>
+        </div>
+      )}
+
       <FlashFeed matchId={match.id} title="Flash for this match" limit={10} />
 
       {match.prices && !isFinished && (

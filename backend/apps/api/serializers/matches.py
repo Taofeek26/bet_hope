@@ -190,6 +190,7 @@ class MatchDetailSerializer(serializers.ModelSerializer):
     league_code = serializers.CharField(source='season.league.code', read_only=True)
     league_name = serializers.CharField(source='season.league.name', read_only=True)
     markets = serializers.SerializerMethodField()
+    preview = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -214,7 +215,13 @@ class MatchDetailSerializer(serializers.ModelSerializer):
             'league_code',
             'prices',
             'markets',
+            'preview',
         ]
+
+    def get_preview(self, obj):
+        """AI match preview, if one was written for this match (Phase 6)."""
+        pv = getattr(obj, 'ai_preview', None)
+        return {'text': pv.text, 'written_at': pv.updated_at.isoformat()} if pv else None
 
     def get_markets(self, obj):
         """Popular markets with model probability and fair odds, for the bet slip (Phase 5)."""

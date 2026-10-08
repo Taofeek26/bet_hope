@@ -106,6 +106,8 @@ class Command(BaseCommand):
                     if _tz.now().hour >= 5:
                         from apps.engage.push import morning_digest
                         self.stdout.write(f"Push digest sent: {morning_digest()}")
+                        from apps.engage.previews import generate_previews
+                        self.stdout.write(f"AI match previews: {generate_previews()}")
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f'Acca of the day failed: {e}'))
             if historical:
