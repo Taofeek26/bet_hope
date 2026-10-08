@@ -6,6 +6,8 @@ import { accountApi, authApi, type Me } from '@/lib/api';
 interface AuthState {
   user: Me | null;
   loading: boolean;
+  syncing: boolean;            // first merge of device + account still running
+  setSyncing: (v: boolean) => void;
   setUser: (u: Me | null) => void;
   load: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -16,6 +18,8 @@ interface AuthState {
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   loading: true,
+  syncing: false,
+  setSyncing: (syncing) => set({ syncing }),
   setUser: (user) => set({ user }),
   load: async () => {
     if (typeof window === 'undefined' || !localStorage.getItem('token')) return set({ user: null, loading: false });

@@ -34,6 +34,7 @@ export function AccountSync() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
+    useAuth.getState().setSyncing(true);
     (async () => {
       try {
         const server = await accountApi.bets();
@@ -52,6 +53,7 @@ export function AccountSync() {
         useFavoritesStore.setState({ favoriteTeams: teams, favoriteLeagues: leagues } as any);
         ready.current = true;
       } catch { /* offline: try again on next load */ }
+      finally { useAuth.getState().setSyncing(false); }
     })();
     return () => { cancelled = true; };
   }, [user]);

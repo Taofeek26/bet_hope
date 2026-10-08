@@ -130,9 +130,9 @@ export default function MyBetsPage() {
 }
 
 function SavedWhere() {
-  const { user } = useAuth();
+  const { user, syncing } = useAuth();
   return user
-    ? <>Saved to your account ({user.email}).</>
+    ? <>Saved to your account ({user.email}).{syncing && <span className="text-brand"> Loading your bets from your account…</span>}</>
     : <>Saved on this device only. <Link href="/account" className="text-brand hover:underline">Sign in</Link> to keep them on any device.</>;
 }
 
