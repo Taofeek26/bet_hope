@@ -40,7 +40,9 @@ export function FlashFeed({ matchId, limit = 20, title = 'Flash', compact = fals
   const [kind, setKind] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['flash', { matchId, kind, limit }],
-    queryFn: () => engageApi.flash({ match: matchId, kind: kind || undefined, limit, hours: matchId ? 24 * 14 : 72 }),
+    // "All" hides low-priority items (gossip, podcasts); the Team news tab shows everything.
+    queryFn: () => engageApi.flash({ match: matchId, kind: kind || undefined, limit, hours: matchId ? 24 * 14 : 72,
+                                     min_importance: !kind && !matchId ? 2 : undefined }),
     refetchInterval: 5 * 60 * 1000,
   });
   const items = data?.items || [];

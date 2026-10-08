@@ -37,7 +37,7 @@ class EngageViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def flash(self, request):
-        """?match=<id> · ?team=<id> · ?kind=news,odds_move · ?limit=30 (max 100) · ?hours=72"""
+        """?match=<id> · ?team=<id> · ?kind=news,odds_move · ?min_importance=2 · ?limit=30 (max 100) · ?hours=72"""
         from apps.engage.models import FlashItem
         qs = FlashItem.objects.select_related('match__home_team', 'match__away_team', 'team')
         try:
@@ -50,6 +50,8 @@ class EngageViewSet(viewsets.ViewSet):
             qs = qs.filter(match_id=request.query_params['match'])
         if request.query_params.get('team'):
             qs = qs.filter(team_id=request.query_params['team'])
+        if request.query_params.get('min_importance', '').isdigit():
+            qs = qs.filter(importance__gte=int(request.query_params['min_importance']))
         if request.query_params.get('kind'):
             qs = qs.filter(kind__in=request.query_params['kind'].split(','))
         return Response({'items': [_flash_row(f) for f in qs[:limit]]})

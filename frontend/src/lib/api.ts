@@ -412,7 +412,7 @@ export const adminTasksApi = {
 
 // Flash feed, acca of the day, yesterday's results (Phase 6)
 export const engageApi = {
-  flash: async (params?: { match?: number; team?: number; kind?: string; limit?: number; hours?: number }) => {
+  flash: async (params?: { match?: number; team?: number; kind?: string; limit?: number; hours?: number; min_importance?: number }) => {
     const { data } = await api.get('/engage/flash/', { params });
     return data as { items: FlashItem[] };
   },
