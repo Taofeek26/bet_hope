@@ -193,6 +193,14 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f'The Odds API failed: {e}'))
 
+            self.stdout.write('Scanning team news for the flash feed...')
+            try:
+                from apps.engage.flash import scrape_team_news
+                news = scrape_team_news()
+                self.stdout.write(f"Team news: {news['matched']} headlines about upcoming teams, {news['created']} new")
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'Team news failed: {e}'))
+
         # Generate predictions for upcoming matches using the real trained
         # model (falls back to a labeled statistical estimate on its own if
         # no model is active — see generate_predictions.py). This used to

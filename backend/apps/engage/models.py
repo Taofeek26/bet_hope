@@ -1,0 +1,76 @@
+"""
+Engagement features (Phase 6): the flash feed, the daily acca and the odds
+history behind "odds moved" flashes.
+"""
+from django.db import models
+from django.utils import timezone
+
+from apps.core.models import TimeStampedModel
+
+
+class FlashItem(TimeStampedModel):
+    """One short, timestamped update shown in the flash feed."""
+
+    class Kind(models.TextChoices):
+        ODDS = 'odds_move', 'Odds move'
+        NEWS = 'news', 'Team news'
+        MODEL = 'model_change', 'Model change'
+        RESULTS = 'results', 'Results'
+        ACCA = 'acca', 'Acca of the day'
+
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    url = models.URLField(max_length=500, blank=True)
+    source = models.CharField(max_length=50, blank=True)
+    tag = models.CharField(max_length=20, blank=True)  # news: injury / suspension / manager / ...
+    match = models.ForeignKey('matches.Match', on_delete=models.CASCADE, null=True, blank=True, related_name='flash_items')
+    team = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='flash_items')
+    importance = models.PositiveSmallIntegerField(default=2)  # 1 low, 2 normal, 3 high
+    dedupe_key = models.CharField(max_length=160, unique=True)
+    published_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = 'engage_flash_item'
+        ordering = ['-published_at', '-id']
+
+    def __str__(self):
+        return f'[{self.kind}] {self.title}'
+
+
+class OddsSnapshot(models.Model):
+    """Average bookmaker 1X2 odds for a match at one sync, to detect moves."""
+    match = models.ForeignKey('matches.Match', on_delete=models.CASCADE, related_name='odds_snapshots')
+    home_odds = models.DecimalField(max_digits=7, decimal_places=3)
+    draw_odds = models.DecimalField(max_digits=7, decimal_places=3)
+    away_odds = models.DecimalField(max_digits=7, decimal_places=3)
+    bookmakers = models.PositiveSmallIntegerField(default=0)
+    taken_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'engage_odds_snapshot'
+        indexes = [models.Index(fields=['match', 'taken_at'])]
+
+
+class DailyAcca(TimeStampedModel):
+    """The acca of the day: built once from that morning's strongest picks, then tracked."""
+
+    class Status(models.TextChoices):
+        OPEN = 'open', 'Open'
+        WON = 'won', 'Won'
+        LOST = 'lost', 'Lost'
+        VOID = 'void', 'Void'
+
+    date = models.DateField(unique=True)
+    legs = models.JSONField(default=list)  # [{match_id, match, kickoff, league, key, label, probability, fair_odds, best_odds, result}]
+    combined_probability = models.DecimalField(max_digits=6, decimal_places=4)
+    combined_fair_odds = models.DecimalField(max_digits=9, decimal_places=2)
+    combined_best_odds = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    model_version = models.CharField(max_length=50, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    legs_won = models.PositiveSmallIntegerField(default=0)
+    settled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'engage_daily_acca'
+        ordering = ['-date']

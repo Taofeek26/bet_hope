@@ -47,6 +47,7 @@ def predict_upcoming(version: str, days: int = 14) -> dict:
     now = timezone.now()
     kickoff = dict(Match.objects.filter(id__in=rows.id.tolist()).values_list('id', 'kickoff_at'))
     created = updated = frozen = 0
+    changes = []  # for "model change" flashes (Phase 6)
     for idx, r in rows.iterrows():
         ko = kickoff.get(r.id)
         if ko is not None and ko <= now:
@@ -77,8 +78,13 @@ def predict_upcoming(version: str, days: int = 14) -> dict:
                 {'market': 'both_teams_score', 'probability': round(float(p.p_btts), 4), 'confidence': 'model'},
             ],
         }
-        existing = Prediction.objects.filter(match_id=r.id).order_by('-created_at').first()
+        existing = Prediction.objects.filter(match_id=r.id).select_related(
+            'match__home_team', 'match__away_team').order_by('-created_at').first()
         if existing:
+            old = {'H': float(existing.home_win_probability), 'D': float(existing.draw_probability),
+                   'A': float(existing.away_win_probability)}
+            new = {'H': float(p.p_home), 'D': float(p.p_draw), 'A': float(p.p_away)}
+            changes.append((existing.match, old, new, max(old, key=old.get), max(new, key=new.get)))
             for k, v in defaults.items():
                 setattr(existing, k, v)
             existing.save()  # save() sets recommended_outcome and strength
@@ -86,5 +92,12 @@ def predict_upcoming(version: str, days: int = 14) -> dict:
         else:
             Prediction.objects.create(match_id=r.id, **defaults)
             created += 1
+    try:
+        from apps.engage.flash import record_model_changes
+        flashes = record_model_changes(changes)
+    except Exception:  # the feed must never break predictions
+        import logging
+        logging.getLogger(__name__).exception('model-change flashes failed')
+        flashes = 0
     return {'predicted': created + updated, 'created': created, 'updated': updated, 'frozen': frozen,
-            'with_odds': int(out.used_odds.sum())}
+            'with_odds': int(out.used_odds.sum()), 'model_change_flashes': flashes}

@@ -7,6 +7,7 @@ import { useBetSlip } from '@/lib/betslip';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { BOOKMAKERS, bookmakerById } from '@/lib/bookmakers';
+import { ShareButton } from '@/components/engage/ShareButton';
 
 const pct = (p: number) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`;
 const naira = (n: number) => `₦${Math.round(n).toLocaleString()}`;
@@ -207,6 +208,7 @@ export function BetSlip() {
                 >
                   {chosen.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
+                <ShareButton text={slipText()} url={typeof window !== 'undefined' ? window.location.origin : undefined} label="" className="px-2" />
                 <button onClick={copy} className="btn btn-secondary btn-sm" aria-label="Copy slip">
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   {copied ? 'Copied' : 'Copy'}

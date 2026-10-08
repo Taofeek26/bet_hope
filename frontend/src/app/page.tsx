@@ -18,6 +18,9 @@ import { PredictionStats } from '@/components/predictions/PredictionStats';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useDailyPicks, useValueBets, usePredictionStats, useWeeklyAvailability, useModelInfo } from '@/hooks/useApi';
 import { MetricPlate } from '@/components/ui/MetricPlate';
+import { FlashFeed } from '@/components/engage/FlashFeed';
+import { AccaOfDay } from '@/components/engage/AccaOfDay';
+import { ResultsCard } from '@/components/engage/ResultsCard';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -139,6 +142,17 @@ export default function HomePage() {
 
       {/* Stats Grid */}
       <DashboardStats />
+
+      {/* Phase 6: something new every morning */}
+      <div className="content-grid">
+        <div className="col-span-8">
+          <FlashFeed limit={15} />
+        </div>
+        <div className="col-span-4">
+          <AccaOfDay />
+          <ResultsCard />
+        </div>
+      </div>
 
       {/* Main Content Grid */}
       <div className="content-grid">

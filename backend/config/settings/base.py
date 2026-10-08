@@ -43,6 +43,7 @@ LOCAL_APPS = [
     'apps.analytics',
     'apps.ml_pipeline',
     'apps.documents',
+    'apps.engage',
     'apps.api',
 ]
 

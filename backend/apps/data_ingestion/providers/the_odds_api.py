@@ -178,6 +178,11 @@ def sync_odds(api_key=None, leagues=None, stdout=None):
             say(f'  Stopping: only {summary["credits_remaining"]} Odds API credits left this month')
             break
 
+    try:
+        from apps.engage.flash import record_odds_moves
+        summary['odds_move_flashes'] = record_odds_moves()
+    except Exception as e:
+        logger.warning(f'odds-move flashes failed: {e}')
     say(f"The Odds API: {summary['leagues']} leagues, {summary['matched']}/{summary['events']} events matched, "
         f"{summary['prices']} bookmaker prices, odds filled for {summary['odds_filled']} fixtures, "
         f"credits left {summary['credits_remaining']}")

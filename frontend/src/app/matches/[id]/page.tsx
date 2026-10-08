@@ -10,6 +10,8 @@ import Link from 'next/link';
 import { formatKickoff, formatDateWithPreset } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 import { MarketsCard } from '@/components/betslip/MarketsCard';
+import { FlashFeed } from '@/components/engage/FlashFeed';
+import { ShareButton } from '@/components/engage/ShareButton';
 
 export default function MatchDetailPage() {
   const params = useParams();
@@ -116,6 +118,17 @@ export default function MatchDetailPage() {
           </div>
         </div>
       </div>
+
+      {!isFinished && match.prediction && (
+        <div className="flex justify-end -mt-3 mb-4">
+          <ShareButton
+            label="Share match"
+            text={`${homeTeam} v ${awayTeam} on Bet Hope: home ${Math.round((match.prediction.probabilities?.home || 0) * 100)}% · draw ${Math.round((match.prediction.probabilities?.draw || 0) * 100)}% · away ${Math.round((match.prediction.probabilities?.away || 0) * 100)}%`}
+          />
+        </div>
+      )}
+
+      <FlashFeed matchId={match.id} title="Flash for this match" limit={10} />
 
       {match.prices && !isFinished && (
         <OddsComparison prices={match.prices} probs={match.prediction?.probabilities} homeTeam={homeTeam} awayTeam={awayTeam} />

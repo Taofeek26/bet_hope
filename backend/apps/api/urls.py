@@ -14,6 +14,7 @@ from .views import (
     TaskRunViewSet,
 )
 from .views.ai_recommendations import AIRecommendationViewSet, DocumentViewSet
+from .views.engage import EngageViewSet
 
 # Create router
 router = DefaultRouter()
@@ -26,6 +27,7 @@ router.register(r'ai-recommendations', AIRecommendationViewSet, basename='ai-rec
 router.register(r'documents', DocumentViewSet, basename='document')
 router.register(r'sync', DataSyncViewSet, basename='sync')
 router.register(r'admin-tasks', TaskRunViewSet, basename='admin-task')
+router.register(r'engage', EngageViewSet, basename='engage')
 
 app_name = 'api'
 

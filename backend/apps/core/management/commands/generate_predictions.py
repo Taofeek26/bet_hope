@@ -96,6 +96,13 @@ class Command(BaseCommand):
                 paper = log_paper_bets()
                 self.stdout.write(f"Paper bets logged: {paper['created']} "
                                   f"({paper['skipped_no_odds']} matches skipped: no odds yet)")
+                self.stdout.write(f"Model-change flashes: {result.get('model_change_flashes', 0)}")
+                try:
+                    from apps.engage.acca import build_daily_acca
+                    acca = build_daily_acca()
+                    self.stdout.write(f"Acca of the day: {len(acca.legs) if acca else 0} legs")
+                except Exception as e:
+                    self.stdout.write(self.style.ERROR(f'Acca of the day failed: {e}'))
             if historical:
                 self.stdout.write(self.style.WARNING(
                     'Skipping --historical with v2: back-filled predictions on matches the model '
@@ -398,6 +405,12 @@ class Command(BaseCommand):
         from apps.predictions.paper import settle_paper_bets
         settled = settle_paper_bets()
         self.stdout.write(f"Paper bets settled: {settled['won']} won, {settled['lost']} lost, {settled['void']} void")
+        try:
+            from apps.engage.acca import settle_accas
+            from apps.engage.flash import results_flash
+            self.stdout.write(f"Accas settled: {settle_accas()} · results flash: {results_flash()}")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Acca/results flash failed: {e}'))
 
     def _validate_predictions_inner(self):
         """Validate predictions against actual match results."""

@@ -410,4 +410,34 @@ export const adminTasksApi = {
   },
 };
 
+// Flash feed, acca of the day, yesterday's results (Phase 6)
+export const engageApi = {
+  flash: async (params?: { match?: number; team?: number; kind?: string; limit?: number; hours?: number }) => {
+    const { data } = await api.get('/engage/flash/', { params });
+    return data as { items: FlashItem[] };
+  },
+  acca: async () => {
+    const { data } = await api.get('/engage/acca/');
+    return data;
+  },
+  results: async (date?: string) => {
+    const { data } = await api.get('/engage/results/', { params: date ? { date } : undefined });
+    return data;
+  },
+};
+
+export interface FlashItem {
+  id: number;
+  kind: 'odds_move' | 'news' | 'model_change' | 'results' | 'acca';
+  tag: string;
+  title: string;
+  body: string;
+  url: string;
+  source: string;
+  importance: number;
+  published_at: string;
+  match: { id: number; label: string; kickoff_at: string | null; match_date: string } | null;
+  team: { id: number; name: string } | null;
+}
+
 export default api;
