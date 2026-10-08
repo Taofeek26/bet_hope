@@ -188,6 +188,7 @@ class MatchDetailSerializer(serializers.ModelSerializer):
     h2h = serializers.SerializerMethodField()
     prices = serializers.SerializerMethodField()
     league_code = serializers.CharField(source='season.league.code', read_only=True)
+    league_name = serializers.CharField(source='season.league.name', read_only=True)
     markets = serializers.SerializerMethodField()
 
     class Meta:
@@ -209,6 +210,7 @@ class MatchDetailSerializer(serializers.ModelSerializer):
             'odds',
             'prediction',
             'h2h',
+            'league_name',
             'league_code',
             'prices',
             'markets',
