@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features and Ideas</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+    <a href="phase-4.html">Phase 4 log</a>
+    <a href="betting-integration.html">Betting plan</a>
+    <a href="features.html" class="active">Features &amp; ideas</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>What Bet Hope offers today, and what would make people come back</h1>
+  <p class="lede">An inventory of every feature as of 8 Oct 2026, an honest view of which ones give people a reason to use the app, and a ranked list of additions for the Nigerian, mobile-first audience.</p>
+  <p class="meta">8 Oct 2026 · proposal, nothing in "Ideas" is built yet</p>
+
+  <h2>Every feature today</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Area</th><th>Feature</th><th>Value to a user</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="5">Predictions</td><td>Home/draw/away chances for 20 leagues + Champions League, ~190 matches a week</td><td><strong>High.</strong> Tested: 50.3% on 8,106 unseen matches, level with the bookmakers, honest confidence</td></tr>
+      <tr><td>28 markets per match (1X2, double chance, draw no bet, GG/NG, over/under 1.5/2.5/3.5, team goals, clean sheet, correct score) with fair odds</td><td><strong>High.</strong> Matches how Nigerians bet (GG, over 2.5, double chance)</td></tr>
+      <tr><td>Top picks (55%+), predicted score, value-bet flag</td><td>Medium. Value bets are rare by design</td></tr>
+      <tr><td>AI analysis per match (now reads all 28 markets, prices, Elo, form, xG; says "No bet" when nothing beats fair odds)</td><td><strong>High.</strong> The most "wow" feature; costs about 1–2 US cents a call</td></tr>
+      <tr><td>Analytics: tested scorecard vs bookmakers, live record, calibration, "Return if you had bet" (paper bets)</td><td>Medium. Builds trust; rare among tipster sites</td></tr>
+      <tr><td rowspan="2">Odds</td><td>Odds comparison: ~20 bookmakers, best price, margin, model fair odds</td><td>Medium. The bookmakers shown are international, not Nigerian</td></tr>
+      <tr><td>Value Bets page (5-point bar)</td><td>Low today (usually empty, honestly so)</td></tr>
+      <tr><td rowspan="3">Betting tools</td><td>Bet slip: one pick per match, your odds vs fair, combined chance and odds, stake in naira</td><td><strong>High.</strong> Accumulators are the norm in Nigeria</td></tr>
+      <tr><td>Copy slip + open Nigerian bookmaker (Bet9ja, SportyBet, BetKing, 1xBet, Betway, Betano, MSport, BangBet, NairaBet)</td><td>Medium</td></tr>
+      <tr><td>Load on SportyBet (desktop extension, booking code)</td><td>High on desktop, but most users are on phones</td></tr>
+      <tr><td rowspan="3">Browse</td><td>Matches (upcoming/results, day headers, filters), match page, team pages, league standings</td><td>Medium. Standard, works on phones</td></tr>
+      <tr><td>Team search (with aliases), favourite teams and leagues</td><td>Medium</td></tr>
+      <tr><td>Browser alerts for new top picks and value bets</td><td>Low. Only while a tab is open</td></tr>
+      <tr><td>Behind the scenes</td><td>Daily sync, odds refresh, retraining with a promotion check, data-freshness status</td><td>Invisible, but it is why the numbers are right</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Honest assessment</h2>
+  <ul>
+    <li><strong>Strengths:</strong> real, tested numbers (most Nigerian tip sites show no record at all), many markets, an AI analyst, and a slip that fits how people bet.</li>
+    <li><strong>Why people would not come back yet:</strong> nothing <em>changes</em> during the day (no news, no odds movement, no live scores); nothing to <em>share</em> (WhatsApp is how tips spread in Nigeria); no reason to return tomorrow (no personal record or streak); and alerts only work while the site is open.</li>
+    <li><strong>Positioning that works:</strong> "the honest tipster": every pick tracked, with the results shown. Trust is scarce in this market, and it is the one thing competitors can't copy quickly.</li>
+  </ul>
+
+  <h2>Ideas, ranked</h2>
+  <p>Value = how much it makes people come back or share. Effort is rough build time. Cost is per month at today's traffic.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Idea</th><th>What it is</th><th>Value</th><th>Effort</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>Flash feed</strong></td><td>A short, timestamped stream on the Dashboard and each match page: <em>odds moves</em> ("Arsenal 1.50 → 1.40 since yesterday"), <em>team news</em> (BBC / Sky / ESPN headlines matched to upcoming fixtures, one-line AI summary: injury, suspension, manager), <em>model changes</em> ("Leeds chance up 6 pts after odds moved") and <em>results flashes</em> ("✅ 7 of 10 top picks won yesterday"). The news scraper already exists in the code but nothing schedules it.</td><td>High</td><td>3–4 days</td><td>~$1–3 AI summaries</td></tr>
+      <tr><td>2</td><td><strong>Share to WhatsApp</strong></td><td>One tap shares a pick or the whole slip as a neat text + image card ("Bet Hope: Arsenal to win, model 71%, fair odds 1.40") with a link back. Free growth in WhatsApp groups.</td><td>High</td><td>1–2 days</td><td>None</td></tr>
+      <tr><td>3</td><td><strong>Install as an app (PWA) + real push alerts</strong></td><td>"Add to home screen" with an icon, and alerts that arrive with the app closed: kickoff of your favourite team, new top picks, results of your slip.</td><td>High</td><td>2–3 days</td><td>None</td></tr>
+      <tr><td>4</td><td><strong>Daily acca of the day</strong></td><td>A ready-made 3–4 pick accumulator from the strongest picks, with the honest combined chance ("all win: 34%"), one tap into the slip, then tracked publicly.</td><td>High (accas are king in Nigeria)</td><td>1 day</td><td>None</td></tr>
+      <tr><td>5</td><td><strong>Yesterday's results card</strong></td><td>Every morning: how the top picks, the acca and the AI picks did. Wins and losses shown, building the honest-tipster reputation.</td><td>High</td><td>1 day</td><td>None</td></tr>
+      <tr><td>6</td><td><strong>My bets tracker</strong></td><td>Save the slip you placed (stake, odds), results settle automatically; personal profit/loss, hit rate and a weekly limit you set (responsible gambling).</td><td>Medium–high</td><td>2–3 days</td><td>None</td></tr>
+      <tr><td>7</td><td><strong>AI match preview</strong></td><td>A 120-word preview per big match (form, the key market, what the odds say), generated once a day and cached. Good for search traffic and sharing.</td><td>Medium</td><td>1–2 days</td><td>~$2–5</td></tr>
+      <tr><td>8</td><td><strong>Live scores for top leagues</strong></td><td>Bring back Live using football-data.org (free key already held; ~8 top competitions), polled every few minutes during match hours only.</td><td>Medium</td><td>2 days</td><td>Cents</td></tr>
+      <tr><td>9</td><td><strong>Telegram channel bot</strong></td><td>Posts the daily acca, top picks and results to a Bet Hope Telegram channel automatically.</td><td>Medium (big in Nigeria)</td><td>1 day</td><td>None</td></tr>
+      <tr><td>10</td><td><strong>Predict-the-score game</strong></td><td>Users predict scores for free, weekly leaderboard. Needs user accounts.</td><td>Medium</td><td>1 week+</td><td>None</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Suggested first bundle (about 1 week)</h3>
+  <p>#1 Flash feed + #4 Acca of the day + #5 Results card + #2 WhatsApp share. Together they give something new every morning, something to share, and visible proof of the record. #3 (installable app + push) is the natural next step.</p>
+
+  <h3>Watch-outs</h3>
+  <ul>
+    <li>News must only state what the source says, with a link. No invented injuries. AI summaries use the headline and snippet only.</li>
+    <li>Results flashes must show losses as clearly as wins, or the "honest tipster" position is lost.</li>
+    <li>Keep the betting features optional and the 18+ / responsible-gambling notes visible, especially when sharing to groups.</li>
+  </ul>
+</main>
+</body>
+</html>
