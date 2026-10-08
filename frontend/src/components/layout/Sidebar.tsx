@@ -18,6 +18,7 @@ import {
   Terminal,
   Wallet,
   Gamepad2,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -38,6 +39,7 @@ const navItems = [
 
 const bottomItems = [
   { href: '/admin', icon: Terminal, label: 'Admin' },
+  { href: '/install', icon: Download, label: 'Install app' },
   { href: '/settings', icon: Settings, label: 'Settings' },
   { href: '/help', icon: HelpCircle, label: 'Help' },
 ];

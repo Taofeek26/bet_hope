@@ -30,11 +30,13 @@ export function InstallBanner() {
       <div className="flex-1 min-w-0 text-sm">
         <div className="text-text font-semibold">Install Bet Hope</div>
         <div className="text-xs text-text-muted">
-          {ios ? <>Tap <strong>Share</strong> then <strong>Add to Home Screen</strong>. Then turn on alerts in <Link href="/settings" className="text-brand">Settings</Link>.</>
+          {ios ? <>On iPhone: Safari → <strong>Share</strong> → <strong>Add to Home Screen</strong>.</>
                : 'Opens like an app, with morning alerts for the acca, top picks and your teams.'}
         </div>
       </div>
-      {!ios && <button onClick={install} className="btn btn-primary btn-sm flex-shrink-0">Install</button>}
+      {ios
+        ? <Link href="/install" className="btn btn-primary btn-sm flex-shrink-0">How to</Link>
+        : <button onClick={install} className="btn btn-primary btn-sm flex-shrink-0">Install</button>}
       <button onClick={dismiss} className="text-text-muted hover:text-text flex-shrink-0" aria-label="Dismiss"><X className="w-4 h-4" /></button>
     </div>
   );

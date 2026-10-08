@@ -327,7 +327,7 @@ function PushSettings() {
         <p className="text-xs text-text-muted mt-1">
           {supported
             ? isIos() && !isStandalone()
-              ? 'On iPhone, first add Bet Hope to your Home Screen (Share → Add to Home Screen), then open it from there to turn this on.'
+              ? <>On iPhone, first add Bet Hope to your Home Screen (<a href="/install" className="text-brand">how to install</a>), then open it from there to turn this on.</>
               : 'One alert each morning (acca of the day, top picks, your favourite teams playing today) and one with yesterday\'s results.'
             : 'This browser does not support push alerts.'}
         </p>

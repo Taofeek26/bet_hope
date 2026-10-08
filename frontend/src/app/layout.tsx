@@ -22,7 +22,6 @@ export const metadata: Metadata = {
   keywords: ['football', 'predictions', 'betting', 'AI', 'analytics', 'soccer'],
   metadataBase: new URL('https://bet-hope-frontend.vercel.app'),
   appleWebApp: { capable: true, title: 'Bet Hope', statusBarStyle: 'black-translucent' },
-  icons: { apple: '/apple-touch-icon.png' },
   openGraph: {
     title: 'Bet Hope - AI Football Predictions',
     description: 'Match predictions for 20 leagues, measured honestly against the bookmakers.',
