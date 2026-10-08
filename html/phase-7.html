@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 7 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+    <a href="phase-4.html">Phase 4 log</a>
+    <a href="betting-integration.html">Betting plan</a>
+    <a href="features.html">Features &amp; ideas</a>
+    <a href="phase-6.html">Phase 6 log</a>
+    <a href="phase-7.html" class="active">Phase 7 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 7: user accounts</h1>
+  <p class="lede">Each user now has their own account. My bets, favourites and the weekly limit are stored on the server and follow them to any device, and the admin can see every user.</p>
+  <p class="meta">8 Oct 2026 · commits <code>1142535</code>, frontend follow-ups · image <code>1142535…</code> on both functions · migration <code>accounts.0001</code></p>
+
+  <h2>Before</h2>
+  <p>Bets, favourites and settings were kept in each browser only (not shared between people), but nothing followed a user to another device and there was no list of users for the admin.</p>
+
+  <h2>What was built</h2>
+  <ul>
+    <li><strong>Sign-up / sign-in</strong> with email and password (Django users, hashed passwords, Django's password rules, sign-up limited to 10 an hour per address). JWT: 60-minute access token, refreshed automatically for 30 days. An expired session falls back to browsing signed out.</li>
+    <li><strong>Per-user data</strong> (<code>apps/accounts</code>): <code>UserProfile</code> (name, favourite teams and leagues, weekly limit) and <code>UserBet</code> (one row per bet, unique per user and device id). Signing in merges anything saved on the device; every change is then synced, including SportyBet tickets from the extension. Signing out clears the device copy (for shared phones).</li>
+    <li><strong>/account</strong>: sign in, create account, name, change password, delete account (password required; removes all saved data). <strong>Top-bar button</strong> shows the user's initial.</li>
+    <li><strong>Admin → Users</strong> (staff only): totals; every user with joined date, last sign-in, bets, won/lost, staked and profit/loss (settled on the server with the same rules as the app); a user's bets; disable/enable; set a temporary password (there is no email service for resets yet). The admin sign-in now keeps the refresh token, so it no longer drops after 60 minutes (SEC-04).</li>
+  </ul>
+
+  <h2>Tests</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Where</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Local API (rolled back)</td><td>Weak password and bad email rejected; duplicate email 409; email case ignored; last sign-in recorded; bets upserted once; a second user sees none of the first user's bets; non-staff blocked from the admin list (403); admin stats ₦1,000 staked, +₦1,500 on a won bet; a disabled account can't sign in; temporary password works; account deletion needs the password</td></tr>
+      <tr><td>Production, two browsers (test accounts deleted afterwards)</td><td>A guest bet and weekly limit carried into a new account; user B saw nothing of A; sign-out cleared the device; on a third "device" A's bet came back about 4 s after sign-in (a "Loading your bets…" note now covers that wait)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Notes</h2>
+  <ul>
+    <li>Make another person an admin: Django admin (<code>/admin/</code>) → Users → tick "Staff status".</li>
+    <li>Password reset by email needs an email service (e.g. Amazon SES), not set up yet.</li>
+    <li>Privacy: the sign-up form states what is stored and that admins can see emails and saved bets.</li>
+  </ul>
+</main>
+</body>
+</html>
