@@ -25,13 +25,14 @@
     <a href="phase-4.html">Phase 4 log</a>
     <a href="betting-integration.html">Betting plan</a>
     <a href="features.html" class="active">Features &amp; ideas</a>
+    <a href="phase-6.html">Phase 6 log</a>
   </nav>
 </div></header>
 
 <main>
   <h1>What Bet Hope offers today, and what would make people come back</h1>
   <p class="lede">An inventory of every feature as of 8 Oct 2026, an honest view of which ones give people a reason to use the app, and a ranked list of additions for the Nigerian, mobile-first audience.</p>
-  <p class="meta">8 Oct 2026 · proposal, nothing in "Ideas" is built yet</p>
+  <p class="meta">8 Oct 2026 · all ten ideas built on 8 Oct (see "Built" below); Telegram waits for a bot token</p>
 
   <h2>Every feature today</h2>
   <div class="table-wrap"><table>
@@ -60,6 +61,23 @@
     <li><strong>Why people would not come back yet:</strong> nothing <em>changes</em> during the day (no news, no odds movement, no live scores); nothing to <em>share</em> (WhatsApp is how tips spread in Nigeria); no reason to return tomorrow (no personal record or streak); and alerts only work while the site is open.</li>
     <li><strong>Positioning that works:</strong> "the honest tipster": every pick tracked, with the results shown. Trust is scarce in this market, and it is the one thing competitors can't copy quickly.</li>
   </ul>
+
+  <h2 id="built">Built (8 Oct 2026)</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Feature</th><th>Where</th><th>How it updates</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Flash feed: odds moves, team news (AI-tagged injury / suspension / manager / lineup / transfer), model changes, results, acca</td><td>Dashboard; each match page</td><td>Daily jobs (04:15 / 05:15 UTC); <code>flash_news</code> on demand</td></tr>
+      <tr><td>2</td><td>Share to WhatsApp (system share sheet on phones): match, slip, acca, results; per-match link preview image</td><td>Match page, slip, acca, results, score challenge</td><td>—</td></tr>
+      <tr><td>3</td><td>Install as an app (manifest, icons, service worker) + push alerts: morning digest (acca, top picks, your favourite team today) and results</td><td>Dashboard install banner; Settings → Notifications</td><td>05:15 UTC digest; results after validation; <code>push_test</code></td></tr>
+      <tr><td>4</td><td>Acca of the day: 3–4 strongest 55%+ picks in the next 36 h; combined chance; add all to slip; tracked and settled</td><td>Dashboard</td><td>Built in the first daily run; settled by validation</td></tr>
+      <tr><td>5</td><td>Yesterday's results card (wins and losses)</td><td>Dashboard</td><td>Daily</td></tr>
+      <tr><td>6</td><td>My bets: save placed slips, auto-settled for all 28 markets, profit/loss, weekly limit warning (device only)</td><td>/my-bets; "I placed this bet" in the slip</td><td>From final scores</td></tr>
+      <tr><td>7</td><td>AI match previews for up to 8 big matches a day</td><td>Match page</td><td>05:15 UTC; <code>match_previews</code></td></tr>
+      <tr><td>8</td><td>Live scores: Premier League, Championship, LaLiga, Serie A, Bundesliga, Ligue 1, Eredivisie, Primeira Liga, Champions League</td><td>Dashboard live strip; Matches → Live; cards</td><td>Every 5 min, 10:00–23:59 UTC (<code>sync_live</code>; no-op when nothing is in play)</td></tr>
+      <tr><td>9</td><td>Telegram channel: acca, top picks, results</td><td>Your channel</td><td>Off until <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHANNEL</code> are set</td></tr>
+      <tr><td>10</td><td>Score challenge: nickname + device token, 3 pts exact / 1 pt result, weekly leaderboard including the model; no prizes</td><td>/game</td><td>Live from results</td></tr>
+    </tbody>
+  </table></div>
 
   <h2>Ideas, ranked</h2>
   <p>Value = how much it makes people come back or share. Effort is rough build time. Cost is per month at today's traffic.</p>

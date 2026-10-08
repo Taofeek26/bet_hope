@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 6 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+    <a href="phase-4.html">Phase 4 log</a>
+    <a href="betting-integration.html">Betting plan</a>
+    <a href="features.html">Features &amp; ideas</a>
+    <a href="phase-6.html" class="active">Phase 6 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 6: reasons to come back every day</h1>
+  <p class="lede">All ten ideas from the <a href="features.html">features page</a> built and deployed on 8 Oct 2026, plus an AI analysis that reads every market.</p>
+  <p class="meta">8 Oct 2026 · commits <code>85037c4</code> … <code>19ec21c</code> · image <code>19ec21c…</code> on both functions</p>
+
+  <h2>What was built</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Feature</th><th>Checked</th></tr></thead>
+    <tbody>
+      <tr><td><strong>AI analysis reads all 28 markets</strong>, prices, edge, Elo, form, xG; says "No bet" when nothing beats fair odds (the old prompt read v1 feature names, always empty)</td><td>Production: Arsenal v Leeds → Arsenal to win at ≥1.40 (only market above fair, +2.0 pts), draw no bet as the alternative, avoid Leeds</td></tr>
+      <tr><td><strong>Flash feed</strong> (<code>apps/engage</code>): odds moves, AI-tagged team news (BBC / Sky / ESPN headlines naming a club with a fixture in 7 days), model changes, results, acca</td><td>Local: odds moves and dedupe, model changes, settlement. Production: 20 headlines; tags (injury / manager / transfer / other) after fixing an empty reply from the reasoning model (more tokens, JSON mode, retry, back-fill)</td></tr>
+      <tr><td><strong>Acca of the day</strong> and <strong>yesterday's results</strong></td><td>"No acca today" during the international break (fewer than 3 picks of 55%+ in 36 h), as designed; settlement tested on finished matches</td></tr>
+      <tr><td><strong>Share to WhatsApp</strong> + per-match link preview image</td><td>Arsenal v Leeds card renders (71 / 18 / 10%)</td></tr>
+      <tr><td><strong>Install as an app + push alerts</strong> (VAPID keys in the secrets file and on the Lambdas; SAM parameters)</td><td>Headless Chrome subscribed via Google's push service; <code>push_test --latest</code>: "Sent 1 of 1". Digest logic tested locally (personal team alert, once per day, prefs respected, fake endpoints rejected)</td></tr>
+      <tr><td><strong>My bets</strong> (device only)</td><td>All 18 settlement rules unit-tested; phone screenshot</td></tr>
+      <tr><td><strong>AI match previews</strong></td><td>3 written (Dortmund v Werder Bremen, Lens v Lyon, Malaga v Espanyol): ~118 words, numbers correct, honest caution</td></tr>
+      <tr><td><strong>Live scores</strong> for 9 competitions, every 5 min 10:00–23:59 UTC</td><td>Local active-path test: one API request, 5 finished matches updated with no duplicates; schedule ENABLED</td></tr>
+      <tr><td><strong>Telegram channel</strong></td><td>Built; off until a bot token and channel are set</td></tr>
+      <tr><td><strong>Score challenge</strong></td><td>Local: join, duplicate and blocked nicknames, pick, closed pick, scoring 3 / 1 / 0, leaderboard with the model. Production page loads 44 matches (first load ~2.7 s)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Deploy</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Step</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Local database rebuilt (the temporary one was cleared): <code>initdb ~/.bethope-pgdata</code>, <code>copy_database</code> from Neon</td><td>45 tables, counts match</td></tr>
+      <tr><td>2</td><td><code>infrastructure/codebuild/build.sh</code>; <code>update-function-code</code> (manage) → <code>migrate</code> → web</td><td><code>engage.0001</code>–<code>0004</code> applied</td></tr>
+      <tr><td>3</td><td><code>sync_real_data --fixtures-only</code>, <code>flash_news</code>, <code>match_previews</code> run once</td><td>Feed, tags and previews populated</td></tr>
+      <tr><td>4</td><td><code>sam deploy --template-file template.yaml … --no-execute-changeset</code>, reviewed, executed</td><td><strong>First change set rejected and deleted</strong>: SAM had used a stale <code>.aws-sam/build/template.yaml</code> from 5 Aug, which would have re-created the VPC and RDS security group and deleted the Mon/Thu sync. Second change set (explicit template): add LiveScoresSchedule + permission, in-place updates only. Environment compared with a backup: nothing changed or removed, only the empty Telegram settings added</td></tr>
+      <tr><td>5</td><td>Vercel production deploy (retried after an intermittent "Not authorized")</td><td>All pages 200; manifest, service worker and icons served; no sideways scrolling at 390 px</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><strong>For the next <code>sam deploy</code>:</strong> always pass <code>--template-file template.yaml</code> (or delete <code>infrastructure/.aws-sam/</code>), create the change set with <code>--no-execute-changeset</code>, and review it. Image now <code>19ec21c128cd6192d991f8a837a8b44e9af9dc45</code>.</div>
+
+  <h2>Waiting on you</h2>
+  <ul>
+    <li><strong>Telegram:</strong> create a bot with @BotFather, create a channel, add the bot as an admin, and send me the token and the channel name (e.g. <code>@bethope_tips</code>).</li>
+    <li><strong>Push alerts on your phone:</strong> Android (Chrome): open the site → Install → Settings → Notifications → turn on push. iPhone: Share → Add to Home Screen, open it from there, then turn on push.</li>
+  </ul>
+</main>
+</body>
+</html>
