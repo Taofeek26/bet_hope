@@ -154,16 +154,23 @@ def _classify_with_ai(items):
         import openai
         client = openai.OpenAI(api_key=key, base_url='https://openrouter.ai/api/v1')
         listing = '\n'.join(f'{i}. {it["title"]} — {it["summary"][:240]}' for i, it in enumerate(items))
-        r = client.chat.completions.create(
-            model='deepseek/deepseek-v4-pro', max_tokens=3000, temperature=0,
-            messages=[{'role': 'system', 'content': (
-                'You tag football news for bettors. For each numbered item return JSON '
-                '{"items":[{"i":0,"tag":"injury|suspension|manager|lineup|transfer|other","summary":"..."}]}. '
-                'summary: max 18 words, ONLY facts stated in the headline/snippet, no speculation.')},
-                {'role': 'user', 'content': listing}],
-        )
-        text = r.choices[0].message.content or ''
-        data = json.loads(text[text.find('{'): text.rfind('}') + 1])
+        messages = [{'role': 'system', 'content': (
+            'You tag football news for bettors. For each numbered item return JSON '
+            '{"items":[{"i":0,"tag":"injury|suspension|manager|lineup|transfer|other","summary":"..."}]}. '
+            'summary: max 18 words, ONLY facts stated in the headline/snippet, no speculation. Reply with JSON only.')},
+            {'role': 'user', 'content': listing}]
+        data = None
+        for _ in range(2):  # reasoning models sometimes spend the budget thinking and return nothing
+            # 12k tokens: deepseek-v4-pro reasons before answering; a small
+            # budget ran out mid-reasoning and returned an empty reply.
+            r = client.chat.completions.create(model='deepseek/deepseek-v4-pro', max_tokens=12000, temperature=0,
+                                               response_format={'type': 'json_object'}, messages=messages)
+            text = r.choices[0].message.content or ''
+            if '{' in text:
+                data = json.loads(text[text.find('{'): text.rfind('}') + 1])
+                break
+        if not data:
+            return {}
         return {int(x['i']): x for x in data.get('items', []) if 'i' in x}
     except Exception as e:  # tagging is a nice-to-have; headlines still show
         logger.warning(f'News tagging failed: {e}')
@@ -175,6 +182,7 @@ def scrape_team_news(now=None, max_age_hours=36):
     import feedparser
     from apps.matches.models import Match
     from apps.teams.models import Team
+    from .models import FlashItem
 
     now = now or timezone.now()
     upcoming = list(Match.objects.filter(status=Match.Status.SCHEDULED, match_date__gte=now.date(),
@@ -219,14 +227,18 @@ def scrape_team_news(now=None, max_age_hours=36):
         t = tags.get(i, {})
         tag = t.get('tag') if t.get('tag') in {'injury', 'suspension', 'manager', 'lineup', 'transfer', 'other'} else ''
         m = it['match']
-        created += _add(
-            kind='news', match=m, team=it['team'], tag=tag, source=it['source'], url=it['url'],
+        fields = dict(
+            tag=tag,
             importance=3 if tag in ('injury', 'suspension', 'lineup') else 1 if tag in ('transfer', 'other') else 2,
-            title=it['title'],
             body=' · '.join(x for x in ((t.get('summary') or it['summary'][:240]), f'Next: {m.home_team.name} v {m.away_team.name}') if x),
-            published_at=it['when'],
-            dedupe_key=f'news:{it["url"]}'[:160],
         )
+        key = f'news:{it["url"]}'[:160]
+        made = _add(kind='news', match=m, team=it['team'], source=it['source'], url=it['url'],
+                    title=it['title'], published_at=it['when'], dedupe_key=key, **fields)
+        if not made and tag:
+            # Seen before without a tag (tagging failed that run): fill it in now.
+            FlashItem.objects.filter(dedupe_key=key, tag='').update(**fields)
+        created += made
     return {'matched': len(found), 'created': created}
 
 
