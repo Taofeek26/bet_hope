@@ -10,7 +10,7 @@ import { formatDateWithPreset, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchesPage() {
-  const [view, setView] = useState<'upcoming' | 'results'>('upcoming');
+  const [view, setView] = useState<'upcoming' | 'live' | 'results'>('upcoming');
   const [selectedDays, setSelectedDays] = useState<number>(7);
   const [selectedLeague, setSelectedLeague] = useState<string>('');
 
@@ -23,6 +23,7 @@ export default function MatchesPage() {
   const { data, isLoading, error, refetch } = useQuery<any>({
     queryKey: ['matches', view, selectedDays, selectedLeague],
     queryFn: () => {
+      if (view === 'live') return matchesApi.getLive();
       if (view === 'results') return matchesApi.getResults({ days: selectedDays, league: selectedLeague || undefined });
       return matchesApi.getUpcoming({ days: Math.min(selectedDays, 14), league: selectedLeague || undefined });
     },
@@ -31,6 +32,7 @@ export default function MatchesPage() {
   // Handle different response structures
   const getMatches = () => {
     if (!data) return [];
+    if (view === 'live') return data.matches || [];
     if (view === 'results') return data.results || [];
     if (view === 'upcoming' && data.matches_by_date) {
       return Object.values(data.matches_by_date).flat();
@@ -70,6 +72,13 @@ export default function MatchesPage() {
               <span className="xs:hidden">Soon</span>
             </button>
             <button
+              onClick={() => setView('live')}
+              className={`btn btn-sm text-xs sm:text-sm ${view === 'live' ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              Live
+            </button>
+            <button
               onClick={() => setView('results')}
               className={`btn btn-sm text-xs sm:text-sm ${view === 'results' ? 'btn-primary' : 'btn-secondary'}`}
             >
@@ -84,8 +93,8 @@ export default function MatchesPage() {
           </button>
         </div>
 
-        {/* Filters */}
-        {(
+        {/* Filters (not for Live: it lists every covered match in play) */}
+        {view !== 'live' && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-text-muted" />
@@ -187,7 +196,7 @@ function TeamName({ id, name, className }: { id?: number; name: string; classNam
 
 function MatchCard({ match }: { match: any }) {
   const { settings } = useSettings();
-  const isLive = match.status === 'live';
+  const isLive = match.status === 'live' || match.status === 'halftime';
   const isFinished = match.status === 'finished';
 
   // Handle both nested and flat team name formats
@@ -245,7 +254,10 @@ function MatchCard({ match }: { match: any }) {
               {match.home_score} - {match.away_score}
             </div>
           ) : isLive ? (
-            <div className="badge badge-live text-[10px] sm:text-xs">LIVE</div>
+            <div className="flex items-center gap-2 sm:justify-center">
+              <span className="text-base sm:text-xl font-bold text-text">{match.home_score ?? 0} - {match.away_score ?? 0}</span>
+              <span className="badge badge-live text-[10px] sm:text-xs">{match.status === 'halftime' ? 'HT' : 'LIVE'}</span>
+            </div>
           ) : (
             <div className="text-xs sm:text-sm text-text-muted min-w-0">
               {/* The day header above already shows the date; on phones show
@@ -296,10 +308,12 @@ function EmptyState({ view }: { view: string }) {
         <Calendar className="w-8 h-8" />
       </div>
       <h3 className="text-lg font-semibold text-text mb-2">
-        No {view === 'results' ? 'Recent' : 'Upcoming'} Matches
+        No {view === 'live' ? 'Live' : view === 'results' ? 'Recent' : 'Upcoming'} Matches
       </h3>
       <p className="text-text-muted text-sm max-w-sm mx-auto">
-        {view === 'results'
+        {view === 'live'
+          ? 'No match is in play right now. Live scores cover the Premier League, Championship, LaLiga, Serie A, Bundesliga, Ligue 1, Eredivisie, Primeira Liga and Champions League, updated every 5 minutes.'
+          : view === 'results'
           ? 'No recent match results to display.'
           : 'No fixtures scheduled for these filters. Leagues pause for international breaks; new fixtures are added by the daily sync.'}
       </p>

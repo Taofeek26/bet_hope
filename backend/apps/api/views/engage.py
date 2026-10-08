@@ -113,3 +113,72 @@ class EngageViewSet(viewsets.ViewSet):
         from apps.engage.models import PushSubscription
         PushSubscription.objects.filter(endpoint=(request.data.get('endpoint') or '')[:1000]).delete()
         return Response({'ok': True})
+
+    # ─── Score challenge (Phase 6) ──────────────────────────────────────────
+    def _player(self, request):
+        from apps.engage.game import hash_token
+        from apps.engage.models import GamePlayer
+        token = request.headers.get('X-Game-Token', '')
+        return GamePlayer.objects.filter(token_hash=hash_token(token)).first() if token else None
+
+    @action(detail=False, methods=['post'])
+    def game_join(self, request):
+        """Body {nickname}. Returns a device token: keep it, it is the only key to this player."""
+        from apps.engage.game import NICK_RE, BLOCKED, hash_token, new_token
+        from apps.engage.models import GamePlayer
+        nick = (request.data.get('nickname') or '').strip()
+        if not NICK_RE.match(nick) or nick.lower() in BLOCKED:
+            return Response({'error': 'Nickname: 3-20 letters, numbers, spaces, . _ -'}, status=400)
+        if GamePlayer.objects.filter(nickname__iexact=nick).exists():
+            return Response({'error': 'That nickname is taken'}, status=409)
+        token = new_token()
+        GamePlayer.objects.create(nickname=nick, token_hash=hash_token(token))
+        return Response({'nickname': nick, 'token': token})
+
+    @action(detail=False, methods=['get'])
+    def game_week(self, request):
+        """This week's matches, your picks (with X-Game-Token), and the leaderboard. ?week=-1 for last week."""
+        from apps.engage.game import week_bounds, week_matches, leaderboard, points
+        from apps.engage.models import GamePick
+        try:
+            offset = max(min(int(request.query_params.get('week', 0)), 0), -12)
+        except ValueError:
+            offset = 0
+        start, end = week_bounds(timezone.now() + timedelta(days=7 * offset))
+        player = self._player(request)
+        mine = {p.match_id: p for p in GamePick.objects.filter(player=player, match__kickoff_at__gte=start, match__kickoff_at__lt=end)} if player else {}
+        now = timezone.now()
+        rows = []
+        for m in week_matches(start, end):
+            p = mine.get(m.id)
+            rows.append({
+                'id': m.id, 'home': m.home_team.name, 'away': m.away_team.name, 'league': m.season.league.name,
+                'kickoff_at': m.kickoff_at.isoformat(), 'open': m.kickoff_at > now and m.status == 'scheduled',
+                'status': m.status, 'score': [m.home_score, m.away_score] if m.status == 'finished' else None,
+                'pick': [p.home, p.away] if p else None,
+                'points': points(p.home, p.away, m.home_score, m.away_score) if p and m.status == 'finished' else None,
+            })
+        return Response({'week_start': start.date().isoformat(), 'week_end': (end - timedelta(days=1)).date().isoformat(),
+                         'player': player.nickname if player else None, 'matches': rows,
+                         'leaderboard': leaderboard(start, end)})
+
+    @action(detail=False, methods=['post'])
+    def game_pick(self, request):
+        """Body {match_id, home, away} with X-Game-Token. Allowed until kickoff."""
+        from apps.engage.game import LEAGUES
+        from apps.engage.models import GamePick
+        from apps.matches.models import Match
+        player = self._player(request)
+        if not player:
+            return Response({'error': 'Join the challenge first'}, status=401)
+        try:
+            home, away = int(request.data.get('home')), int(request.data.get('away'))
+            match = Match.objects.get(id=int(request.data.get('match_id')), season__league__code__in=LEAGUES)
+        except (TypeError, ValueError, Match.DoesNotExist):
+            return Response({'error': 'Invalid pick'}, status=400)
+        if not (0 <= home <= 15 and 0 <= away <= 15):
+            return Response({'error': 'Scores must be 0-15'}, status=400)
+        if not match.kickoff_at or match.kickoff_at <= timezone.now() or match.status != 'scheduled':
+            return Response({'error': 'This match has started; picks are closed'}, status=400)
+        GamePick.objects.update_or_create(player=player, match=match, defaults={'home': home, 'away': away})
+        return Response({'ok': True})

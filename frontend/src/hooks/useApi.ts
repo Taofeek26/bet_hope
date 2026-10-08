@@ -34,6 +34,7 @@ export const queryKeys = {
     all: ['matches'] as const,
     detail: (id: number) => ['matches', id] as const,
     upcoming: ['matches', 'upcoming'] as const,
+    live: ['matches', 'live'] as const,
     today: ['matches', 'today'] as const,
     results: ['matches', 'results'] as const,
     withPredictions: ['matches', 'with-predictions'] as const,
@@ -173,6 +174,15 @@ export function useTodayMatches() {
     queryKey: queryKeys.matches.today,
     queryFn: () => matchesApi.getToday(),
     refetchInterval: useAutoRefreshInterval(POLL_MS),
+  });
+}
+
+// Live scores (Phase 6): top leagues only, refreshed by the server every 5 minutes.
+export function useLiveMatches() {
+  return useQuery({
+    queryKey: queryKeys.matches.live,
+    queryFn: () => matchesApi.getLive(),
+    refetchInterval: 60 * 1000,
   });
 }
 

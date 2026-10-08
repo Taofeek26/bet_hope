@@ -46,7 +46,7 @@ export default function MatchDetailPage() {
   const homeTeam = match.home_team?.name || 'Home Team';
   const awayTeam = match.away_team?.name || 'Away Team';
   const isFinished = match.status === 'finished';
-  const isLive = match.status === 'live';
+  const isLive = match.status === 'live' || match.status === 'halftime';
 
   return (
     <>

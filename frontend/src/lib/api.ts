@@ -168,6 +168,11 @@ export const matchesApi = {
     return data;
   },
 
+  getLive: async () => {
+    const { data } = await api.get<{ count: number; matches: Match[]; covered: string[]; updated_every_minutes: number }>('/matches/live/');
+    return data;
+  },
+
   getWithPredictions: async (params?: { min_confidence?: number }) => {
     const { data } = await api.get('/matches/with_predictions/', { params });
     return data;

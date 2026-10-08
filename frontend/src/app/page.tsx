@@ -22,6 +22,7 @@ import { FlashFeed } from '@/components/engage/FlashFeed';
 import { AccaOfDay } from '@/components/engage/AccaOfDay';
 import { ResultsCard } from '@/components/engage/ResultsCard';
 import { InstallBanner } from '@/components/pwa/InstallBanner';
+import { LiveStrip } from '@/components/matches/LiveStrip';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -142,6 +143,7 @@ export default function HomePage() {
       </div>
 
       <InstallBanner />
+      <LiveStrip />
 
       {/* Stats Grid */}
       <DashboardStats />

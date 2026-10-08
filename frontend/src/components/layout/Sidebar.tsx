@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Terminal,
   Wallet,
+  Gamepad2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -32,6 +33,7 @@ const navItems = [
   { href: '/value-bets', icon: Target, label: 'Value Bets', num: '6' },
   { href: '/favorites', icon: Star, label: 'Favorites', num: '7' },
   { href: '/my-bets', icon: Wallet, label: 'My bets', num: '8' },
+  { href: '/game', icon: Gamepad2, label: 'Score challenge', num: '9' },
 ];
 
 const bottomItems = [

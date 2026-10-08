@@ -183,15 +183,20 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def live(self, request):
         """Get currently live matches."""
+        # LIVE and HALFTIME: set every 5 minutes by sync_live (Phase 6) for
+        # the competitions football-data.org's free tier covers.
         matches = Match.objects.filter(
-            status=Match.Status.LIVE
+            status__in=[Match.Status.LIVE, Match.Status.HALFTIME]
         ).select_related(
             'home_team', 'away_team', 'season__league'
-        ).order_by('match_date', 'kickoff_time')
+        ).order_by('kickoff_at', 'match_date', 'kickoff_time')
 
         return Response({
             'count': matches.count(),
             'matches': MatchSerializer(matches, many=True).data,
+            'covered': ['Premier League', 'Championship', 'LaLiga', 'Serie A', 'Bundesliga', 'Ligue 1',
+                        'Eredivisie', 'Primeira Liga', 'Champions League'],
+            'updated_every_minutes': 5,
         })
 
     @action(detail=True, methods=['get'])

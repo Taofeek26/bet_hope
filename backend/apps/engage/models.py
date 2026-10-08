@@ -109,3 +109,24 @@ class MatchPreview(TimeStampedModel):
 
     class Meta:
         db_table = 'engage_match_preview'
+
+
+class GamePlayer(TimeStampedModel):
+    """Score challenge player (Phase 6): a nickname and a device token, no account, no prizes."""
+    nickname = models.CharField(max_length=20, unique=True)
+    token_hash = models.CharField(max_length=64, unique=True)  # sha256 of the device token
+
+    class Meta:
+        db_table = 'engage_game_player'
+
+
+class GamePick(TimeStampedModel):
+    """One score prediction; editable until kickoff."""
+    player = models.ForeignKey(GamePlayer, on_delete=models.CASCADE, related_name='picks')
+    match = models.ForeignKey('matches.Match', on_delete=models.CASCADE, related_name='game_picks')
+    home = models.PositiveSmallIntegerField()
+    away = models.PositiveSmallIntegerField()
+
+    class Meta:
+        db_table = 'engage_game_pick'
+        constraints = [models.UniqueConstraint(fields=['player', 'match'], name='uniq_game_pick')]

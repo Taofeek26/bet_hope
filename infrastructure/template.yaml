@@ -92,6 +92,15 @@ Parameters:
     Type: String
     Default: ""
     Description: Web push public key, served to browsers (Phase 6)
+  TelegramBotToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Telegram bot token from @BotFather (channel posts, Phase 6; empty = off)
+  TelegramChannel:
+    Type: String
+    Default: ""
+    Description: Telegram channel, e.g. @bethope_tips (the bot must be an admin)
 
   AnthropicApiKey:
     Type: String
@@ -445,6 +454,8 @@ Resources:
           ODDS_API_KEY: !Ref OddsApiKey
           VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
           VAPID_PUBLIC_KEY: !Ref VapidPublicKey
+          TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+          TELEGRAM_CHANNEL: !Ref TelegramChannel
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           OPENROUTER_API_KEY: !Ref OpenRouterApiKey
           DEFAULT_AI_PROVIDER: openrouter
@@ -494,6 +505,8 @@ Resources:
           ODDS_API_KEY: !Ref OddsApiKey
           VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
           VAPID_PUBLIC_KEY: !Ref VapidPublicKey
+          TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+          TELEGRAM_CHANNEL: !Ref TelegramChannel
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           OPENROUTER_API_KEY: !Ref OpenRouterApiKey
           DEFAULT_AI_PROVIDER: openrouter
@@ -593,6 +606,26 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt GeneratePredictionsSchedule.Arn
+
+  # Phase 6: live scores for the top leagues. Every 5 minutes, 10:00-23:59
+  # UTC; the command returns immediately unless a covered match is in play.
+  LiveScoresSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Live scores (football-data.org), every 5 minutes during match hours
+      ScheduleExpression: cron(0/5 10-23 * * ? *)
+      Targets:
+        - Arn: !GetAtt ManageFunction.Arn
+          Id: LiveScores
+          Input: '{"command": "sync_live", "args": []}'
+
+  LiveScoresPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ManageFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt LiveScoresSchedule.Arn
 
   # ==========================================================================
   # INFRA TOGGLE — brings NAT Gateway + RDS up at 5am WAT and tears them

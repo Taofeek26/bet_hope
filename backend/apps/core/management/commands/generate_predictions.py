@@ -101,6 +101,8 @@ class Command(BaseCommand):
                     from apps.engage.acca import build_daily_acca
                     acca = build_daily_acca()
                     self.stdout.write(f"Acca of the day: {len(acca.legs) if acca else 0} legs")
+                    from apps.engage import telegram
+                    telegram.post_acca(acca)
                     # Morning digest goes out from the 05:15 UTC run (after retraining).
                     from django.utils import timezone as _tz
                     if _tz.now().hour >= 5:
@@ -108,6 +110,7 @@ class Command(BaseCommand):
                         self.stdout.write(f"Push digest sent: {morning_digest()}")
                         from apps.engage.previews import generate_previews
                         self.stdout.write(f"AI match previews: {generate_previews()}")
+                        self.stdout.write(f"Telegram top picks posted: {telegram.post_top_picks()}")
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f'Acca of the day failed: {e}'))
             if historical:
@@ -418,6 +421,8 @@ class Command(BaseCommand):
             self.stdout.write(f"Accas settled: {settle_accas()} · results flash: {results_flash()}")
             from apps.engage.push import results_push
             self.stdout.write(f"Results push sent: {results_push()}")
+            from apps.engage import telegram
+            self.stdout.write(f"Telegram results posted: {telegram.post_results()}")
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Acca/results flash failed: {e}'))
 
