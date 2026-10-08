@@ -11,6 +11,11 @@ export interface PlacedBet {
   stake: number;          // naira
   odds: number;           // total odds you got
   selections: SlipSelection[];
+  // Filled when the SportyBet extension reports the bet (Phase 6)
+  source?: 'manual' | 'extension';
+  bookingCode?: string;
+  ticketId?: string;
+  legOdds?: Record<string, number>; // `${matchId}-${key}` -> SportyBet odds
 }
 
 export type LegResult = 'won' | 'lost' | 'void' | 'pending';
@@ -19,6 +24,7 @@ interface MyBetsState {
   bets: PlacedBet[];
   weeklyLimit: number | null;  // naira, set by the user
   add: (b: Omit<PlacedBet, 'id' | 'placedAt'>) => void;
+  upsert: (b: PlacedBet) => boolean; // from the extension; false if already saved
   remove: (id: string) => void;
   setWeeklyLimit: (n: number | null) => void;
 }
@@ -29,6 +35,15 @@ export const useMyBets = create<MyBetsState>()(
       bets: [],
       weeklyLimit: null,
       add: (b) => set((s) => ({ bets: [{ ...b, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, placedAt: new Date().toISOString() }, ...s.bets] })),
+      upsert: (b) => {
+        let added = false;
+        set((s) => {
+          if (s.bets.some((x) => x.id === b.id || (b.ticketId && x.ticketId === b.ticketId))) return s;
+          added = true;
+          return { bets: [b, ...s.bets] };
+        });
+        return added;
+      },
       remove: (id) => set((s) => ({ bets: s.bets.filter((b) => b.id !== id) })),
       setWeeklyLimit: (weeklyLimit) => set({ weeklyLimit }),
     }),

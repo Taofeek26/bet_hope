@@ -9,6 +9,8 @@ import { MainContent } from '@/components/layout/MainContent';
 import { NotificationWatcher } from '@/components/notifications/NotificationWatcher';
 import { BetSlip } from '@/components/betslip/BetSlip';
 import { PwaSetup } from '@/components/pwa/PwaSetup';
+import { ExtensionInbox } from '@/components/betslip/ExtensionInbox';
+import { TicketWatcher } from '@/components/betslip/TicketWatcher';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono', display: 'swap' });
@@ -48,6 +50,8 @@ export default function RootLayout({
               <NotificationWatcher />
               <BetSlip />
               <PwaSetup />
+              <ExtensionInbox />
+              <TicketWatcher />
             </SidebarProvider>
           </SettingsProvider>
         </Providers>

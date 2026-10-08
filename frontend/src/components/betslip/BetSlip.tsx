@@ -209,7 +209,7 @@ export function BetSlip() {
                 >
                   {chosen.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
-                <ShareButton text={slipText()} url={typeof window !== 'undefined' ? window.location.origin : undefined} label="" className="px-2" />
+                <ShareButton text={slipText()} url={typeof window !== 'undefined' ? window.location.origin : undefined} label="" className="px-2" up />
                 <button onClick={copy} className="btn btn-secondary btn-sm" aria-label="Copy slip">
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   {copied ? 'Copied' : 'Copy'}
