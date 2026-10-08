@@ -101,6 +101,11 @@ class Command(BaseCommand):
                     from apps.engage.acca import build_daily_acca
                     acca = build_daily_acca()
                     self.stdout.write(f"Acca of the day: {len(acca.legs) if acca else 0} legs")
+                    # Morning digest goes out from the 05:15 UTC run (after retraining).
+                    from django.utils import timezone as _tz
+                    if _tz.now().hour >= 5:
+                        from apps.engage.push import morning_digest
+                        self.stdout.write(f"Push digest sent: {morning_digest()}")
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f'Acca of the day failed: {e}'))
             if historical:
@@ -409,6 +414,8 @@ class Command(BaseCommand):
             from apps.engage.acca import settle_accas
             from apps.engage.flash import results_flash
             self.stdout.write(f"Accas settled: {settle_accas()} · results flash: {results_flash()}")
+            from apps.engage.push import results_push
+            self.stdout.write(f"Results push sent: {results_push()}")
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Acca/results flash failed: {e}'))
 

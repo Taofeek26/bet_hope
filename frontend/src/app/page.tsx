@@ -21,6 +21,7 @@ import { MetricPlate } from '@/components/ui/MetricPlate';
 import { FlashFeed } from '@/components/engage/FlashFeed';
 import { AccaOfDay } from '@/components/engage/AccaOfDay';
 import { ResultsCard } from '@/components/engage/ResultsCard';
+import { InstallBanner } from '@/components/pwa/InstallBanner';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -139,6 +140,8 @@ export default function HomePage() {
         <h1>Dashboard</h1>
         <p>AI-powered predictions across 20 major leagues worldwide</p>
       </div>
+
+      <InstallBanner />
 
       {/* Stats Grid */}
       <DashboardStats />

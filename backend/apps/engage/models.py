@@ -74,3 +74,27 @@ class DailyAcca(TimeStampedModel):
     class Meta:
         db_table = 'engage_daily_acca'
         ordering = ['-date']
+
+
+class PushSubscription(TimeStampedModel):
+    """A browser/phone that asked for push alerts (Phase 6). No account needed."""
+    endpoint = models.URLField(max_length=1000, unique=True)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    teams = models.JSONField(default=list, blank=True)   # favourite team ids
+    prefs = models.JSONField(default=dict, blank=True)   # {"digest": true, "results": true, "teams": true}
+    failures = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'engage_push_subscription'
+
+
+class PushSent(models.Model):
+    """One row per broadcast (e.g. the morning digest of a date), so it goes out once."""
+    key = models.CharField(max_length=80, unique=True)
+    sent = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'engage_push_sent'

@@ -424,6 +424,10 @@ export const engageApi = {
     const { data } = await api.get('/engage/results/', { params: date ? { date } : undefined });
     return data;
   },
+  pushKey: async () => (await api.get('/engage/push_key/')).data as { public_key: string },
+  pushSubscribe: async (subscription: any, teams: number[], prefs: Record<string, boolean>) =>
+    (await api.post('/engage/push_subscribe/', { subscription, teams, prefs })).data,
+  pushUnsubscribe: async (endpoint: string) => (await api.post('/engage/push_unsubscribe/', { endpoint })).data,
 };
 
 export interface FlashItem {

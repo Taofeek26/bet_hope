@@ -81,3 +81,35 @@ class EngageViewSet(viewsets.ViewSet):
         except ValueError:
             day = None
         return Response(yesterday_results(day))
+
+    # ─── Push alerts (Phase 6) ──────────────────────────────────────────────
+    @action(detail=False, methods=['get'])
+    def push_key(self, request):
+        import os
+        return Response({'public_key': os.getenv('VAPID_PUBLIC_KEY', '')})
+
+    @action(detail=False, methods=['post'])
+    def push_subscribe(self, request):
+        """Body: {subscription: {endpoint, keys: {p256dh, auth}}, teams: [ids], prefs: {...}}"""
+        from apps.engage.models import PushSubscription
+        sub = request.data.get('subscription') or {}
+        keys = sub.get('keys') or {}
+        endpoint = sub.get('endpoint') or ''
+        # Only real browser push services, never arbitrary URLs.
+        allowed = ('https://fcm.googleapis.com/', 'https://updates.push.services.mozilla.com/',
+                   'https://web.push.apple.com/', 'https://wns2-', 'https://jmt17.google.com/')
+        if not endpoint.startswith(allowed) or not keys.get('p256dh') or not keys.get('auth'):
+            return Response({'error': 'invalid subscription'}, status=400)
+        teams = [int(t) for t in (request.data.get('teams') or []) if str(t).isdigit()][:50]
+        prefs = {k: bool(v) for k, v in (request.data.get('prefs') or {}).items() if k in ('digest', 'results', 'teams')}
+        obj, created = PushSubscription.objects.update_or_create(
+            endpoint=endpoint[:1000],
+            defaults={'p256dh': keys['p256dh'][:200], 'auth': keys['auth'][:100], 'teams': teams, 'prefs': prefs, 'failures': 0},
+        )
+        return Response({'ok': True, 'created': created})
+
+    @action(detail=False, methods=['post'])
+    def push_unsubscribe(self, request):
+        from apps.engage.models import PushSubscription
+        PushSubscription.objects.filter(endpoint=(request.data.get('endpoint') or '')[:1000]).delete()
+        return Response({'ok': True})

@@ -83,6 +83,15 @@ Parameters:
     NoEcho: true
     Default: ""
     Description: The Odds API key (bookmaker prices, Phase 5)
+  VapidPrivateKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Web push private key (Phase 6)
+  VapidPublicKey:
+    Type: String
+    Default: ""
+    Description: Web push public key, served to browsers (Phase 6)
 
   AnthropicApiKey:
     Type: String
@@ -434,6 +443,8 @@ Resources:
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ODDS_API_KEY: !Ref OddsApiKey
+          VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
+          VAPID_PUBLIC_KEY: !Ref VapidPublicKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           OPENROUTER_API_KEY: !Ref OpenRouterApiKey
           DEFAULT_AI_PROVIDER: openrouter
@@ -481,6 +492,8 @@ Resources:
           API_FOOTBALL_KEY: !Ref ApiFootballKey
           FOOTBALL_DATA_ORG_KEY: !Ref FootballDataOrgKey
           ODDS_API_KEY: !Ref OddsApiKey
+          VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
+          VAPID_PUBLIC_KEY: !Ref VapidPublicKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           OPENROUTER_API_KEY: !Ref OpenRouterApiKey
           DEFAULT_AI_PROVIDER: openrouter
