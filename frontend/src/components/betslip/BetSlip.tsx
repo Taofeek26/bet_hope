@@ -25,11 +25,13 @@ export function BetSlip() {
   const [ready, setReady] = useState(false);
   const [copied, setCopied] = useState(false);
   const [ext, setExt] = useState(false);
+  const [isPhone, setIsPhone] = useState(false);
   const [sb, setSb] = useState<{ busy?: boolean; msg?: string; ok?: boolean; misses?: string[] } | null>(null);
   useEffect(() => {
     setReady(true);
     // The desktop extension marks the page when it is installed.
     const check = () => setExt(!!document.documentElement.dataset.bethopeExt);
+    setIsPhone(/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent));
     check();
     const t = setTimeout(check, 800);
     const onMsg = (e: MessageEvent) => {
@@ -68,6 +70,12 @@ export function BetSlip() {
       setAutoCollapsed(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // The extension marks the page when it loads; check again whenever the
+  // slip opens (e.g. after the extension was switched on and the page refreshed).
+  useEffect(() => {
+    if (open) setExt(!!document.documentElement.dataset.bethopeExt);
   }, [open]);
 
   const loadOnSportyBet = () => {
@@ -238,7 +246,14 @@ export function BetSlip() {
                     {sb?.msg && !sb.busy && <p className={`text-[11px] ${sb.ok ? 'text-green-500' : 'text-red-400'}`}>{sb.msg}</p>}
                     {!!sb?.misses?.length && <ul className="text-[10px] text-text-muted list-disc pl-4">{sb.misses.map((m) => <li key={m}>{m}</li>)}</ul>}
                   </div>
-                ) : null
+                ) : (
+                  // Say why the button is missing instead of hiding it silently.
+                  <p className="text-[11px] text-text-muted p-2 rounded bg-surface border border-border-dim">
+                    {isPhone
+                      ? 'Load on SportyBet needs a computer: Chrome, Edge or Brave with the Bet Hope extension. On your phone, use Copy and Open.'
+                      : <>Load on SportyBet: the Bet Hope extension isn&apos;t detected in this browser. Check it&apos;s switched on at <code>chrome://extensions</code>, then refresh this page.</>}
+                  </p>
+                )
               )}
               <PlacedButton stake={stake} odds={yours} bookmaker={bookie?.id || ''} onSaved={() => { clear(); setOpen(false); }} />
               <div className="flex items-center justify-between">
