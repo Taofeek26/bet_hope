@@ -202,3 +202,7 @@ infrastructure/LAMBDA_DEPLOY_SECRETS.local.txt
 
 # Database dumps (contain user data) — never commit
 *.dump
+
+# SportyBet browser extension: kept local on purpose (this repo is public).
+/extension/
+/extension.zip
