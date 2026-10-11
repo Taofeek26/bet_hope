@@ -6,6 +6,9 @@ import { Trophy, MapPin, Calendar, ArrowLeft, TrendingUp, Target } from 'lucide-
 import { teamsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import Link from 'next/link';
+import { FavoriteButton } from '@/components/ui/FavoriteButton';
+import { useSettings } from '@/contexts/SettingsContext';
+import { formatDateWithPreset } from '@/lib/utils';
 
 export default function TeamDetailPage() {
   const params = useParams();
@@ -69,11 +72,14 @@ export default function TeamDetailPage() {
             </div>
           )}
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-text">{team.name}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold text-text">{team.name}</h1>
+              <FavoriteButton kind="team" id={team.id} label={team.name} />
+            </div>
             <div className="flex items-center gap-4 mt-2 text-text-muted">
               <span className="flex items-center gap-1">
                 <Trophy className="w-4 h-4" />
-                {team.league_name || 'League'}
+                {team.league?.name || team.league_name || 'League'}
               </span>
               {team.stadium && (
                 <span className="flex items-center gap-1">
@@ -90,7 +96,7 @@ export default function TeamDetailPage() {
       {currentStats && (
         <div className="stats-grid mb-6">
           <div className="stat-card">
-            <div className="stat-value">{currentStats.matches_played || 0}</div>
+            <div className="stat-value">{currentStats.played ?? currentStats.matches_played ?? 0}</div>
             <div className="stat-label">Played</div>
           </div>
           <div className="stat-card">
@@ -128,50 +134,9 @@ export default function TeamDetailPage() {
               </div>
             ) : fixtures?.upcoming_matches && fixtures.upcoming_matches.length > 0 ? (
               <div className="space-y-3">
-                {fixtures.upcoming_matches.slice(0, 5).map((match: any) => {
-                  const homeName = match.home_team_name || match.home_team?.name;
-                  const awayName = match.away_team_name || match.away_team?.name;
-                  const homeLogo = match.home_team_logo || match.home_team?.logo_url;
-                  const awayLogo = match.away_team_logo || match.away_team?.logo_url;
-
-                  return (
-                    <Link
-                      key={match.id}
-                      href={`/matches/${match.id}`}
-                      className="block p-3 bg-surface rounded-lg hover:bg-input transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1">
-                            {homeLogo ? (
-                              <img src={homeLogo} alt={homeName} className="w-5 h-5 object-contain" />
-                            ) : (
-                              <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
-                                {homeName?.charAt(0)}
-                              </div>
-                            )}
-                            <span className="text-sm font-medium text-text">{homeName}</span>
-                          </div>
-                          <span className="text-xs text-text-muted">vs</span>
-                          <div className="flex items-center gap-1">
-                            {awayLogo ? (
-                              <img src={awayLogo} alt={awayName} className="w-5 h-5 object-contain" />
-                            ) : (
-                              <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
-                                {awayName?.charAt(0)}
-                              </div>
-                            )}
-                            <span className="text-sm font-medium text-text">{awayName}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-text-muted">{match.match_date}</span>
-                          <span className="badge badge-outline">Scheduled</span>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
+                {fixtures.upcoming_matches.slice(0, 5).map((match: any) => (
+                  <TeamMatchRow key={match.id} match={match} right={<span className="badge badge-outline">Scheduled</span>} />
+                ))}
               </div>
             ) : (
               <div className="text-center py-8 text-text-muted">
@@ -201,55 +166,22 @@ export default function TeamDetailPage() {
             ) : fixtures?.past_matches && fixtures.past_matches.length > 0 ? (
               <div className="space-y-3">
                 {fixtures.past_matches.slice(0, 5).map((match: any) => {
-                  const isHome = match.home_team_id === teamId || match.home_team?.id === teamId;
+                  // The API sends home_team as a plain id (MatchListSerializer); the old
+                  // check compared .home_team_id / .home_team.id, so every game counted
+                  // as an away game and home results showed reversed (Phase 4).
+                  const homeId = typeof match.home_team === 'object' ? match.home_team?.id : match.home_team;
+                  const isHome = homeId === teamId;
                   const teamScore = isHome ? match.home_score : match.away_score;
                   const oppScore = isHome ? match.away_score : match.home_score;
                   const result = teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'D';
                   const resultColor = result === 'W' ? 'badge-win' : result === 'L' ? 'badge-loss' : 'badge-draw';
-                  const homeName = match.home_team_name || match.home_team?.name;
-                  const awayName = match.away_team_name || match.away_team?.name;
-                  const homeLogo = match.home_team_logo || match.home_team?.logo_url;
-                  const awayLogo = match.away_team_logo || match.away_team?.logo_url;
-
                   return (
-                    <Link
-                      key={match.id}
-                      href={`/matches/${match.id}`}
-                      className="block p-3 bg-surface rounded-lg hover:bg-input transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1">
-                            {homeLogo ? (
-                              <img src={homeLogo} alt={homeName} className="w-5 h-5 object-contain" />
-                            ) : (
-                              <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
-                                {homeName?.charAt(0)}
-                              </div>
-                            )}
-                            <span className="text-sm font-medium text-text">{homeName}</span>
-                          </div>
-                          <span className="text-xs text-text-muted">vs</span>
-                          <div className="flex items-center gap-1">
-                            {awayLogo ? (
-                              <img src={awayLogo} alt={awayName} className="w-5 h-5 object-contain" />
-                            ) : (
-                              <div className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand">
-                                {awayName?.charAt(0)}
-                              </div>
-                            )}
-                            <span className="text-sm font-medium text-text">{awayName}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-text-muted">{match.match_date}</span>
-                          <span className="text-sm font-bold text-text">
-                            {match.home_score} - {match.away_score}
-                          </span>
-                          <span className={`badge ${resultColor}`}>{result}</span>
-                        </div>
-                      </div>
-                    </Link>
+                    <TeamMatchRow key={match.id} match={match} right={
+                      <>
+                        <span className="text-sm font-bold text-text whitespace-nowrap">{match.home_score} - {match.away_score}</span>
+                        <span className={`badge ${resultColor}`}>{result}</span>
+                      </>
+                    } />
                   );
                 })}
               </div>
@@ -262,5 +194,41 @@ export default function TeamDetailPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * One fixture/result row. Phones: teams on the first line, date and status
+ * underneath (Phase 5 mobile pass; on one line they overlapped). Desktop:
+ * a single line.
+ */
+function TeamMatchRow({ match, right }: { match: any; right: React.ReactNode }) {
+  const { settings } = useSettings();
+  const side = (name?: string, logo?: string) => (
+    <span className="flex items-center gap-1.5 min-w-0">
+      {logo ? (
+        <img src={logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+      ) : (
+        <span className="w-5 h-5 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand flex-shrink-0">{name?.charAt(0)}</span>
+      )}
+      <span className="text-sm font-medium text-text truncate">{name}</span>
+    </span>
+  );
+  return (
+    <Link href={`/matches/${match.id}`} className="block p-3 bg-surface rounded-lg hover:bg-input transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {side(match.home_team_name || match.home_team?.name, match.home_team_logo || match.home_team?.logo_url)}
+          <span className="text-xs text-text-muted flex-shrink-0">vs</span>
+          {side(match.away_team_name || match.away_team?.name, match.away_team_logo || match.away_team?.logo_url)}
+        </div>
+        <div className="flex items-center justify-between sm:justify-end gap-2 flex-shrink-0">
+          <span className="text-xs text-text-muted whitespace-nowrap">
+            {match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : ''}
+          </span>
+          <span className="flex items-center gap-2">{right}</span>
+        </div>
+      </div>
+    </Link>
   );
 }

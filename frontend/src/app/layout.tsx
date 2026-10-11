@@ -7,6 +7,11 @@ import { SettingsProvider } from '@/contexts/SettingsContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { MainContent } from '@/components/layout/MainContent';
 import { NotificationWatcher } from '@/components/notifications/NotificationWatcher';
+import { BetSlip } from '@/components/betslip/BetSlip';
+import { PwaSetup } from '@/components/pwa/PwaSetup';
+import { ExtensionInbox } from '@/components/betslip/ExtensionInbox';
+import { AccountSync } from '@/components/account/AccountSync';
+import { TicketWatcher } from '@/components/betslip/TicketWatcher';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono', display: 'swap' });
@@ -15,6 +20,14 @@ export const metadata: Metadata = {
   title: 'Bet Hope - AI Football Predictions',
   description: 'AI-powered football match predictions and analytics platform',
   keywords: ['football', 'predictions', 'betting', 'AI', 'analytics', 'soccer'],
+  metadataBase: new URL('https://bet-hope-frontend.vercel.app'),
+  appleWebApp: { capable: true, title: 'Bet Hope', statusBarStyle: 'black-translucent' },
+  openGraph: {
+    title: 'Bet Hope - AI Football Predictions',
+    description: 'Match predictions for 20 leagues, measured honestly against the bookmakers.',
+    siteName: 'Bet Hope',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({
@@ -35,6 +48,11 @@ export default function RootLayout({
                 </MainContent>
               </div>
               <NotificationWatcher />
+              <BetSlip />
+              <PwaSetup />
+              <ExtensionInbox />
+              <AccountSync />
+              <TicketWatcher />
             </SidebarProvider>
           </SettingsProvider>
         </Providers>

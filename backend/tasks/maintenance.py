@@ -92,7 +92,8 @@ def update_team_stats():
         from django.db.models import Sum, Count, Q
 
         # Get current season
-        current_seasons = Season.objects.filter(code='2526')
+        from apps.core.seasons import current_season_code
+        current_seasons = Season.objects.filter(code=current_season_code())
 
         updated = 0
         for season in current_seasons:

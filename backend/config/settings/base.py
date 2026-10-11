@@ -43,6 +43,8 @@ LOCAL_APPS = [
     'apps.analytics',
     'apps.ml_pipeline',
     'apps.documents',
+    'apps.engage',
+    'apps.accounts',
     'apps.api',
 ]
 
@@ -147,7 +149,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'apps.api.pagination.StandardPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -172,7 +174,8 @@ REST_FRAMEWORK = {
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # users stay signed in for a month (Phase 7)
+    'UPDATE_LAST_LOGIN': True,                      # admin user list shows last sign-in
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
@@ -307,25 +310,14 @@ FOOTBALL_DATA_ORG_KEY = os.getenv('FOOTBALL_DATA_ORG_KEY', '')
 API_FOOTBALL_KEY = os.getenv('API_FOOTBALL_KEY', '')
 API_FOOTBALL_URL = 'https://v3.football.api-sports.io'
 
-# Historical data range (10 years)
-HISTORICAL_SEASONS = [
-    '2425', '2324', '2223', '2122', '2021',
-    '1920', '1819', '1718', '1617', '1516',
-]
+# Historical data range: the current season and the 9 before it, computed
+# from today's date (Phase 2). The hard-coded list stopped at 2024-25.
+from apps.core.seasons import recent_season_codes as _recent_seasons, season_name as _season_name
+
+HISTORICAL_SEASONS = _recent_seasons(10)
 
 # Season mappings for display
-SEASON_DISPLAY = {
-    '2425': '2024-25',
-    '2324': '2023-24',
-    '2223': '2022-23',
-    '2122': '2021-22',
-    '2021': '2020-21',
-    '1920': '2019-20',
-    '1819': '2018-19',
-    '1718': '2017-18',
-    '1617': '2016-17',
-    '1516': '2015-16',
-}
+SEASON_DISPLAY = {code: _season_name(code) for code in HISTORICAL_SEASONS}
 
 # ML Training Configuration
 ML_CONFIG = {

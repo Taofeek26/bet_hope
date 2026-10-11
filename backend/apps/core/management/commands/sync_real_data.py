@@ -49,6 +49,12 @@ class Command(BaseCommand):
             action='store_true',
             help='Only sync upcoming fixtures (skip historical data)',
         )
+        parser.add_argument(
+            '--current-season',
+            action='store_true',
+            help='Re-download only the current season CSV for every league (results, '
+                 'shots, odds), then fixtures. Fits in one Lambda run; scheduled twice a week.',
+        )
 
     def handle(self, *args, **options):
         from apps.data_ingestion.providers.football_data import FootballDataProvider
@@ -60,13 +66,19 @@ class Command(BaseCommand):
         sync_fixtures = options.get('fixtures', False)
         fixtures_only = options.get('fixtures_only', False)
         recent_only = options.get('recent_only', False)
+        current_only = options.get('current_season', False)
+        if current_only:
+            sync_fixtures = True
 
         # Get leagues and seasons from provider if not specified
         from apps.data_ingestion.providers.football_data import FootballDataProvider
+        from apps.core.seasons import current_season_code
         provider = FootballDataProvider()
 
         leagues = options.get('leagues') or list(provider.LEAGUES.keys())
-        if options.get('seasons'):
+        if current_only:
+            seasons = [current_season_code()]
+        elif options.get('seasons'):
             seasons = options['seasons']
         elif recent_only:
             seasons = provider.SEASONS[:5]  # Last 5 seasons
@@ -130,7 +142,19 @@ class Command(BaseCommand):
         # season, try from 2022 to 2024") — it can only ever backfill
         # already-finished seasons, never real upcoming fixtures.
         if sync_fixtures or fixtures_only:
+            # Football-Data.co.uk's fixture list first (Phase 2): it covers
+            # all 20 leagues and carries pre-match odds, the input the model
+            # is trained on and upcoming matches never had (ML-01).
             self.stdout.write('')
+            self.stdout.write('Syncing upcoming fixtures + odds from Football-Data.co.uk...')
+            try:
+                fx_created, fx_updated = provider.sync_fixtures()
+                self.stdout.write(self.style.SUCCESS(
+                    f'Fixtures (co.uk): {fx_created} created, {fx_updated} updated'))
+                total_created += fx_created
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'Fixtures (co.uk) failed: {e}'))
+
             self.stdout.write('Syncing upcoming fixtures from Football-Data.org...')
             from apps.data_ingestion.providers.football_data_org import FootballDataOrgProvider
 
@@ -142,13 +166,13 @@ class Command(BaseCommand):
                 )
                 total_created += fixtures_created
 
-                # Pull final scores for matches that have since kicked off —
-                # without this, a Match row stays status='scheduled' with
-                # no score forever, its prediction never gets validated,
-                # and "accuracy" for anything but old historical seasons
-                # would stay empty even long after real matches are played.
-                self.stdout.write('Syncing recent results from Football-Data.org...')
-                results_created, results_updated = org_provider.sync_results_to_database(days=7)
+                # Pull final scores for matches that have since kicked off.
+                # The window reaches back to the oldest match still marked
+                # "scheduled" after its date (DATA-04): a fixed 7 days lost
+                # results for good whenever the job missed a week.
+                days_back = self._stale_window_days(org_provider)
+                self.stdout.write(f'Syncing results from Football-Data.org (last {days_back} days)...')
+                results_created, results_updated = org_provider.sync_results_to_database(days=days_back)
                 self.stdout.write(
                     self.style.SUCCESS(f'Results: {results_created} created, {results_updated} updated')
                 )
@@ -156,6 +180,26 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING('FOOTBALL_DATA_ORG_KEY not configured. Skipping fixture sync.')
                 )
+
+        # Bookmaker prices from The Odds API (Phase 5): fills odds for
+        # fixtures football-data.co.uk doesn't list yet, before predictions
+        # and paper bets use them. Skips itself without ODDS_API_KEY.
+        if sync_fixtures or fixtures_only:
+            self.stdout.write('')
+            self.stdout.write('Syncing bookmaker prices from The Odds API...')
+            try:
+                from apps.data_ingestion.providers.the_odds_api import sync_odds
+                sync_odds(stdout=self.stdout)
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'The Odds API failed: {e}'))
+
+            self.stdout.write('Scanning team news for the flash feed...')
+            try:
+                from apps.engage.flash import scrape_team_news
+                news = scrape_team_news()
+                self.stdout.write(f"Team news: {news['matched']} headlines about upcoming teams, {news['created']} new")
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'Team news failed: {e}'))
 
         # Generate predictions for upcoming matches using the real trained
         # model (falls back to a labeled statistical estimate on its own if
@@ -175,3 +219,31 @@ class Command(BaseCommand):
         self.stdout.write('')
         self.stdout.write('Validating predictions against results...')
         call_command('generate_predictions', validate=True)
+
+        # Each club's division = where it plays now (promotion/relegation).
+        # One Team spans divisions since Phase 2, so this is recomputed
+        # after new matches arrive instead of being fixed at creation.
+        from apps.teams.models import Team
+        from apps.teams.merge import update_current_league
+        moved = 0
+        for team in Team.objects.select_related('league'):
+            before = team.league_id
+            update_current_league(team)
+            moved += team.league_id != before
+        self.stdout.write(f'Clubs whose current division changed: {moved}')
+
+    @staticmethod
+    def _stale_window_days(org_provider, minimum=7, maximum=60):
+        """Days back to the oldest past match still not finished, in football-data.org leagues."""
+        from datetime import date
+        from apps.matches.models import Match
+
+        oldest = (Match.objects.filter(
+                      match_date__lt=date.today(),
+                      match_date__gte=date.today() - timedelta(days=maximum),
+                      status__in=[Match.Status.SCHEDULED, Match.Status.LIVE, Match.Status.HALFTIME],
+                      season__league__code__in=list(org_provider.LEAGUES),
+                  ).order_by('match_date').values_list('match_date', flat=True).first())
+        if not oldest:
+            return minimum
+        return max(minimum, min(maximum, (date.today() - oldest).days + 1))

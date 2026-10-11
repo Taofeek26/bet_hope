@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Play, Lock, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 import { authApi, adminTasksApi, TaskRun, TaskRunStatus } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { UsersPanel } from '@/components/account/UsersPanel';
 
 const ACTIVE_TASKS_KEY = 'bethope_active_task_ids';
 
@@ -38,14 +40,12 @@ const TASK_DEFS: {
   },
   {
     command: 'train_model',
-    args: ['--leagues', 'E0', '--seasons', '2425'],
+    // v2 always trains on every league; it goes live only if it beats the
+    // active model on the same unseen matches (Phase 3 promotion check).
+    // --force-promote and --engine are not allowed from the API.
+    args: [],
     label: 'Train Model',
-    description: 'Retrain the prediction model',
-    // Training on one league and making the result live replaced the
-    // full multi-league model for every league (ML-04). Re-enabled in
-    // Phase 3, once new models must beat the current one to go live.
-    disabledReason:
-      'Disabled until Phase 3: a model trained here would replace the live model for every league without being checked first. The daily scheduled training still runs.',
+    description: 'Retrain on all leagues (about 2 minutes). Goes live only if it beats the current model on unseen matches.',
   },
   {
     command: 'generate_predictions',
@@ -62,6 +62,7 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [activeIds, setActiveIds] = useState<string[]>([]);
+  const authUser = useAuth((st) => st.user);
 
   useEffect(() => {
     setToken(typeof window !== 'undefined' ? localStorage.getItem('token') : null);
@@ -73,13 +74,17 @@ export default function AdminPage() {
     setLoginError('');
     setLoggingIn(true);
     try {
-      const { access } = await authApi.login(username, password);
+      // Phase 7: keep the refresh token too (the 60-minute access token alone
+      // made the admin session drop every hour, SEC-04) and load the user.
+      const { access, refresh } = await authApi.login(username.trim(), password);
       localStorage.setItem('token', access);
+      localStorage.setItem('refresh', refresh);
       setToken(access);
+      useAuth.getState().load();
     } catch (err: any) {
       setLoginError(
         err?.response?.status === 401
-          ? 'Invalid username or password.'
+          ? 'Wrong username/email or password, or not an admin account.'
           : 'Login failed — check the API is reachable.'
       );
     } finally {
@@ -88,7 +93,7 @@ export default function AdminPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    useAuth.getState().logout();
     setToken(null);
   };
 
@@ -155,7 +160,7 @@ export default function AdminPage() {
             </div>
             <input
               className="w-full bg-input border border-border px-3 py-2 text-sm"
-              placeholder="Username"
+              placeholder="Username or email"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
@@ -173,6 +178,20 @@ export default function AdminPage() {
               {loggingIn ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign in'}
             </button>
           </form>
+        </div>
+      </>
+    );
+  }
+
+  // Signed in, but not an admin: show nothing of the admin tools (the API
+  // refuses non-admins too). Phase 7.
+  if (authUser && !authUser.is_staff) {
+    return (
+      <>
+        <div className="content-header"><h1>Admins only</h1><p>This page is for Bet Hope administrators.</p></div>
+        <div className="card max-w-md text-sm text-text-sec">
+          You&apos;re signed in as <strong>@{authUser.username}</strong>, which isn&apos;t an admin account.{' '}
+          <a href="/" className="text-brand">Back to the Dashboard</a>
         </div>
       </>
     );
@@ -235,11 +254,12 @@ export default function AdminPage() {
               <th className="px-5 py-2 font-normal">Status</th>
               <th className="px-5 py-2 font-normal">Started</th>
               <th className="px-5 py-2 font-normal">Duration</th>
+              <th className="px-5 py-2 font-normal">Started by</th>
             </tr>
           </thead>
           <tbody>
             {(history || []).length === 0 && (
-              <tr><td colSpan={4} className="px-5 py-6 text-center text-text-muted text-sm">No tasks run yet</td></tr>
+              <tr><td colSpan={5} className="px-5 py-6 text-center text-text-muted text-sm">No tasks run yet</td></tr>
             )}
             {(history || []).map((t) => (
               <tr key={t.id} className="border-b border-border-dim last:border-b-0">
@@ -251,11 +271,18 @@ export default function AdminPage() {
                 <td className="px-5 py-3 text-xs text-text-muted">
                   {t.duration_seconds != null ? `${t.duration_seconds}s` : '—'}
                 </td>
+                <td className="px-5 py-3 text-xs">
+                  {t.triggered_by === 'schedule'
+                    ? <span className="px-1.5 py-0.5 rounded bg-brand/15 text-brand">Scheduled</span>
+                    : <span className="text-text-muted">{t.triggered_by || '—'}</span>}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <UsersPanel />
     </>
   );
 }
@@ -290,11 +317,14 @@ function LiveTaskCard({ id, onSettled, onDismiss }: { id: string; onSettled: () 
   });
 
   const settled = task && task.status !== 'pending' && task.status !== 'running';
+  const stale = settled && task.finished_at && Date.now() - new Date(task.finished_at).getTime() > 24 * 3600 * 1000;
 
   useEffect(() => {
     if (settled) onSettled();
+    // Old finished runs (e.g. from weeks ago) shouldn't sit under "In progress".
+    if (stale) onDismiss();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settled]);
+  }, [settled, stale]);
 
   if (!task) return null;
 

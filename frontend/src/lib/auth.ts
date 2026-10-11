@@ -1,0 +1,48 @@
+import { create } from 'zustand';
+import { accountApi, authApi, type Me } from '@/lib/api';
+
+// Signed-in user (Phase 7). Tokens live in localStorage ('token', 'refresh'),
+// the same keys the admin page already uses.
+interface AuthState {
+  user: Me | null;
+  loading: boolean;
+  syncing: boolean;            // first merge of device + account still running
+  setSyncing: (v: boolean) => void;
+  setUser: (u: Me | null) => void;
+  load: () => Promise<void>;
+  login: (usernameOrEmail: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string, name: string) => Promise<void>;
+  logout: () => void;
+}
+
+export const useAuth = create<AuthState>((set) => ({
+  user: null,
+  loading: true,
+  syncing: false,
+  setSyncing: (syncing) => set({ syncing }),
+  setUser: (user) => set({ user }),
+  load: async () => {
+    if (typeof window === 'undefined' || !localStorage.getItem('token')) return set({ user: null, loading: false });
+    try { set({ user: await accountApi.me(), loading: false }); } catch { set({ user: null, loading: false }); }
+  },
+  login: async (usernameOrEmail, password) => {
+    // The server matches usernames and emails case-insensitively.
+    const { access, refresh } = await authApi.login(usernameOrEmail.trim(), password);
+    localStorage.setItem('token', access);
+    localStorage.setItem('refresh', refresh);
+    set({ user: await accountApi.me() });
+  },
+  register: async (username, email, password, name) => {
+    const r = await accountApi.register(username.trim(), email.trim().toLowerCase(), password, name);
+    localStorage.setItem('token', r.access);
+    localStorage.setItem('refresh', r.refresh);
+    set({ user: r.user });
+  },
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh');
+    set({ user: null });
+    // A shared phone must not keep the previous user's bets and favourites.
+    window.dispatchEvent(new Event('bethope-signed-out'));
+  },
+}));

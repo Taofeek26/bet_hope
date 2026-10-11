@@ -44,7 +44,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = Prediction.objects.select_related(
             'match', 'match__home_team', 'match__away_team',
-            'match__season__league'
+            'match__season__league', 'match__odds'
         )
 
         # Filter by league
@@ -66,7 +66,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         if min_conf:
             queryset = queryset.filter(confidence_score__gte=float(min_conf))
 
-        return queryset.order_by('-match__match_date')
+        return queryset.order_by('-match__match_date', 'match__kickoff_at', 'match__id')
 
     # Phase 0 (SEC-01): on-demand model runs (batch had no size limit) are
     # heavy compute and nothing in the frontend calls them — admin only.
@@ -263,6 +263,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                             'away_team_logo': match.away_team.logo_url,
                             'date': match.match_date.isoformat(),
                             'time': match.kickoff_time.isoformat() if match.kickoff_time else None,
+                            'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
                         },
                         'prediction_id': prediction.id,
                         'market': market,
@@ -296,14 +297,38 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         from apps.matches.models import Match
 
         # Time period filter
-        days = int(request.query_params.get('days', 30))
+        try:
+            days = min(max(int(request.query_params.get('days', 30)), 1), 3650)
+        except ValueError:
+            days = 30
         start_date = timezone.now().date() - timedelta(days=days)
 
-        # Get predictions for finished matches
+        # Finished matches with a result, and only predictions made BEFORE
+        # kickoff (ML-11): rows written after a match started (or back-
+        # filled for finished matches) would make the record look better
+        # than any user could have experienced.
+        from django.db.models import F, Q
         predictions = Prediction.objects.filter(
             match__match_date__gte=start_date,
             match__status=Match.Status.FINISHED,
+            match__home_score__isnull=False,
+            match__away_score__isnull=False,
+        ).filter(
+            Q(match__kickoff_at__isnull=False, created_at__lt=F('match__kickoff_at'))
+            | Q(match__kickoff_at__isnull=True, created_at__date__lt=F('match__match_date'))
         ).select_related('match')
+
+        model_version = request.query_params.get('model_version')
+        if model_version:
+            predictions = predictions.filter(model_version=model_version)
+        # ?model_family=v2: every daily v2 retrain (v2_YYYYMMDD_HHMMSS) together,
+        # so the live model's record isn't mixed with v1's (Phase 4).
+        # v1 versions carry no prefix (e.g. 20261005_050404), so v1 = "not v2".
+        model_family = request.query_params.get('model_family')
+        if model_family == 'v1':
+            predictions = predictions.exclude(model_version__startswith='v2_')
+        elif model_family:
+            predictions = predictions.filter(model_version__startswith=f'{model_family}_')
 
         if not predictions.exists():
             return Response({
@@ -311,7 +336,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                 'period': f'Last {days} days',
             })
 
-        total = predictions.count()
+        total = predictions.count()  # counted after excluding missing scores
         correct = 0
         by_outcome = {'H': {'total': 0, 'correct': 0}, 'D': {'total': 0, 'correct': 0}, 'A': {'total': 0, 'correct': 0}}
         by_confidence = {}
@@ -347,7 +372,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Track by confidence level
             conf = float(pred.confidence_score)
-            if conf >= 0.6:
+            # 55% = the top-pick threshold used by daily_picks (one rule app-wide)
+            if conf >= 0.55:
                 conf_level = 'high'
             elif conf >= 0.45:
                 conf_level = 'medium'
@@ -388,6 +414,69 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
             'accuracy': round(accuracy, 3),
             'by_outcome': outcome_accuracy,
             'by_confidence': confidence_accuracy,
+        })
+
+    @action(detail=False, methods=['get'])
+    def paper_bets(self, request):
+        """
+        Return of pretend 1-unit bets (Phase 5, step 2), logged before kickoff
+        at the price available then. ?days=30 (by match date), ?model_family=v2|v1.
+        Groups: every model pick, top picks (55%+), value bets (5+ point edge).
+        """
+        from apps.predictions.models import PaperBet
+        try:
+            days = min(max(int(request.query_params.get('days', 30)), 1), 3650)
+        except ValueError:
+            days = 30
+        start = timezone.now().date() - timedelta(days=days)
+        bets = PaperBet.objects.filter(match__match_date__gte=start)
+        family = request.query_params.get('model_family')
+        if family == 'v1':
+            bets = bets.exclude(model_version__startswith='v2_')
+        elif family:
+            bets = bets.filter(model_version__startswith=f'{family}_')
+
+        def summarise(qs):
+            rows = list(qs.values('status', 'odds', 'profit', 'stake'))
+            settled = [r for r in rows if r['status'] in ('won', 'lost')]
+            staked = sum(float(r['stake']) for r in settled)
+            profit = sum(float(r['profit']) for r in settled)
+            won = sum(r['status'] == 'won' for r in settled)
+            return {
+                'bets': len(rows),
+                'open': sum(r['status'] == 'open' for r in rows),
+                'void': sum(r['status'] == 'void' for r in rows),
+                'settled': len(settled),
+                'won': won,
+                'hit_rate': round(won / len(settled), 4) if settled else None,
+                'avg_odds': round(sum(float(r['odds']) for r in settled) / len(settled), 3) if settled else None,
+                'staked': round(staked, 2),
+                'profit': round(profit, 3),
+                'roi': round(profit / staked, 4) if staked else None,
+            }
+
+        picks = bets.filter(strategy=PaperBet.Strategy.PICK)
+        recent = bets.select_related('match__home_team', 'match__away_team').order_by('-match__match_date', '-id')[:30]
+        return Response({
+            'period': f'Last {days} days',
+            'stake': 1,
+            'groups': {
+                'all_picks': summarise(picks),
+                'top_picks': summarise(picks.filter(confidence__gte=0.55)),
+                'value_bets': summarise(bets.filter(strategy=PaperBet.Strategy.VALUE)),
+            },
+            'recent': [{
+                'match_id': b.match_id,
+                'match': f'{b.match.home_team.name} v {b.match.away_team.name}',
+                'date': b.match.match_date.isoformat(),
+                'strategy': b.strategy,
+                'selection': b.selection,
+                'odds': float(b.odds),
+                'confidence': float(b.confidence),
+                'edge': float(b.edge),
+                'status': b.status,
+                'profit': float(b.profit) if b.profit is not None else None,
+            } for b in recent],
         })
 
     @action(detail=False, methods=['get'])
@@ -448,6 +537,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                     'away_team_logo': match.away_team.logo_url,
                     'league': league_display,
                     'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
+                    'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
                 },
                 'prediction': {
                     'id': pred.id,

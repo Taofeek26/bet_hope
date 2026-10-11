@@ -202,3 +202,58 @@ class ModelVersion(TimeStampedModel):
     def get_active_version(cls):
         """Get the currently active model version."""
         return cls.objects.filter(status=cls.Status.ACTIVE).first()
+
+
+class PaperBet(TimeStampedModel):
+    """
+    A pretend 1-unit bet, logged before kickoff at the price available then
+    and settled after the result (Phase 5, step 2). It answers "what would
+    I have won or lost following these picks?" without staking real money.
+
+    The price is copied here when the bet is logged, so later odds updates
+    (e.g. closing odds from the results file) can never make it look better.
+    """
+
+    class Strategy(models.TextChoices):
+        PICK = 'pick', 'Model pick'          # the predicted outcome, every match
+        VALUE = 'value', 'Value bet'         # any outcome with a 5+ point edge
+
+    class Selection(models.TextChoices):
+        HOME = 'H', 'Home'
+        DRAW = 'D', 'Draw'
+        AWAY = 'A', 'Away'
+
+    class Status(models.TextChoices):
+        OPEN = 'open', 'Open'
+        WON = 'won', 'Won'
+        LOST = 'lost', 'Lost'
+        VOID = 'void', 'Void'
+
+    match = models.ForeignKey('matches.Match', on_delete=models.CASCADE, related_name='paper_bets')
+    prediction = models.ForeignKey(Prediction, on_delete=models.SET_NULL, null=True, blank=True, related_name='paper_bets')
+    model_version = models.CharField(max_length=50)
+    strategy = models.CharField(max_length=10, choices=Strategy.choices)
+    selection = models.CharField(max_length=1, choices=Selection.choices)
+    odds = models.DecimalField(max_digits=7, decimal_places=3)
+    odds_source = models.CharField(max_length=50, blank=True)
+    model_probability = models.DecimalField(max_digits=5, decimal_places=4)
+    implied_probability = models.DecimalField(max_digits=5, decimal_places=4)
+    edge = models.DecimalField(max_digits=6, decimal_places=4)
+    confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    stake = models.DecimalField(max_digits=8, decimal_places=2, default=1)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    profit = models.DecimalField(max_digits=9, decimal_places=3, null=True, blank=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'predictions_paper_bet'
+        constraints = [
+            models.UniqueConstraint(fields=['match', 'strategy', 'selection'], name='uniq_paper_bet'),
+        ]
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['model_version']),
+        ]
+
+    def __str__(self):
+        return f'{self.strategy} {self.selection} @ {self.odds} on match {self.match_id} ({self.status})'

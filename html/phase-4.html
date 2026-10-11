@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 4 Log</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+    <a href="phase-4.html" class="active">Phase 4 log</a>
+    <a href="betting-integration.html">Betting plan</a>
+    <a href="features.html">Features &amp; ideas</a>
+    <a href="phase-6.html">Phase 6 log</a>
+    <a href="phase-7.html">Phase 7 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Phase 4: every page tells the truth</h1>
+  <p class="lede">The frontend was cleaned up so that every button does something real, empty pages say why they're empty, both themes are readable, and the app has a logo.</p>
+  <p class="meta">6 Oct 2026 · commits <code>e5bb443</code>, <code>7dcbd55</code> · findings: UI-01 to UI-08, API-07, API-08, API-10</p>
+
+  <h2>What changed, page by page</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Where</th><th>Before</th><th>Now</th></tr></thead>
+    <tbody>
+      <tr><td>All pages: colours</td><td>Classes like <code>bg-brand</code> and <code>bg-card/80</code> silently did nothing, the header was see-through, and white text was invisible in the light theme (UI-01, UI-02, UI-03)</td><td>Colours are defined as RGB channels (<code>rgb(var(--x-rgb) / &lt;alpha&gt;)</code>), so opacity works. Added <code>brand</code> DEFAULT, <code>bg</code>, <code>card-hover</code> and <code>surface.alt</code>. Card text uses the theme's text colour. Muted text is #858585 (dark) and #6B6B6B (light), both readable.</td></tr>
+      <tr><td>Logo and icon</td><td>None (UI-04)</td><td>A <code>LogoMark</code> component (rising line plus ball, sky-blue gradient) in the sidebar, a favicon (<code>app/icon.svg</code>) and a 1200×630 link-preview image (<code>/opengraph-image</code>).</td></tr>
+      <tr><td>Header</td><td>The search box, ☰, bell and user buttons did nothing, and the task pill showed stale queue states</td><td>Team search (by name or any known alias, e.g. "Man City") with keyboard navigation, opening the team page. The dead buttons are gone. The status pill shows <strong>data freshness</strong>: daily sync, current season, training and predictions, each against its schedule (API-08).</td></tr>
+      <tr><td>Sidebar</td><td>A static "HOT" badge, "Model v1.0.0 Active" even when the API was down, and no highlight on sub-pages</td><td>The real number of value bets, "Model v2 live" from the API (or "Model status unavailable"), and Leagues stays highlighted on <code>/leagues/E0</code>. <code>aria-current</code> and labels for the collapsed state.</td></tr>
+      <tr><td>Dashboard</td><td>Model Performance and Upcoming Matches showed every heading twice (UI-05). Default View redirected on every visit, so the Dashboard couldn't be reached.</td><td>One heading each. Default View applies once per browser session.</td></tr>
+      <tr><td>Predictions</td><td>Only 20 predictions per day (API-07). The Value Bets filter always came back empty, the outcome defaulted to "HOME", and there was no score before kickoff.</td><td>Up to 500 per request (<code>?page_size=</code>). Each prediction has <code>is_value_bet</code> (model beats the market by more than 5 points), shown as a "Value" badge, with the predicted score next to the pick.</td></tr>
+      <tr><td>Matches</td><td>Upcoming had no filters, matches ran in one long list, and team names weren't links</td><td>League and days filters for Upcoming too (server-side: <code>/matches/upcoming/?days=1–14&amp;league=E0</code>). Matches are grouped under "Today — Tuesday 6 October" style headers, and team names open the team page.</td></tr>
+      <tr><td>Match detail</td><td>Showed the home team's <em>current</em> league (wrong for relegated clubs' old matches) and a raw date</td><td>The match's own league, the date in your chosen format, and team names link to team pages.</td></tr>
+      <tr><td>Team page</td><td>"Played" read 0, home/away was detected wrongly, and the fixtures shown were the furthest away, not the next (API-10)</td><td>All three fixed. Plus a ☆ "Add to favourites" button.</td></tr>
+      <tr><td>Favourites</td><td>Hard-coded demo teams ("Arsenal vs Chelsea – Today 15:00") with dead buttons</td><td>Real favourite teams (with their next fixture) and leagues, kept in this browser. ☆ buttons on team and league pages. Clear empty states.</td></tr>
+      <tr><td>Analytics</td><td>"Accuracy by Outcome" read as if grouped by result</td><td>"Accuracy by predicted outcome": how often the model was right when it picked home, draw or away.</td></tr>
+      <tr><td>Help</td><td>A dead <code>#docs</code> link, a <code>github.com/your-org</code> placeholder, a made-up support e-mail, and a 4-column grid on phones (UI-08)</td><td>The links work (<a href="https://github.com/Taofeek26/bet_hope/issues">GitHub issues</a>), the placeholder e-mail is gone, and the grid adapts to screen width.</td></tr>
+      <tr><td>Notifications</td><td>Permission was requested on page load (browsers block or penalise this)</td><td>Asked only when you switch an alert on in Settings. The notification icon is the new logo.</td></tr>
+      <tr><td>Empty states</td><td>"…once the backend is connected", even when it was</td><td>They explain the real reason: an international break, filters, the daily sync times, or the 55% threshold for top picks.</td></tr>
+      <tr><td>API lists</td><td>The <code>next</code> link pointed at <code>…/api/v1/…</code> without the <code>/prod</code> stage, so it returned 404</td><td><code>apps/api/pagination.py</code> puts the stage back.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Decisions</h2>
+  <div class="finding" id="P4-D1"><div class="finding-head"><span class="finding-id">P4-D1</span><span class="finding-title">Remove buttons that can't work rather than fake them</span></div>
+    <dl><dt>What</dt><dd>The bell, user menu and ☰ had no feature behind them. The app has no user accounts (Phase 0 locked the paid and write endpoints instead), so they were removed. Search was kept because a team search is genuinely useful and cheap. The support e-mail was removed because no such mailbox exists.</dd></dl></div>
+  <div class="finding" id="P4-D2"><div class="finding-head"><span class="finding-id">P4-D2</span><span class="finding-title">"Status" means data freshness, not a task queue</span></div>
+    <dl><dt>Why</dt><dd>Since Phase 1 there is no Celery queue: jobs run on EventBridge schedules. The useful question is "is the data up to date?". Each job is compared with its schedule (26 h for daily jobs, 4.5 days for the Mon/Thu one) and reported as healthy, stale or unknown, in the same response shape, so the existing UI works unchanged.</dd></dl></div>
+  <div class="finding" id="P4-D3"><div class="finding-head"><span class="finding-id">P4-D3</span><span class="finding-title">Favourites stay in the browser</span></div>
+    <dl><dt>Why</dt><dd>There are no accounts, and the existing <code>useFavoritesStore</code> already persists to local storage. Each favourite team loads its own details and next fixture. A team that no longer exists (e.g. merged in Phase 2) shows a "Remove" button instead of breaking the page.</dd></dl></div>
+  <div class="finding" id="P4-D4"><div class="finding-head"><span class="finding-id">P4-D4</span><span class="finding-title">Team links inside clickable match cards</span></div>
+    <dl><dt>What</dt><dd>A link can't contain another link, so each match card is now a box with a card-wide link underneath, and the team names sit above it as their own links (the "stretched link" pattern). Clicking anywhere else still opens the match.</dd></dl></div>
+
+  <h2>Commands run</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Command</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>npx tsc --noEmit</code>; <code>npx next build --no-lint</code></td><td>No type errors; 15 routes built (including <code>/icon.svg</code> and <code>/opengraph-image</code>)</td></tr>
+      <tr><td>2</td><td><code>DATABASE_URL=postgres://postgres@127.0.0.1:55432/work venv/bin/python manage.py check</code></td><td>No issues</td></tr>
+      <tr><td>3</td><td>Local API tests (Django test client): upcoming <code>?days=14&amp;league=E0</code>, bad <code>?days=abc</code>, predictions <code>?page_size=500</code>, leagues <code>?page_size=100</code>, team search</td><td>20 E0 fixtures, only E0; a bad value falls back to 7 days; 500 rows; 21/21 leagues; "manchester" → Man City, Man United</td></tr>
+      <tr><td>4</td><td>Value-bet check: <code>is_value_bet</code> vs <code>/predictions/value_bets/</code> on upcoming fixtures</td><td>Both 0 (upcoming fixtures have no odds yet). Older v1 predictions on finished matches are often flagged, a sign of how poorly v1 was calibrated.</td></tr>
+      <tr><td>5</td><td><code>git commit</code> → <code>e5bb443</code>; <code>bash infrastructure/codebuild/build.sh</code></td><td>Build SUCCEEDED; image <code>bet-hope-web:e5bb443f68071e67a5c20dbba8af29dd8aa81448</code></td></tr>
+      <tr><td>6</td><td><code>aws lambda update-function-code --function-name {bet-hope-web,bet-hope-manage} --image-uri …:e5bb443…</code>; <code>aws lambda wait function-updated</code></td><td>Both updated (04:5x UTC)</td></tr>
+      <tr><td>7</td><td>Production curl checks</td><td>Upcoming E0 filter ok; predictions <code>next</code> link now includes <code>/prod</code>; <code>is_value_bet</code> present; 21 leagues in one page; status 4/4 healthy</td></tr>
+      <tr><td>8</td><td><code>npx vercel@latest deploy --prod --yes --scope taofeeks-projects-151246e6 --build-env NEXT_PUBLIC_API_URL=…/prod/api</code> (twice: <code>e5bb443</code>, then <code>7dcbd55</code>)</td><td>Aliased to <code>bet-hope-frontend.vercel.app</code></td></tr>
+      <tr><td>9</td><td><code>curl</code> on all 14 pages, plus <code>/icon.svg</code> and <code>/opengraph-image</code></td><td>All 200; <code>og:image</code> meta tag present</td></tr>
+      <tr><td>10</td><td>05:00 UTC scheduled <code>train_model</code> on the new image (CloudWatch)</td><td>exit 0 in 122 s; test accuracy 0.5032, log loss 1.0026 vs bookmaker 1.0037; <code>v2_20261006_050050</code> active</td></tr>
+        <tr><td>11</td><td>Follow-up: the Dashboard still showed <strong>39.4%</strong>. <code>/predictions/stats/?days=30</code> showed all 226 graded predictions were v1's, and v2 had none graded yet (its first fixtures are after the international break). Added <code>?model_family=v2</code>. The Dashboard and Model Performance card show the live model only, with its tested 50.3% until it has 50 graded matches. The admin <strong>Train Model</strong> button is re-enabled (all leagues, promotion-checked; <code>--force-promote</code> is not allowed from the API). Commit <code>0061671</code>, CodeBuild, both functions updated, Vercel deployed.</td><td>v2 live record: none yet. Dashboard: "50.3%, tested on unseen matches"</td></tr>
+      <tr><td>12</td><td>Follow-up: will the Dashboard metrics fill in? <strong>Top picks</strong>: yes, there were no fixtures 6–8 Oct (international break) and 3 / 15 / 7 / 1 picks were waiting for 9–12 Oct; the metric was renamed from "Predictions today" because it counts only 55%+ picks. <strong>Live matches</strong>: never, with no live-score source (DATA-05). <strong>Your decision: remove Live</strong> from the Dashboard (metric and section), the Matches tab and Settings alerts; <code>useLiveMatches</code>, <code>getLive</code> and the unused live store were deleted. <strong>Value bets</strong>: v2 was retrained locally and scored on 8,086 unseen matches with odds. Edge &gt; 5 points: <strong>0 matches</strong>; any edge: 317 bets, <strong>−13.9% return</strong>; edge &gt; 2 points: 44 bets, −48.5% (average bookmaker margin 7.7%). <strong>Your decision: keep the 5-point bar</strong>; the empty state now says the model finds no edge over the market, and why. Commit <code>583ee7a</code>, Vercel deployed.</td><td>Dashboard, Matches, Value Bets and Settings all 200; no Live UI left</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><strong>Note for the next <code>sam deploy</code>:</strong> both functions now run <code>0061671…</code>. Pass <code>ImageUri=294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:0061671e8710a17211c4c1cb7b621d305480d515</code> (or newer).</div>
+
+  <h2>Not done in this phase</h2>
+  <ul>
+    <li><strong>A lint rule for unknown Tailwind classes.</strong> The invented class names were fixed by hand. A guard (e.g. <code>eslint-plugin-tailwindcss</code> with <code>no-custom-classname</code>) would need its config tuned to the app's own CSS classes first.</li>
+    <li><strong>A visual check in a real browser on a phone.</strong> Pages were type-checked, built and fetched (HTTP 200), but not screenshot-tested.</li>
+    <li><strong>Nicknames in search</strong> ("Spurs", "Gunners"): search matches names and data-source aliases only. Add nicknames with <code>record_alias</code> if wanted.</li>
+  </ul>
+
+  <h3>Rollback</h3>
+<pre><code># Backend: both functions back to the Phase 3 image
+for f in bet-hope-web bet-hope-manage; do aws lambda update-function-code --function-name $f \
+  --image-uri 294983767092.dkr.ecr.us-east-1.amazonaws.com/bet-hope-web:8f9d581ece7df6a0fb09710659b31da5fb2cbd57; done
+# Frontend: promote the previous deployment in the Vercel dashboard (Deployments → … → Promote),
+# or: npx vercel@latest rollback --scope taofeeks-projects-151246e6</code></pre>
+</main>
+</body>
+</html>

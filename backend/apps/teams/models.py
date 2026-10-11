@@ -2,7 +2,7 @@
 Teams Models
 """
 from django.db import models
-from apps.core.models import SyncedModel
+from apps.core.models import SyncedModel, TimeStampedModel
 
 
 class Team(SyncedModel):
@@ -175,6 +175,31 @@ class HeadToHead(SyncedModel):
             team_b=team2
         )
         return h2h, created
+
+
+class TeamAlias(TimeStampedModel):
+    """
+    Every name a data provider has used for a club (Phase 2, DATA-01).
+    Keyed by country + normalized name (see apps/teams/identity.py), so
+    "Man United" (football-data.co.uk) and "Manchester United FC"
+    (football-data.org) resolve to the same Team, and a promoted or
+    relegated club keeps one Team across divisions.
+    """
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='aliases')
+    name = models.CharField(max_length=200, help_text="Name exactly as the provider sent it")
+    country = models.CharField(max_length=100)
+    key = models.CharField(max_length=200, help_text="identity.canonical_key(name, country)")
+    source = models.CharField(max_length=40, blank=True, help_text="e.g. football-data.co.uk")
+
+    class Meta:
+        verbose_name = 'Team Alias'
+        verbose_name_plural = 'Team Aliases'
+        constraints = [
+            models.UniqueConstraint(fields=['country', 'key'], name='unique_team_alias_per_country'),
+        ]
+
+    def __str__(self):
+        return f"{self.name} -> {self.team.name}"
 
 
 class TeamInjury(SyncedModel):

@@ -113,6 +113,19 @@ export function formatTimeInZone(date: string | Date, timezone: string) {
   }
 }
 
+// Kickoff time for display (Phase 2, DATA-06). Prefers the API's
+// kickoff_at (an exact UTC instant) formatted in the viewer's timezone
+// from Settings > Region > Timezone; falls back to the raw provider time
+// for rows synced before kickoff_at existed.
+export function formatKickoff(
+  kickoffAt: string | null | undefined,
+  fallbackTime: string | null | undefined,
+  timezone: string
+): string {
+  if (kickoffAt) return formatTimeInZone(kickoffAt, timezone);
+  return formatTime(fallbackTime || undefined);
+}
+
 // Get result color class
 export function getResultColor(result: 'W' | 'D' | 'L' | string) {
   switch (result) {

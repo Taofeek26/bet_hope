@@ -4,7 +4,8 @@ import { useUpcomingMatches } from '@/hooks/useApi';
 import { Card, CardHeader, CardBody, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { formatDate, formatTime, formatRelativeDate } from '@/lib/utils';
+import { formatDate, formatKickoff, formatRelativeDate } from '@/lib/utils';
+import { useSettings } from '@/contexts/SettingsContext';
 import { Calendar, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,7 +20,7 @@ export function UpcomingMatches() {
         <CardBody>
           <div className="text-center py-8">
             <p className="text-text-muted mb-4">
-              Unable to load upcoming matches. Connect the backend to see data.
+              Couldn’t load upcoming matches. The server may be waking up — try again in a few seconds.
             </p>
             <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
               Try Again
@@ -67,7 +68,7 @@ export function UpcomingMatches() {
           </div>
         ) : (
           <p className="text-text-secondary text-center py-8">
-            No upcoming matches scheduled.
+            No fixtures in the next 7 days. Leagues often pause for international breaks; fixtures are added by the daily 04:15 UTC sync as soon as they are published.
           </p>
         )}
       </CardBody>
@@ -98,6 +99,7 @@ function DateSection({ date, matches }: { date: string; matches: any[] }) {
 }
 
 function MatchRow({ match }: { match: any }) {
+  const { settings } = useSettings();
   const hasPrediction = match.has_prediction;
 
   return (
@@ -107,9 +109,12 @@ function MatchRow({ match }: { match: any }) {
           {/* Time & League - row on mobile */}
           <div className="flex items-center justify-between sm:block sm:w-14 sm:text-center">
             <span className="text-[10px] sm:text-sm text-text-secondary">
-              {formatTime(match.kickoff_time) || 'TBD'}
+              {formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone) || 'TBD'}
             </span>
-            <span className="text-[10px] text-text-muted sm:hidden">{match.league_name}</span>
+            <span className="text-[10px] text-text-muted sm:hidden flex items-center gap-1.5 min-w-0">
+              <span className="truncate">{match.league_name}</span>
+              {hasPrediction && <span className="w-2 h-2 rounded-full bg-brand1 inline-block flex-shrink-0" aria-label="Predicted" />}
+            </span>
           </div>
 
           {/* Teams */}
@@ -123,13 +128,13 @@ function MatchRow({ match }: { match: any }) {
                     {match.home_team_name?.charAt(0)}
                   </div>
                 )}
-                <span className="text-xs sm:text-sm font-medium text-white truncate">
+                <span className="text-xs sm:text-sm font-medium text-text truncate">
                   {match.home_team_name}
                 </span>
               </div>
               <span className="text-[10px] sm:text-xs text-text-muted mx-1 sm:mx-2 flex-shrink-0">vs</span>
               <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 justify-end">
-                <span className="text-xs sm:text-sm font-medium text-white truncate">
+                <span className="text-xs sm:text-sm font-medium text-text truncate">
                   {match.away_team_name}
                 </span>
                 {match.away_team_logo ? (
@@ -153,12 +158,6 @@ function MatchRow({ match }: { match: any }) {
             )}
           </div>
 
-          {/* Mobile prediction indicator - inline with time */}
-          <div className="sm:hidden absolute right-2 top-2">
-            {hasPrediction && (
-              <span className="w-2 h-2 rounded-full bg-brand1 inline-block"></span>
-            )}
-          </div>
         </div>
       </div>
     </Link>

@@ -83,35 +83,36 @@ class AIRecommendationService:
     }
 
     # System prompts
-    SYSTEM_PROMPT = """You are an expert football betting analyst. Your role is to provide CONCISE, actionable betting recommendations.
+    SYSTEM_PROMPT = """You are a careful football betting analyst. You get the model's probabilities for EVERY market of one match (result, double chance, draw no bet, GG/NG, over/under, team goals, clean sheets, correct score), each with fair odds and, where known, the best bookmaker price and the edge. Pick the most sensible bet across ALL markets, or say there isn't one.
 
 RESPONSE FORMAT (follow exactly):
 ```
 📊 BET RECOMMENDATION
 ━━━━━━━━━━━━━━━━━━━━
-🎯 Pick: [HOME/DRAW/AWAY or specific bet]
-💰 Stake: [1-5 units based on confidence]
+🎯 Pick: [market and selection, e.g. "Double chance 1X" or "Over 2.5 goals", or "No bet"]
+💰 Stake: [0-2 units; 0 when no price beats fair odds] · only at odds ≥ [fair odds]
 📈 Confidence: [LOW/MEDIUM/HIGH]
 
 📋 QUICK ANALYSIS
-• [Key point 1 - reference model prediction]
-• [Key point 2 - reference document insight]
-• [Key point 3 - risk factor]
+• [Why this market: model chance vs price, citing the numbers]
+• [Second-best market or a safer alternative, with its numbers]
+• [What the form / Elo / expected-goals data says]
+• [A market to avoid and why]
 
 📚 SOURCES USED
-• [Document name]: [Brief insight used]
-• Model: [prediction value referenced]
+• Model: [the probabilities and fair odds you used]
+• [Document name, if a knowledge-base document was used]
 
-⚠️ RISK: [One sentence risk warning]
+⚠️ RISK: [One sentence]
 ```
 
 RULES:
-- Be CONCISE - max 150 words total
-- ALWAYS cite at least one document from the knowledge base
-- Reference specific prediction values (probabilities, confidence %)
-- State the AI model and prediction strength used
-- Use betting terminology (value bet, odds, stake sizing)
-- No lengthy paragraphs - bullet points only"""
+- Max 180 words. Bullet points only.
+- Use only the numbers given. Never invent odds, injuries or news.
+- A bet is only good value if the price is ABOVE the fair odds (positive edge). If no price is known, give the minimum odds instead ("only at odds ≥ X").
+- Prefer markets marked TESTED (result, double chance, draw no bet, over/under 2.5). Say so when you use an ESTIMATE market, and avoid correct score unless asked.
+- The model is about level with the bookmakers overall, so "No bet" is a valid, often correct answer. Never call a bet a sure thing.
+- Higher probability does not mean better value: compare chance with price."""
 
     def __init__(self, provider: str = 'openai'):
         """
@@ -259,100 +260,70 @@ RULES:
         return parsed
 
     def _build_prompt(self, prediction, context: str) -> str:
-        """Build the analysis prompt."""
+        """The analysis prompt: every market for the match, with prices (Phase 5)."""
+        from apps.predictions.markets import build_markets
         match = prediction.match
+        home, away = match.home_team.name, match.away_team.name
+        pct = lambda x: f"{float(x) * 100:.1f}%"
 
-        # Calculate predicted total goals from individual scores if available
-        predicted_goals = 0
-        if prediction.predicted_home_score and prediction.predicted_away_score:
-            predicted_goals = float(prediction.predicted_home_score) + float(prediction.predicted_away_score)
+        # Best bookmaker 1X2 prices (The Odds API) and the market average.
+        best = {}
+        books = [b for b in match.bookmaker_prices.all() if not b.is_exchange]
+        for side in ('home', 'draw', 'away'):
+            if books:
+                top = max(books, key=lambda b: getattr(b, f'{side}_odds'))
+                best[side] = {'odds': float(getattr(top, f'{side}_odds')), 'bookmaker': top.title}
+        avg = getattr(match, 'odds', None)
+        markets = build_markets(prediction, home, away, best_1x2=best, avg_odds=avg)
 
-        prompt = f"""Analyze this football match prediction and provide detailed recommendations.
+        f = prediction.features_json or {}
+        def feat(key, fmt='{:.2f}'):
+            v = f.get(key)
+            return fmt.format(v) if isinstance(v, (int, float)) else 'n/a'
 
-## Match Information
-- **Match**: {match.home_team.name} vs {match.away_team.name}
-- **Date**: {match.match_date}
-- **League**: {match.season.league.name}
-- **Prediction Strength**: {prediction.prediction_strength}
-- **Model Version**: {prediction.model_version}
-- **Model Type**: {prediction.model_type}
+        kickoff = match.kickoff_at.strftime('%Y-%m-%d %H:%M UTC') if match.kickoff_at else str(match.match_date)
+        prompt = f"""Analyse every market for this match and recommend the best bet, or "No bet".
 
-## Model Prediction
-- **Predicted Outcome**: {self._outcome_label(prediction.recommended_outcome)}
-- **Confidence**: {float(prediction.confidence_score) * 100:.1f}%
-- **Home Win Probability**: {float(prediction.home_win_probability) * 100:.1f}%
-- **Draw Probability**: {float(prediction.draw_probability) * 100:.1f}%
-- **Away Win Probability**: {float(prediction.away_win_probability) * 100:.1f}%
-- **Predicted Score**: {float(prediction.predicted_home_score or 0):.1f} - {float(prediction.predicted_away_score or 0):.1f}
-- **Predicted Total Goals**: {predicted_goals:.1f}
+## Match
+- {home} vs {away} · {match.season.league.name} · {kickoff}
+- Model: {prediction.model_version} ({'used bookmaker odds as an input' if f.get('used_odds') else 'no odds available as input'})
 
+## Model result probabilities (tested on 8,106 unseen matches: 50.3% accuracy, well calibrated)
+- {home} win {pct(prediction.home_win_probability)} · Draw {pct(prediction.draw_probability)} · {away} win {pct(prediction.away_win_probability)}
+- Expected goals: {home} {feat('xg_home')} · {away} {feat('xg_away')} · most likely score {int(prediction.predicted_home_score or 0)}-{int(prediction.predicted_away_score or 0)}
+
+## Form and strength (before this match)
+- Elo rating: {home} {feat('elo_home', '{:.0f}')} · {away} {feat('elo_away', '{:.0f}')}
+- Points per game, last 5: {home} {feat('h_ppg5')} · {away} {feat('a_ppg5')}
+- Points per game, this season: {home} {feat('h_season_ppg')} · {away} {feat('a_season_ppg')}
+- Shots on target per game, last 10: {home} {feat('h_sot10', '{:.1f}')} · {away} {feat('a_sot10', '{:.1f}')}
 """
+        if avg and avg.home_odds and avg.draw_odds and avg.away_odds:
+            prompt += (f"- Market average odds: {float(avg.home_odds):.2f} / {float(avg.draw_odds):.2f} / {float(avg.away_odds):.2f} "
+                       f"(from {avg.bookmaker})\n")
 
-        # Add model key factors if available
-        if prediction.key_factors:
-            prompt += "## Model Key Factors\n"
-            for factor in prediction.key_factors[:10]:
-                if isinstance(factor, dict):
-                    # Handle dictionary format
-                    market = factor.get('market', 'unknown').replace('_', ' ').title()
-                    prob = factor.get('probability', 0)
-                    conf = factor.get('confidence', 'unknown')
-                    prompt += f"- **{market}**: {prob*100:.1f}% probability ({conf} confidence)\n"
-                else:
-                    prompt += f"- {factor}\n"
-            prompt += "\n"
+        prompt += "\n## All markets: model chance · fair odds (no margin) · best price · edge\n"
+        group = None
+        for m in markets:
+            if m['group'] != group:
+                group = m['group']
+                prompt += f"\n**{group}**\n"
+            price = (f"best {m['best_odds']:.2f} ({m['best_bookmaker']}), edge {m['edge'] * 100:+.1f} pts"
+                     if m['best_odds'] else 'no price known')
+            prompt += (f"- {m['label']}: {m['probability'] * 100:.1f}% · fair {m['fair_odds']:.2f} · {price} · "
+                       f"{'TESTED' if m['tested'] else 'ESTIMATE'}\n")
 
-        # Add feature data if available (summarized)
-        if prediction.features_json:
-            features = prediction.features_json
-            prompt += "## Feature Summary\n"
-            # Extract key features
-            key_features = [
-                ('home_form_points', 'Home Team Form Points'),
-                ('away_form_points', 'Away Team Form Points'),
-                ('home_goals_scored_avg', 'Home Goals Scored Avg'),
-                ('away_goals_scored_avg', 'Away Goals Scored Avg'),
-                ('home_goals_conceded_avg', 'Home Goals Conceded Avg'),
-                ('away_goals_conceded_avg', 'Away Goals Conceded Avg'),
-                ('h2h_home_wins', 'H2H Home Wins'),
-                ('h2h_away_wins', 'H2H Away Wins'),
-                ('h2h_draws', 'H2H Draws'),
-                ('home_ppg', 'Home Points Per Game'),
-                ('away_ppg', 'Away Points Per Game'),
-            ]
-            for key, label in key_features:
-                if key in features:
-                    prompt += f"- **{label}**: {features[key]}\n"
-            prompt += "\n"
-
-
+        positive = [m for m in markets if m['edge'] is not None and m['edge'] > 0]
+        prompt += ("\n## Markets priced above fair odds\n" + (
+            '\n'.join(f"- {m['label']}: edge {m['edge'] * 100:+.1f} pts at {m['best_odds']:.2f}" for m in positive)
+            if positive else "- None of the priced markets beats the model's fair odds."))
 
         if context:
-            prompt += f"""## 📚 KNOWLEDGE BASE DOCUMENTS
-{context}
-
----
+            prompt += f"\n\n## 📚 Knowledge base documents\n{context}\n"
+        prompt += """
 
 ## TASK
-Generate a betting recommendation using the EXACT format from your system prompt.
-
-REQUIREMENTS:
-1. Reference at least ONE document from the knowledge base above
-2. Cite the model prediction values: {float(prediction.confidence_score)*100:.1f}% confidence, {prediction.prediction_strength} strength
-3. State you're using {prediction.model_type} model v{prediction.model_version}
-4. Keep response under 150 words
-5. Use the betting format template EXACTLY"""
-        else:
-            prompt += f"""## TASK
-Generate a betting recommendation using the EXACT format from your system prompt.
-
-REQUIREMENTS:
-1. Reference the model prediction values: {float(prediction.confidence_score)*100:.1f}% confidence, {prediction.prediction_strength} strength
-2. State you're using {prediction.model_type} model v{prediction.model_version}
-3. Keep response under 150 words
-4. Use the betting format template EXACTLY
-5. Note: No knowledge base documents available for this match"""
-
+Use the EXACT format from your system prompt. Compare all markets, not just the match result. Recommend at most one bet (or "No bet"), give one alternative, and name one market to avoid."""
         return prompt
 
     def _outcome_label(self, outcome: str) -> str:

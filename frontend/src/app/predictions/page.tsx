@@ -8,6 +8,8 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import { useState, useMemo, useEffect } from 'react';
 import { useSettings } from '@/contexts/SettingsContext';
+import { formatKickoff } from '@/lib/utils';
+import { QuickSlip } from '@/components/betslip/QuickSlip';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -290,7 +292,7 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
             </div>
             <div className="text-xs text-text-muted flex items-center gap-2">
               {isFinished ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-              {match.match_date || 'TBD'} {match.kickoff_time && `• ${match.kickoff_time}`}
+              {match.match_date || 'TBD'} {(match.kickoff_at || match.kickoff_time) && `• ${formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}`}
               {match.league && <span className="text-text-sec">• {match.league}</span>}
               {isFinished && <span className="text-text-sec">• Finished</span>}
             </div>
@@ -301,8 +303,14 @@ function PredictionCard({ prediction, index = 0 }: { prediction: any; index?: nu
             {(confidence * 100).toFixed(0)}% confidence
           </div>
           <div className="text-xs text-text-muted">
-            Predicted: {prediction.recommended_outcome || 'HOME'}
+            Predicted: {prediction.recommended_outcome || '—'}
+            {!hasVerification && prediction.predicted_home_score != null && prediction.predicted_away_score != null &&
+              ` · ${Math.round(prediction.predicted_home_score)}–${Math.round(prediction.predicted_away_score)}`}
           </div>
+          {!isFinished && prediction.is_value_bet && (
+            <span className="badge badge-brand mt-1" title="The model's probability beats the market odds by more than 5 points on at least one outcome">Value</span>
+          )}
+          {!isFinished && <QuickSlip prediction={prediction} />}
         </div>
       </div>
 
@@ -386,7 +394,7 @@ function EmptyState() {
       </div>
       <h3 className="text-lg font-semibold text-text mb-2">No Predictions Available</h3>
       <p className="text-text-muted text-sm max-w-sm mx-auto">
-        Predictions will appear here once the backend is connected and data is available.
+        No predictions match these filters. Predictions are generated every day at 05:15 UTC for fixtures in the next 7 days — during an international break there may be none. Try another date or clear the filters.
       </p>
     </div>
   );

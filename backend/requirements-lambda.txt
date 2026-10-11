@@ -61,3 +61,4 @@ apig-wsgi>=2.18.0
 # Used for S3 model storage and invoking the manage Lambda. The Lambda base
 # image ships a boto3 too; pinning our own keeps the version reproducible.
 boto3>=1.34.0
+pywebpush>=2.0.0

@@ -82,17 +82,25 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
-        """Get upcoming matches for next 7 days."""
+        """Upcoming matches, grouped by date. ?days=1-14 (default 7), ?league=CODE."""
         today = timezone.now().date()
-        end_date = today + timedelta(days=7)
+        try:
+            days = min(max(int(request.query_params.get('days', 7)), 1), 14)
+        except ValueError:
+            days = 7
+        end_date = today + timedelta(days=days)
 
         matches = Match.objects.filter(
             match_date__gte=today,
             match_date__lte=end_date,
             status=Match.Status.SCHEDULED,
-        ).select_related(
+        )
+        league = request.query_params.get('league')
+        if league:
+            matches = matches.filter(season__league__code=league)
+        matches = matches.select_related(
             'home_team', 'away_team', 'season__league'
-        ).prefetch_related('predictions').order_by('match_date', 'kickoff_time')
+        ).prefetch_related('predictions').order_by('match_date', 'kickoff_at', 'kickoff_time', 'id')
 
         # Group by date
         grouped = {}
@@ -175,15 +183,20 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def live(self, request):
         """Get currently live matches."""
+        # LIVE and HALFTIME: set every 5 minutes by sync_live (Phase 6) for
+        # the competitions football-data.org's free tier covers.
         matches = Match.objects.filter(
-            status=Match.Status.LIVE
+            status__in=[Match.Status.LIVE, Match.Status.HALFTIME]
         ).select_related(
             'home_team', 'away_team', 'season__league'
-        ).order_by('match_date', 'kickoff_time')
+        ).order_by('kickoff_at', 'match_date', 'kickoff_time')
 
         return Response({
             'count': matches.count(),
             'matches': MatchSerializer(matches, many=True).data,
+            'covered': ['Premier League', 'Championship', 'LaLiga', 'Serie A', 'Bundesliga', 'Ligue 1',
+                        'Eredivisie', 'Primeira Liga', 'Champions League'],
+            'updated_every_minutes': 5,
         })
 
     @action(detail=True, methods=['get'])

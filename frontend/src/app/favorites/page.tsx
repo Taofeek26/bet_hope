@@ -1,162 +1,166 @@
 'use client';
 
-import { Star, Trophy, Calendar, Bell, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { Star, Trophy, Calendar, X } from 'lucide-react';
+import { leaguesApi, teamsApi } from '@/lib/api';
+import { useFavoritesStore } from '@/lib/store';
+import { useSettings } from '@/contexts/SettingsContext';
+import { formatDateWithPreset, formatKickoff } from '@/lib/utils';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
+/**
+ * Phase 4: real favourites. The page used to show hard-coded demo teams
+ * (Arsenal "vs Chelsea – Today 15:00", ...) with buttons that did nothing.
+ * Favourites are added with the star on any team or league page and kept
+ * in this browser.
+ */
 export default function FavoritesPage() {
-  // In a real app, this would come from user state/API
-  const favoriteTeams = [
-    { id: 1, name: 'Arsenal', league: 'Premier League', nextMatch: 'vs Chelsea - Today 15:00' },
-    { id: 2, name: 'Barcelona', league: 'La Liga', nextMatch: 'vs Atletico - Tomorrow 20:00' },
-    { id: 3, name: 'Bayern Munich', league: 'Bundesliga', nextMatch: 'vs Dortmund - Saturday' },
-  ];
+  const { favoriteTeams, favoriteLeagues, toggleFavoriteTeam, toggleFavoriteLeague } = useFavoritesStore();
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
 
-  const favoriteLeagues = [
-    { id: 1, name: 'Premier League', country: 'England', matches: 10 },
-    { id: 2, name: 'La Liga', country: 'Spain', matches: 10 },
-  ];
+  const teamIds = ready ? favoriteTeams : [];
+  const leagueCodes = ready ? favoriteLeagues : [];
 
   return (
     <>
       <div className="content-header">
-        <h1>Favorites</h1>
-        <p>Your favorite teams and leagues in one place</p>
+        <h1>Favourites</h1>
+        <p>Teams and leagues you follow. Add them with the ☆ button on any team or league page.</p>
       </div>
 
       <div className="content-grid">
-        {/* Favorite Teams */}
         <div className="col-span-8">
           <div className="card">
             <div className="card-header">
-              <div className="card-icon">
-                <Star className="w-5 h-5" />
+              <div className="card-icon"><Star className="w-5 h-5" /></div>
+              <div>
+                <h2 className="card-title">Favourite teams</h2>
+                <p className="card-desc">Next fixture for each team</p>
               </div>
-              <div className="flex-1">
-                <h2 className="card-title">Favorite Teams</h2>
-                <p className="card-desc">Teams you're following</p>
-              </div>
-              <button className="btn btn-secondary btn-sm">
-                <Plus className="w-4 h-4" />
-                Add Team
-              </button>
             </div>
-
-            {favoriteTeams.length === 0 ? (
-              <EmptyFavorites type="teams" />
+            {!ready ? <LoadingSpinner /> : teamIds.length === 0 ? (
+              <Empty
+                text="No favourite teams yet."
+                hint="Open a team (search in the header, or click a team in any league table) and press “Add to favourites”."
+                href="/leagues" cta="Browse leagues"
+              />
             ) : (
               <div className="space-y-3">
-                {favoriteTeams.map((team) => (
-                  <div
-                    key={team.id}
-                    className="flex items-center gap-4 p-4 bg-surface rounded-lg border border-border-dim"
-                  >
-                    <div className="w-12 h-12 rounded-lg bg-brand/10 flex items-center justify-center">
-                      <Trophy className="w-6 h-6 text-brand" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-text">{team.name}</div>
-                      <div className="text-sm text-text-muted">{team.league}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-text-muted mb-1">Next Match</div>
-                      <div className="text-sm text-text-sec flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {team.nextMatch}
-                      </div>
-                    </div>
-                    <button className="btn btn-icon btn-secondary">
-                      <Bell className="w-4 h-4" />
-                    </button>
-                  </div>
+                {teamIds.map((id) => (
+                  <FavouriteTeam key={id} id={id} onRemove={() => toggleFavoriteTeam(id)} />
                 ))}
               </div>
             )}
           </div>
         </div>
 
-        {/* Favorite Leagues */}
         <div className="col-span-4">
           <div className="card">
             <div className="card-header">
-              <div className="card-icon">
-                <Trophy className="w-5 h-5" />
-              </div>
+              <div className="card-icon"><Trophy className="w-5 h-5" /></div>
               <div>
-                <h2 className="card-title">Favorite Leagues</h2>
-                <p className="card-desc">Leagues you follow</p>
+                <h2 className="card-title">Favourite leagues</h2>
+                <p className="card-desc">Standings and fixtures</p>
               </div>
             </div>
-
-            {favoriteLeagues.length === 0 ? (
-              <EmptyFavorites type="leagues" />
+            {!ready ? <LoadingSpinner /> : leagueCodes.length === 0 ? (
+              <Empty text="No favourite leagues yet." hint="Open a league and press “Add to favourites”." href="/leagues" cta="Browse leagues" />
             ) : (
-              <div className="space-y-3">
-                {favoriteLeagues.map((league) => (
-                  <Link
-                    key={league.id}
-                    href={`/leagues/${league.id}`}
-                    className="block p-4 bg-surface rounded-lg border border-border-dim hover:border-brand transition-colors"
-                  >
-                    <div className="font-semibold text-text">{league.name}</div>
-                    <div className="text-xs text-text-muted mt-1">
-                      {league.country} • {league.matches} matches this week
-                    </div>
-                  </Link>
-                ))}
-              </div>
+              <FavouriteLeagues codes={leagueCodes} onRemove={toggleFavoriteLeague} />
             )}
-
-            <button className="btn btn-outline w-full mt-4">
-              <Plus className="w-4 h-4" />
-              Add League
-            </button>
           </div>
-
-          {/* Notifications Card */}
-          <div className="card">
-            <div className="card-header">
-              <div className="card-icon">
-                <Bell className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="card-title">Notifications</h2>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <label className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                <span className="text-sm text-text">Match Start</span>
-                <input type="checkbox" defaultChecked className="toggle" />
-              </label>
-              <label className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                <span className="text-sm text-text">New Predictions</span>
-                <input type="checkbox" defaultChecked className="toggle" />
-              </label>
-              <label className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                <span className="text-sm text-text">Value Bets</span>
-                <input type="checkbox" defaultChecked className="toggle" />
-              </label>
-            </div>
-          </div>
+          <p className="text-xs text-text-muted px-1">
+            Alerts for new picks and value bets are set in <Link href="/settings" className="text-brand hover:underline">Settings → Notifications</Link>.
+          </p>
         </div>
       </div>
     </>
   );
 }
 
-function EmptyFavorites({ type }: { type: 'teams' | 'leagues' }) {
-  return (
-    <div className="text-center py-12">
-      <div className="card-icon w-16 h-16 mx-auto mb-4">
-        <Star className="w-8 h-8" />
+function FavouriteTeam({ id, onRemove }: { id: number; onRemove: () => void }) {
+  const { settings } = useSettings();
+  const [team, fixtures] = useQueries({
+    queries: [
+      { queryKey: ['teams', id], queryFn: () => teamsApi.getById(id) },
+      { queryKey: ['teams', id, 'fixtures'], queryFn: () => teamsApi.getFixtures(id) },
+    ],
+  });
+  const t: any = team.data;
+  const next: any = fixtures.data?.upcoming_matches?.[0];
+  if (team.isError) {
+    return (
+      <div className="flex items-center justify-between p-4 bg-surface rounded-lg border border-border-dim text-sm text-text-muted">
+        This team is no longer available.
+        <button onClick={onRemove} className="btn btn-secondary btn-sm">Remove</button>
       </div>
-      <h3 className="text-lg font-semibold text-text mb-2">No Favorite {type === 'teams' ? 'Teams' : 'Leagues'}</h3>
-      <p className="text-text-muted text-sm max-w-sm mx-auto mb-4">
-        Add {type} to your favorites to quickly access their matches and predictions.
-      </p>
-      <button className="btn btn-primary">
-        <Plus className="w-4 h-4" />
-        Add {type === 'teams' ? 'Team' : 'League'}
+    );
+  }
+  return (
+    <div className="flex items-center gap-4 p-4 bg-surface rounded-lg border border-border-dim">
+      {t?.logo_url ? (
+        <img src={t.logo_url} alt="" className="w-10 h-10 object-contain" />
+      ) : (
+        <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center text-brand font-bold">{t?.name?.charAt(0) || '·'}</div>
+      )}
+      <div className="flex-1 min-w-0">
+        <Link href={`/teams/${id}`} className="font-semibold text-text hover:text-brand truncate block">{t?.name || 'Loading…'}</Link>
+        <div className="text-sm text-text-muted">{t?.league?.name || t?.league_name || ''}</div>
+      </div>
+      <div className="text-right text-sm">
+        <div className="text-xs text-text-muted mb-1">Next match</div>
+        {fixtures.isLoading ? <span className="text-text-muted">…</span> : next ? (
+          <Link href={`/matches/${next.id}`} className="text-text-secondary hover:text-brand flex items-center gap-1 justify-end">
+            <Calendar className="w-3 h-3" />
+            {next.home_team_name} v {next.away_team_name} · {formatDateWithPreset(next.match_date, settings.dateFormat)}
+            {(next.kickoff_at || next.kickoff_time) && ` ${formatKickoff(next.kickoff_at, next.kickoff_time, settings.timezone)}`}
+          </Link>
+        ) : <span className="text-text-muted">No fixture scheduled yet</span>}
+      </div>
+      <button onClick={onRemove} className="btn btn-icon btn-secondary" aria-label={`Remove ${t?.name || 'team'} from favourites`}>
+        <X className="w-4 h-4" />
       </button>
+    </div>
+  );
+}
+
+function FavouriteLeagues({ codes, onRemove }: { codes: string[]; onRemove: (code: string) => void }) {
+  const { data: leagues = [], isLoading } = useQuery({
+    queryKey: ['leagues', { page_size: 100 }],
+    queryFn: () => leaguesApi.getAll(),
+  });
+  if (isLoading) return <LoadingSpinner />;
+  const byCode = new Map(leagues.map((l: any) => [l.code, l]));
+  return (
+    <div className="space-y-3">
+      {codes.map((code) => {
+        const l: any = byCode.get(code);
+        return (
+          <div key={code} className="flex items-center gap-3 p-4 bg-surface rounded-lg border border-border-dim">
+            <Link href={`/leagues/${code}`} className="flex-1 min-w-0 hover:text-brand">
+              <div className="font-semibold text-text truncate">{l?.name || code}</div>
+              <div className="text-xs text-text-muted">{l?.country || ''}</div>
+            </Link>
+            <button onClick={() => onRemove(code)} className="btn btn-icon btn-secondary" aria-label={`Remove ${l?.name || code} from favourites`}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Empty({ text, hint, href, cta }: { text: string; hint: string; href: string; cta: string }) {
+  return (
+    <div className="text-center py-10">
+      <div className="card-icon w-14 h-14 mx-auto mb-3"><Star className="w-7 h-7" /></div>
+      <p className="font-semibold text-text mb-1">{text}</p>
+      <p className="text-text-muted text-sm max-w-sm mx-auto mb-4">{hint}</p>
+      <Link href={href} className="btn btn-primary">{cta}</Link>
     </div>
   );
 }

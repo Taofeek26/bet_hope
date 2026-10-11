@@ -6,7 +6,6 @@ import { useSettings } from '@/contexts/SettingsContext';
 import {
   TrendingUp,
   Target,
-  Percent,
   Zap,
   Calendar,
   Trophy,
@@ -15,11 +14,15 @@ import {
 } from 'lucide-react';
 import { DailyPicks } from '@/components/predictions/DailyPicks';
 import { UpcomingMatches } from '@/components/matches/UpcomingMatches';
-import { LiveMatches } from '@/components/matches/LiveMatches';
 import { PredictionStats } from '@/components/predictions/PredictionStats';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { useDailyPicks, useLiveMatches, useValueBets, usePredictionStats, useWeeklyAvailability } from '@/hooks/useApi';
+import { useDailyPicks, useValueBets, usePredictionStats, useWeeklyAvailability, useModelInfo } from '@/hooks/useApi';
 import { MetricPlate } from '@/components/ui/MetricPlate';
+import { FlashFeed } from '@/components/engage/FlashFeed';
+import { AccaOfDay } from '@/components/engage/AccaOfDay';
+import { ResultsCard } from '@/components/engage/ResultsCard';
+import { InstallBanner } from '@/components/pwa/InstallBanner';
+import { LiveStrip } from '@/components/matches/LiveStrip';
 
 // Date utilities
 function formatDateForAPI(date: Date): string {
@@ -42,23 +45,35 @@ function formatDateDisplay(date: Date, today: Date): string {
 
 function DashboardStats() {
   const { data: dailyPicks } = useDailyPicks();
-  const { data: liveMatches } = useLiveMatches();
   const { data: valueBets } = useValueBets();
-  const { data: stats } = usePredictionStats({ days: 30 });
+  const { data: modelInfo } = useModelInfo();
+  // The live model's own record only (Phase 4). Mixing in the old v1
+  // predictions showed v1's 39% as if it were the current model's.
+  const family = modelInfo?.version?.split('_')[0];
+  const { data: stats } = usePredictionStats({ days: 30, model_family: family });
+  const live = family && stats && !(stats as any).error && stats.total_predictions > 0 ? stats : null;
+  const tested = modelInfo?.accuracy ? Number(modelInfo.accuracy) : null;
 
-  const accuracy = stats?.accuracy ? `${(stats.accuracy * 100).toFixed(1)}%` : '--';
+  // Until the live model has 50 graded matches, show its tested accuracy on
+  // unseen matches, and the live record so far in the remark.
+  const accuracy = live && live.total_predictions >= 50
+    ? `${(live.accuracy * 100).toFixed(1)}%`
+    : tested ? `${(tested * 100).toFixed(1)}%` : '--';
+  const accuracyRemark = live && live.total_predictions >= 50
+    ? `Live, last 30 days · ${live.correct_predictions}/${live.total_predictions} correct`
+    : live
+    ? `Tested on unseen matches · live so far ${live.correct_predictions}/${live.total_predictions}`
+    : tested ? 'Tested on unseen matches · live record starts with its first results' : 'Trailing 30 days';
   const predictionsToday = dailyPicks?.total_picks ?? '--';
-  const liveCount = liveMatches?.count ?? 0;
   const valueBetsCount = valueBets?.total ?? '--';
 
   return (
     <MetricPlate
       title="Model performance — live"
       rows={[
-        { metric: 'Accuracy rate', value: accuracy, remark: 'Trailing 30 days' },
-        { metric: 'Predictions today', value: String(predictionsToday), remark: 'Across all leagues' },
-        { metric: 'Live matches', value: String(liveCount), remark: 'Updating in real time' },
-        { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Edge over market odds' },
+        { metric: 'Accuracy rate', value: accuracy, remark: accuracyRemark },
+        { metric: 'Top picks today', value: String(predictionsToday), remark: '55%+ confidence, all leagues' },
+        { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Model beats the odds by 5+ points' },
       ]}
     />
   );
@@ -72,7 +87,16 @@ export default function HomePage() {
 
   // Settings > General > Default View — "/" is always the entry route, so
   // this is the one place a preferred landing page can actually apply.
+  // Only on the first page of a browser session (Phase 4): redirecting on
+  // every visit to "/" made the Dashboard unreachable from the sidebar.
   useEffect(() => {
+    if (settings.defaultView === 'dashboard') return;
+    try {
+      if (sessionStorage.getItem('bethope_landing_applied')) return;
+      sessionStorage.setItem('bethope_landing_applied', '1');
+    } catch {
+      return; // storage blocked: never trap the user on another page
+    }
     if (settings.defaultView === 'predictions') router.replace('/predictions');
     else if (settings.defaultView === 'matches') router.replace('/matches');
   }, [settings.defaultView, router]);
@@ -118,17 +142,15 @@ export default function HomePage() {
         <p>AI-powered predictions across 20 major leagues worldwide</p>
       </div>
 
+      <InstallBanner />
+      <LiveStrip />
+
       {/* Stats Grid */}
       <DashboardStats />
 
+
       {/* Main Content Grid */}
       <div className="content-grid">
-        {/* Live Matches - Full Width */}
-        <div className="col-span-12">
-          <Suspense fallback={<LoadingSection />}>
-            <LiveMatches />
-          </Suspense>
-        </div>
 
         {/* Daily Picks - 8 columns */}
         <div className="col-span-8">
@@ -200,20 +222,11 @@ export default function HomePage() {
 
         {/* Sidebar Stats - 4 columns */}
         <div className="col-span-4">
-          <div className="card">
-            <div className="card-header">
-              <div className="card-icon">
-                <Percent className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="card-title">Model Performance</h2>
-                <p className="card-desc">Last 30 days accuracy</p>
-              </div>
-            </div>
-            <Suspense fallback={<LoadingSection />}>
-              <PredictionStats />
-            </Suspense>
-          </div>
+          {/* PredictionStats and UpcomingMatches are complete cards with their
+              own headers; wrapping them printed every heading twice. */}
+          <Suspense fallback={<LoadingSection />}>
+            <PredictionStats />
+          </Suspense>
 
           {/* Quick Actions Card */}
           <div className="card">
@@ -252,20 +265,23 @@ export default function HomePage() {
 
         {/* Upcoming Matches - Full Width */}
         <div className="col-span-12">
-          <div className="card">
-            <div className="card-header">
-              <div className="card-icon">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="card-title">Upcoming Matches</h2>
-                <p className="card-desc">Next 7 days fixtures with predictions</p>
-              </div>
-            </div>
-            <Suspense fallback={<LoadingSection />}>
-              <UpcomingMatches />
-            </Suspense>
-          </div>
+          <Suspense fallback={<LoadingSection />}>
+            <UpcomingMatches />
+          </Suspense>
+        </div>
+      </div>
+
+      {/* Acca of the day and yesterday's results, then the flash feed last:
+          top picks come first on the Dashboard. */}
+      <div className="content-grid">
+        <div className="col-span-6">
+          <AccaOfDay />
+        </div>
+        <div className="col-span-6">
+          <ResultsCard />
+        </div>
+        <div className="col-span-12">
+          <FlashFeed limit={15} />
         </div>
       </div>
     </>

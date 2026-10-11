@@ -1,3 +1,6 @@
+// rgb(var(--<name>-rgb) / <alpha-value>) — see globals.css
+const tok = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`;
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
@@ -16,32 +19,37 @@ module.exports = {
     },
     extend: {
       colors: {
-        // Brand - Sky Blue (matching interlinking style)
+        // Every theme colour is rgb(var(--x-rgb) / <alpha-value>) (Phase 4,
+        // UI-01/02): the CSS variables let Settings > Appearance > Theme
+        // flip colours at runtime, and the channel form lets Tailwind apply
+        // opacity (bg-brand/10, bg-surface/50). Plain var(--x) values made
+        // Tailwind silently drop every /NN class.
         brand: {
-          1: '#38BDF8',  // Primary sky blue
-          2: '#7DD3FC',  // Lighter sky blue
-          3: '#BAE6FD',  // Lightest sky blue
+          DEFAULT: tok('brand1'), // bg-brand, text-brand, border-brand/40 ...
+          1: tok('brand1'),
+          2: tok('brand2'),
+          3: tok('brand3'),
         },
-        // Page backgrounds — CSS variables (not literal hex) so the
-        // Settings > Appearance > Theme control can actually flip these at
-        // runtime via [data-theme="light"] in globals.css, instead of every
-        // bg-page/text-text-muted/etc. class being permanently baked to
-        // dark-mode hex at build time.
-        page: 'var(--page)',
-        card: 'var(--card)',
-        surface: 'var(--surface)',
-        input: 'var(--input)',
+        brand1: tok('brand1'),    // legacy name used in a few components
+        bg: tok('page'),          // text-bg = text in page colour (on brand fills)
+        page: tok('page'),
+        card: tok('card'),
+        'card-hover': tok('input'),
+        surface: { DEFAULT: tok('surface'), alt: tok('input') },
+        input: tok('input'),
         // Borders
         border: {
-          DEFAULT: 'var(--border)',
-          dim: 'var(--border-dim)',
-          bright: 'var(--border-bright)',
+          DEFAULT: tok('border'),
+          dim: tok('border-dim'),
+          bright: tok('border-bright'),
         },
-        // Text
+        // Text (sec / primary are aliases already used across the pages)
         text: {
-          DEFAULT: 'var(--text)',
-          secondary: 'var(--text-sec)',
-          muted: 'var(--text-muted)',
+          DEFAULT: tok('text'),
+          primary: tok('text'),
+          secondary: tok('text-sec'),
+          sec: tok('text-sec'),
+          muted: tok('text-muted'),
         },
         // Primary - Sky Blue
         primary: {
@@ -81,9 +89,9 @@ module.exports = {
         info: '#7DD3FC',
         // Background
         background: {
-          DEFAULT: 'var(--page)',
-          secondary: 'var(--card)',
-          tertiary: 'var(--surface)',
+          DEFAULT: tok('page'),
+          secondary: tok('card'),
+          tertiary: tok('surface'),
         },
       },
       fontFamily: {

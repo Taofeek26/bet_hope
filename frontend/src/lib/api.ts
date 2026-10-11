@@ -29,15 +29,40 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
+// Response interceptor (Phase 7): an expired sign-in is refreshed once with
+// the refresh token; if that fails the user is signed out and the request is
+// retried without a token (public pages must keep working).
+let refreshing: Promise<string | null> | null = null;
+async function refreshAccess(): Promise<string | null> {
+  const refresh = typeof window !== 'undefined' ? localStorage.getItem('refresh') : null;
+  if (!refresh) return null;
+  try {
+    const { data } = await axios.post(`${api.defaults.baseURL}/auth/token/refresh/`, { refresh });
+    localStorage.setItem('token', data.access);
+    if (data.refresh) localStorage.setItem('refresh', data.refresh);
+    return data.access;
+  } catch {
+    return null;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized
-      if (typeof window !== 'undefined') {
+  async (error) => {
+    const cfg = error.config || {};
+    if (error.response?.status === 401 && typeof window !== 'undefined' && !cfg._retried && !String(cfg.url || '').includes('/auth/token')) {
+      cfg._retried = true;
+      refreshing = refreshing || refreshAccess().finally(() => { refreshing = null; });
+      const access = await refreshing;
+      if (access) {
+        cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${access}` };
+      } else {
         localStorage.removeItem('token');
+        localStorage.removeItem('refresh');
+        window.dispatchEvent(new Event('bethope-signed-out'));
+        if (cfg.headers) delete cfg.headers.Authorization;
       }
+      return api.request(cfg);
     }
     return Promise.reject(error);
   }
@@ -53,7 +78,8 @@ const extractResults = <T>(data: T[] | { results: T[] }): T[] => {
 // League endpoints
 export const leaguesApi = {
   getAll: async (params?: { country?: string; tier?: number; active?: boolean }) => {
-    const { data } = await api.get<{ results: League[] } | League[]>('/leagues/', { params });
+    // page_size: the API pages at 20 by default, which dropped leagues past #20 (API-07)
+    const { data } = await api.get<{ results: League[] } | League[]>('/leagues/', { params: { page_size: 100, ...params } });
     return extractResults(data);
   },
 
@@ -87,7 +113,7 @@ export const leaguesApi = {
 // Team endpoints
 export const teamsApi = {
   getAll: async (params?: { league?: string; search?: string }) => {
-    const { data } = await api.get<{ results: Team[] } | Team[]>('/teams/', { params });
+    const { data } = await api.get<{ results: Team[] } | Team[]>('/teams/', { params: { page_size: 100, ...params } });
     return extractResults(data);
   },
 
@@ -142,13 +168,13 @@ export const matchesApi = {
     return data;
   },
 
-  getUpcoming: async () => {
+  getUpcoming: async (params?: { days?: number; league?: string }) => {
     const { data } = await api.get<{
       start_date: string;
       end_date: string;
       total_matches: number;
       matches_by_date: Record<string, Match[]>;
-    }>('/matches/upcoming/');
+    }>('/matches/upcoming/', { params });
     return data;
   },
 
@@ -168,7 +194,7 @@ export const matchesApi = {
   },
 
   getLive: async () => {
-    const { data } = await api.get<{ count: number; matches: Match[] }>('/matches/live/');
+    const { data } = await api.get<{ count: number; matches: Match[]; covered: string[]; updated_every_minutes: number }>('/matches/live/');
     return data;
   },
 
@@ -191,7 +217,8 @@ export const predictionsApi = {
     date_to?: string;
     min_confidence?: number;
   }) => {
-    const { data } = await api.get<{ results: Prediction[] } | Prediction[]>('/predictions/', { params });
+    // A busy Saturday has 100+ matches; page_size keeps the whole day in one response (API-07)
+    const { data } = await api.get<{ results: Prediction[] } | Prediction[]>('/predictions/', { params: { page_size: 500, ...params } });
     return extractResults(data);
   },
 
@@ -228,7 +255,12 @@ export const predictionsApi = {
     return data;
   },
 
-  getStats: async (params?: { days?: number }) => {
+  getPaperBets: async (params?: { days?: number; model_family?: string }) => {
+    const { data } = await api.get('/predictions/paper_bets/', { params });
+    return data;
+  },
+
+  getStats: async (params?: { days?: number; model_family?: string }) => {
     const { data } = await api.get<PredictionStats>('/predictions/stats/', { params });
     return data;
   },
@@ -357,6 +389,27 @@ export const documentsApi = {
   },
 };
 
+// Accounts (Phase 7)
+export interface Me {
+  id: number; username: string; email: string; name: string; is_staff: boolean; joined: string;
+  favourite_teams: number[]; favourite_leagues: string[]; weekly_limit: number | null;
+}
+export const accountApi = {
+  register: async (username: string, email: string, password: string, name: string) =>
+    (await api.post<{ access: string; refresh: string; user: Me }>('/auth/register/', { username, email, password, name })).data,
+  me: async () => (await api.get<Me>('/me/')).data,
+  update: async (patch: Partial<Me>) => (await api.patch<Me>('/me/update/', patch)).data,
+  changePassword: async (old_password: string, new_password: string) => (await api.post('/me/password/', { old_password, new_password })).data,
+  deleteAccount: async (password: string) => (await api.post('/me/delete/', { password })).data,
+  bets: async () => (await api.get<{ bets: any[] }>('/me/bets/')).data.bets,
+  saveBets: async (bets: any[]) => (await api.post('/me/bets/', { bets })).data,
+  deleteBet: async (id: string) => (await api.post('/me/bets/delete/', { id })).data,
+  adminUsers: async (search?: string) => (await api.get('/admin-users/', { params: search ? { search } : undefined })).data,
+  adminUser: async (id: number) => (await api.get(`/admin-users/${id}/`)).data,
+  adminSetActive: async (id: number, active: boolean) => (await api.post(`/admin-users/${id}/set_active/`, { active })).data,
+  adminResetPassword: async (id: number) => (await api.post(`/admin-users/${id}/reset_password/`)).data as { temporary_password: string },
+};
+
 // Auth endpoints
 export const authApi = {
   login: async (username: string, password: string) => {
@@ -407,5 +460,39 @@ export const adminTasksApi = {
     return data;
   },
 };
+
+// Flash feed, acca of the day, yesterday's results (Phase 6)
+export const engageApi = {
+  flash: async (params?: { match?: number; team?: number; kind?: string; limit?: number; hours?: number; min_importance?: number }) => {
+    const { data } = await api.get('/engage/flash/', { params });
+    return data as { items: FlashItem[] };
+  },
+  acca: async () => {
+    const { data } = await api.get('/engage/acca/');
+    return data;
+  },
+  results: async (date?: string) => {
+    const { data } = await api.get('/engage/results/', { params: date ? { date } : undefined });
+    return data;
+  },
+  pushKey: async () => (await api.get('/engage/push_key/')).data as { public_key: string },
+  pushSubscribe: async (subscription: any, teams: number[], prefs: Record<string, boolean>) =>
+    (await api.post('/engage/push_subscribe/', { subscription, teams, prefs })).data,
+  pushUnsubscribe: async (endpoint: string) => (await api.post('/engage/push_unsubscribe/', { endpoint })).data,
+};
+
+export interface FlashItem {
+  id: number;
+  kind: 'odds_move' | 'news' | 'model_change' | 'results' | 'acca';
+  tag: string;
+  title: string;
+  body: string;
+  url: string;
+  source: string;
+  importance: number;
+  published_at: string;
+  match: { id: number; label: string; kickoff_at: string | null; match_date: string } | null;
+  team: { id: number; name: string } | null;
+}
 
 export default api;

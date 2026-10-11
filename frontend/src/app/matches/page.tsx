@@ -6,7 +6,7 @@ import { matchesApi, leaguesApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useState } from 'react';
 import Link from 'next/link';
-import { formatDateWithPreset } from '@/lib/utils';
+import { formatDateWithPreset, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 export default function MatchesPage() {
@@ -25,7 +25,7 @@ export default function MatchesPage() {
     queryFn: () => {
       if (view === 'live') return matchesApi.getLive();
       if (view === 'results') return matchesApi.getResults({ days: selectedDays, league: selectedLeague || undefined });
-      return matchesApi.getUpcoming();
+      return matchesApi.getUpcoming({ days: Math.min(selectedDays, 14), league: selectedLeague || undefined });
     },
   });
 
@@ -41,6 +41,16 @@ export default function MatchesPage() {
   };
 
   const matches = getMatches();
+
+  // Day headers (Phase 4): one long undivided list made it hard to see
+  // where Saturday ended. Results are newest-day first, fixtures soonest first.
+  const byDay: [string, any[]][] = [];
+  for (const m of matches as any[]) {
+    const day = m.match_date || 'TBD';
+    const last = byDay[byDay.length - 1];
+    if (last && last[0] === day) last[1].push(m);
+    else byDay.push([day, [m]]);
+  }
 
   return (
     <>
@@ -65,7 +75,7 @@ export default function MatchesPage() {
               onClick={() => setView('live')}
               className={`btn btn-sm text-xs sm:text-sm ${view === 'live' ? 'btn-primary' : 'btn-secondary'}`}
             >
-              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="w-2 h-2 rounded-full bg-red-500" />
               Live
             </button>
             <button
@@ -83,8 +93,8 @@ export default function MatchesPage() {
           </button>
         </div>
 
-        {/* Filters - shown for results view */}
-        {view === 'results' && (
+        {/* Filters (not for Live: it lists every covered match in play) */}
+        {view !== 'live' && (
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-4 pt-4 border-t border-border">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-text-muted" />
@@ -104,7 +114,7 @@ export default function MatchesPage() {
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>
                   <option value={14}>14 days</option>
-                  <option value={30}>30 days</option>
+                  {view === 'results' && <option value={30}>30 days</option>}
                 </select>
               </div>
 
@@ -144,9 +154,18 @@ export default function MatchesPage() {
       ) : matches.length === 0 ? (
         <EmptyState view={view} />
       ) : (
-        <div className="space-y-3">
-          {matches.map((match: any) => (
-            <MatchCard key={match.id} match={match} />
+        <div className="space-y-6">
+          {byDay.map(([day, dayMatches]) => (
+            <section key={day} aria-label={day}>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2 px-1">
+                {day === 'TBD' ? 'Date to be confirmed' : dayLabel(day)} · {dayMatches.length} {dayMatches.length === 1 ? 'match' : 'matches'}
+              </h2>
+              <div className="space-y-3">
+                {dayMatches.map((match: any) => (
+                  <MatchCard key={match.id} match={match} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
@@ -154,9 +173,30 @@ export default function MatchesPage() {
   );
 }
 
+function dayLabel(iso: string) {
+  const d = new Date(`${iso}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+  const long = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  if (diff === 0) return `Today — ${long}`;
+  if (diff === 1) return `Tomorrow — ${long}`;
+  if (diff === -1) return `Yesterday — ${long}`;
+  return long;
+}
+
+function TeamName({ id, name, className }: { id?: number; name: string; className: string }) {
+  if (!id) return <span className={className}>{name}</span>;
+  return (
+    <Link href={`/teams/${id}`} className={`${className} hover:text-brand hover:underline relative z-10`}>
+      {name}
+    </Link>
+  );
+}
+
 function MatchCard({ match }: { match: any }) {
   const { settings } = useSettings();
-  const isLive = match.status === 'live';
+  const isLive = match.status === 'live' || match.status === 'halftime';
   const isFinished = match.status === 'finished';
 
   // Handle both nested and flat team name formats
@@ -165,6 +205,9 @@ function MatchCard({ match }: { match: any }) {
   const homeLogo = match.home_team?.logo_url || match.home_team_logo;
   const awayLogo = match.away_team?.logo_url || match.away_team_logo;
   const leagueName = match.league_name || match.league?.name || '';
+  const teamId = (t: any) => (typeof t === 'object' ? t?.id : t);
+  const homeId = teamId(match.home_team);
+  const awayId = teamId(match.away_team);
 
   // Check prediction verification for finished matches
   const prediction = match.prediction;
@@ -173,7 +216,10 @@ function MatchCard({ match }: { match: any }) {
   const isCorrect = verification?.is_correct;
 
   return (
-    <Link href={`/matches/${match.id}`} className={`match-card hover:border-brand/50 transition-colors flex-col sm:flex-row ${hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : ''}`}>
+    // A card-wide link sits underneath so team names can link to their own
+    // pages (links can't be nested inside a link).
+    <div className={`match-card relative hover:border-brand/50 transition-colors flex-col sm:flex-row ${hasVerification ? (isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500') : ''}`}>
+      <Link href={`/matches/${match.id}`} aria-label={`${homeTeam} vs ${awayTeam} — match details`} className="absolute inset-0 rounded-[inherit]" />
       {/* Teams row */}
       <div className="match-teams flex-1 w-full sm:w-auto">
         <div className="match-team flex-1 sm:flex-initial justify-start">
@@ -184,11 +230,11 @@ function MatchCard({ match }: { match: any }) {
               {homeTeam.charAt(0)}
             </div>
           )}
-          <span className="text-text font-medium text-xs sm:text-sm truncate">{homeTeam}</span>
+          <TeamName id={homeId} name={homeTeam} className="text-text font-medium text-xs sm:text-sm truncate" />
         </div>
         <span className="match-vs text-[10px] sm:text-xs flex-shrink-0">vs</span>
         <div className="match-team flex-1 sm:flex-initial justify-end sm:justify-start">
-          <span className="text-text font-medium text-xs sm:text-sm truncate sm:hidden">{awayTeam}</span>
+          <TeamName id={awayId} name={awayTeam} className="text-text font-medium text-xs sm:text-sm truncate sm:hidden" />
           {awayLogo ? (
             <img src={awayLogo} alt={awayTeam} className="w-5 h-5 sm:w-6 sm:h-6 object-contain flex-shrink-0" />
           ) : (
@@ -196,30 +242,41 @@ function MatchCard({ match }: { match: any }) {
               {awayTeam.charAt(0)}
             </div>
           )}
-          <span className="text-text font-medium text-xs sm:text-sm truncate hidden sm:block">{awayTeam}</span>
+          <TeamName id={awayId} name={awayTeam} className="text-text font-medium text-xs sm:text-sm truncate hidden sm:block" />
         </div>
       </div>
 
       {/* Score/Time and Prediction row - stacks on mobile */}
       <div className="flex items-center justify-between w-full sm:w-auto gap-3 sm:gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-dim mt-2 sm:mt-0">
-        <div className="text-center min-w-[70px] sm:min-w-[100px]">
+        <div className="text-left sm:text-center flex-shrink-0 min-w-[96px] max-w-[60%] sm:max-w-none sm:min-w-[100px]">
           {isFinished ? (
             <div className="text-base sm:text-xl font-bold text-text">
               {match.home_score} - {match.away_score}
             </div>
           ) : isLive ? (
-            <div className="badge badge-live text-[10px] sm:text-xs">LIVE</div>
+            <div className="flex items-center gap-2 sm:justify-center">
+              <span className="text-base sm:text-xl font-bold text-text">{match.home_score ?? 0} - {match.away_score ?? 0}</span>
+              <span className="badge badge-live text-[10px] sm:text-xs">{match.status === 'halftime' ? 'HT' : 'LIVE'}</span>
+            </div>
           ) : (
-            <div className="text-xs sm:text-sm text-text-muted">
+            <div className="text-xs sm:text-sm text-text-muted min-w-0">
+              {/* The day header above already shows the date; on phones show
+                  the kickoff time and the full league name instead. */}
               <div className="truncate">
-                {match.kickoff_time || (match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD')}
+                <span className="hidden sm:inline">
+                  {match.match_date ? formatDateWithPreset(match.match_date, settings.dateFormat) : 'TBD'}
+                  {(match.kickoff_at || match.kickoff_time) && ' · '}
+                </span>
+                {(match.kickoff_at || match.kickoff_time)
+                  ? <span className="text-text font-medium sm:font-normal sm:text-text-muted">{formatKickoff(match.kickoff_at, match.kickoff_time, settings.timezone)}</span>
+                  : <span className="sm:hidden">Time TBC</span>}
               </div>
-              {leagueName && <div className="text-[10px] sm:text-xs truncate max-w-[80px] sm:max-w-none">{leagueName}</div>}
+              {leagueName && <div className="text-[11px] sm:text-xs truncate">{leagueName}</div>}
             </div>
           )}
         </div>
 
-        <div className="match-prediction min-w-[90px] sm:min-w-[120px] flex-row sm:flex-col items-center sm:items-end">
+        <div className="match-prediction !w-auto !border-t-0 !pt-0 min-w-0 sm:min-w-[120px] flex-row sm:flex-col items-center sm:items-end justify-end">
           {prediction && (
             <div className="flex items-center gap-1.5 sm:gap-2">
               {hasVerification && (
@@ -240,7 +297,7 @@ function MatchCard({ match }: { match: any }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -255,10 +312,10 @@ function EmptyState({ view }: { view: string }) {
       </h3>
       <p className="text-text-muted text-sm max-w-sm mx-auto">
         {view === 'live'
-          ? 'No matches are currently being played.'
+          ? 'No match is in play right now. Live scores cover the Premier League, Championship, LaLiga, Serie A, Bundesliga, Ligue 1, Eredivisie, Primeira Liga and Champions League, updated every 5 minutes.'
           : view === 'results'
           ? 'No recent match results to display.'
-          : 'No upcoming matches scheduled.'}
+          : 'No fixtures scheduled for these filters. Leagues pause for international breaks; new fixtures are added by the daily sync.'}
       </p>
     </div>
   );

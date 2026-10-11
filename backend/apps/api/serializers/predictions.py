@@ -9,6 +9,8 @@ from apps.predictions.models import Prediction, ModelVersion
 class ModelVersionSerializer(serializers.ModelSerializer):
     """Serializer for model versions."""
 
+    scorecard = serializers.SerializerMethodField()
+
     class Meta:
         model = ModelVersion
         fields = [
@@ -18,7 +20,25 @@ class ModelVersionSerializer(serializers.ModelSerializer):
             'accuracy',
             'status',
             'trained_at',
+            'scorecard',
         ]
+
+    def get_scorecard(self, obj):
+        """v2's tested results on unseen matches, from the training notes (Analytics)."""
+        import json
+        try:
+            notes = json.loads(obj.notes or '{}')
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(notes, dict) or 'test' not in notes:
+            return None
+        return {
+            'test': notes.get('test'),
+            'bookmaker': (notes.get('baselines') or {}).get('bookmaker'),
+            'samples': notes.get('samples'),
+            'windows': notes.get('windows'),
+            'calibration': notes.get('calibration'),
+        }
 
 
 class PredictionSerializer(serializers.ModelSerializer):
@@ -29,6 +49,7 @@ class PredictionSerializer(serializers.ModelSerializer):
     probabilities = serializers.SerializerMethodField()
     recommended_bet = serializers.SerializerMethodField()
     result_verification = serializers.SerializerMethodField()
+    is_value_bet = serializers.SerializerMethodField()
 
     class Meta:
         model = Prediction
@@ -45,8 +66,26 @@ class PredictionSerializer(serializers.ModelSerializer):
             'predicted_away_score',
             'recommended_bet',
             'result_verification',
+            'is_value_bet',
             'created_at',
         ]
+
+    def get_is_value_bet(self, obj) -> bool:
+        """
+        Model probability at least 5 points above the bookmaker's implied
+        probability for any of home/draw/away, the same rule as
+        /predictions/value_bets/. The Predictions page filter read this
+        field, which didn't exist, so it was always empty (Phase 4).
+        """
+        odds = getattr(obj.match, 'odds', None)
+        if not odds:
+            return False
+        for prob, price in ((obj.home_win_probability, odds.home_odds),
+                            (obj.draw_probability, odds.draw_odds),
+                            (obj.away_win_probability, odds.away_odds)):
+            if price and float(price) > 1 and float(prob) - 1 / float(price) > 0.05:
+                return True
+        return False
 
     def get_match(self, obj) -> dict:
         league = obj.match.season.league if obj.match.season else None
@@ -62,7 +101,9 @@ class PredictionSerializer(serializers.ModelSerializer):
             'away_team_logo': obj.match.away_team.logo_url,
             'match_date': obj.match.match_date.isoformat(),
             'kickoff_time': obj.match.kickoff_time.strftime('%H:%M') if obj.match.kickoff_time else None,
+            'kickoff_at': obj.match.kickoff_at.isoformat() if obj.match.kickoff_at else None,
             'league': league_display,
+            'league_code': league.code if league else None,
             'league_country': league.country if league else None,
             'status': obj.match.status,
         }

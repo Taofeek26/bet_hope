@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Target, TrendingUp, AlertCircle, Clock, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { formatOdds } from '@/lib/utils';
+import { formatOdds, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 
 // Date utilities
@@ -81,7 +81,7 @@ export default function ValueBetsPage() {
     <>
       <div className="content-header">
         <h1>Value Bets</h1>
-        <p>High-value betting opportunities identified by our AI</p>
+        <p>Outcomes where the model's probability beats the bookmaker's odds by more than 5 points. These are rare by design.</p>
       </div>
 
       {/* Info Card */}
@@ -125,7 +125,7 @@ export default function ValueBetsPage() {
             <div className="flex items-center gap-1 bg-surface rounded-lg p-1">
               <button
                 onClick={() => setViewMode('day')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap ${
                   viewMode === 'day'
                     ? 'bg-brand text-bg'
                     : 'text-text-muted hover:text-text'
@@ -135,7 +135,7 @@ export default function ValueBetsPage() {
               </button>
               <button
                 onClick={() => setViewMode('week')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap ${
                   viewMode === 'week'
                     ? 'bg-brand text-bg'
                     : 'text-text-muted hover:text-text'
@@ -244,11 +244,18 @@ export default function ValueBetsPage() {
           <h3 className="text-lg font-semibold text-text mb-2">
             No Value Bets for {viewMode === 'day' ? selectedDateLabel : 'This Week'}
           </h3>
-          <p className="text-text-muted text-sm max-w-sm mx-auto">
-            {viewMode === 'day'
-              ? 'Try selecting a different date or view all week.'
-              : 'Value bets will appear here when our model identifies opportunities with positive edge.'}
+          {/* Phase 4: on 8,086 unseen matches v2 never cleared the 5-point bar, and
+              lower bars lost money (any edge: -13.9% return; 2+ points: -48.5%).
+              An empty list is the honest, expected result, not an error. */}
+          <p className="text-text-muted text-sm max-w-md mx-auto">
+            The model currently finds no edge over the market. It starts from the bookmakers&apos; odds
+            and only adjusts them slightly, so its probabilities rarely beat the odds by more than 5 points
+            once the bookmaker&apos;s margin is taken into account. We keep that bar because smaller
+            &ldquo;edges&rdquo; lost money when tested on past matches.
           </p>
+          {viewMode === 'day' && (
+            <p className="text-text-muted text-xs mt-2">You can also check another date or the whole week.</p>
+          )}
           {viewMode === 'day' && (
             <button
               onClick={() => setViewMode('week')}
@@ -338,7 +345,7 @@ function ValueBetCard({ bet }: { bet: any }) {
             </div>
             <div className="text-xs text-text-muted flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              {dateLabel} {match.time && `• ${match.time}`}
+              {dateLabel} {(match.kickoff_at || match.time) && `• ${formatKickoff(match.kickoff_at, match.time, settings.timezone)}`}
             </div>
           </div>
         </div>

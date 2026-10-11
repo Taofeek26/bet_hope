@@ -2,56 +2,33 @@
 
 import { useEffect, useRef } from 'react';
 import { useSettings } from '@/contexts/SettingsContext';
-import { useLiveMatches, useDailyPicks, useValueBets } from '@/hooks/useApi';
+import { useDailyPicks, useValueBets } from '@/hooks/useApi';
 
 // Settings > Notifications. There's no email/push backend in this
 // deployment, so these use the browser's own Notification API — real
-// alerts, scoped to what's actually observable client-side: a match going
-// live, a new high-confidence pick appearing, a new value bet appearing.
+// alerts, scoped to what's actually observable client-side: a new
+// high-confidence pick appearing, a new value bet appearing. (No match-live
+// alerts: there is no live-score source, DATA-05.)
 // Fires only while a tab is open and permission is granted; that's an
 // honest boundary given what infrastructure actually exists, not a
 // simulation of push notifications the app can't really deliver.
 function notify(title: string, body: string) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
-  new Notification(title, { body, icon: '/favicon.ico' });
+  new Notification(title, { body, icon: '/icon.svg' });
 }
 
 export function NotificationWatcher() {
   const { settings } = useSettings();
-  const { data: liveMatches } = useLiveMatches();
   const { data: dailyPicks } = useDailyPicks();
   const { data: valueBets } = useValueBets();
 
-  const seenLiveIds = useRef<Set<number>>(new Set());
   const seenPickIds = useRef<Set<number>>(new Set());
   const seenValueBetIds = useRef<Set<string>>(new Set());
-  const initialized = useRef(false);
 
-  useEffect(() => {
-    if (settings.matchNotifications && typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-  }, [settings.matchNotifications]);
+  // Permission is asked from Settings, when the user switches alerts on
+  // (Phase 4): browsers block or penalise prompts that appear on page load.
 
-  useEffect(() => {
-    if (!liveMatches?.matches) return;
-    const currentIds = new Set<number>(liveMatches.matches.map((m: any) => m.id));
-
-    // Skip the very first tick — otherwise every match already live when
-    // the tab opens fires a notification, which isn't "new" to the user.
-    if (initialized.current && settings.matchNotifications) {
-      for (const m of liveMatches.matches) {
-        if (!seenLiveIds.current.has(m.id)) {
-          notify('Match is live', `${m.home_team?.name || m.home_team} vs ${m.away_team?.name || m.away_team} just kicked off`);
-        }
-      }
-    }
-    seenLiveIds.current = currentIds;
-    initialized.current = true;
-  }, [liveMatches, settings.matchNotifications]);
 
   const picksInitialized = useRef(false);
   useEffect(() => {

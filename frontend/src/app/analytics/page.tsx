@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, TrendingUp, Target, Percent, RefreshCw } from 'lucide-react';
+import { BarChart3, TrendingUp, Target, Percent, RefreshCw, FlaskConical, Wallet } from 'lucide-react';
 import { predictionsApi } from '@/lib/api';
+import { useModelInfo } from '@/hooks/useApi';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AccuracyBarChart } from '@/components/analytics/AccuracyBarChart';
 import { MetricPlate } from '@/components/ui/MetricPlate';
@@ -17,28 +19,75 @@ interface StatsData {
   error?: string;
 }
 
+// Phase 5, step 1: the page used to mix the old v1 predictions with the
+// live model's and was fixed to 30 days. Now: pick the model and period,
+// and see the live model's tested scorecard next to its live record.
+const MODELS = [
+  { value: 'live', label: 'Live model' },
+  { value: 'v1', label: 'Old model (v1)' },
+  { value: 'all', label: 'All models' },
+] as const;
+const PERIODS = [7, 30, 90, 365] as const;
+
+// "0.55-0.65" -> "55–65%", "0.00-0.45" -> "under 45%", "0.65-1.00" -> "65%+"
+function bandLabel(band: string) {
+  const [lo, hi] = String(band).split('-').map((v) => Math.round(Number(v) * 100));
+  if (Number.isNaN(lo) || Number.isNaN(hi)) return band;
+  if (lo === 0) return `under ${hi}%`;
+  if (hi === 100) return `${lo}%+`;
+  return `${lo}–${hi}%`;
+}
+
+const pct = (x?: number | null, d = 1) => (x == null ? '--' : `${(x * 100).toFixed(d)}%`);
+
 export default function AnalyticsPage() {
+  const [model, setModel] = useState<(typeof MODELS)[number]['value']>('live');
+  const [days, setDays] = useState<number>(30);
+  const { data: modelInfo } = useModelInfo();
+  const liveFamily = modelInfo?.version?.split('_')[0];
+  const family = model === 'live' ? liveFamily : model === 'v1' ? 'v1' : undefined;
+
   const { data, isLoading, error, refetch } = useQuery<StatsData>({
-    queryKey: ['prediction-stats'],
-    queryFn: () => predictionsApi.getStats({ days: 30 }),
+    queryKey: ['prediction-stats', { days, family }],
+    queryFn: () => predictionsApi.getStats({ days, model_family: family }),
+    enabled: model !== 'live' || !!liveFamily,
   });
 
   const hasData = data && !data.error && data.total_predictions > 0;
   const highConfidence = data?.by_confidence?.high;
+  const modelLabel = model === 'live' ? `Model ${liveFamily || ''}`.trim() : MODELS.find((m) => m.value === model)!.label;
+  const periodLabel = days === 365 ? 'Last 12 months' : `Last ${days} days`;
 
   return (
     <>
       <div className="content-header">
         <h1>Analytics</h1>
-        <p>Model performance and prediction accuracy statistics</p>
+        <p>How often the model is right, before kickoff, on matches that have been played</p>
       </div>
 
-      <div className="flex justify-end mb-4">
-        <button onClick={() => refetch()} className="btn btn-secondary btn-sm">
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+      <div className="card card-compact mb-4 sm:mb-6">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="an-model" className="text-xs sm:text-sm text-text-muted">Model:</label>
+            <select id="an-model" value={model} onChange={(e) => setModel(e.target.value as any)} className="input input-sm text-xs sm:text-sm">
+              {MODELS.map((m) => <option key={m.value} value={m.value}>{m.value === 'live' && liveFamily ? `Live model (${liveFamily})` : m.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="an-period" className="text-xs sm:text-sm text-text-muted">Period:</label>
+            <select id="an-period" value={days} onChange={(e) => setDays(Number(e.target.value))} className="input input-sm text-xs sm:text-sm">
+              {PERIODS.map((d) => <option key={d} value={d}>{d === 365 ? '12 months' : `${d} days`}</option>)}
+            </select>
+          </div>
+          <button onClick={() => refetch()} className="btn btn-secondary btn-sm ml-auto">
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {model === 'live' && <TestedScorecard info={modelInfo} />}
+      {(model !== 'live' || liveFamily) && <PaperBetsPanel days={days} family={family} modelLabel={modelLabel} periodLabel={periodLabel} />}
 
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -52,131 +101,90 @@ export default function AnalyticsPage() {
           </button>
         </div>
       ) : !hasData ? (
-        <>
-          {/* No predictions have been verified in the selected window yet — an
-              accurate empty state, not a placeholder to disguise. */}
-          <MetricPlate
-            title="Overall record — last 30 days"
-            rows={[
-              { metric: 'Overall accuracy', value: '--', remark: 'No verified predictions yet' },
-              { metric: 'Total predictions', value: '0', remark: 'In this window' },
-              { metric: 'High confidence accuracy', value: '--', remark: 'No verified predictions yet' },
-              { metric: 'Correct predictions', value: '--', remark: 'No verified predictions yet' },
-            ]}
-          />
-
-          <div className="card text-center py-12 mt-6">
-            <div className="card-icon w-16 h-16 mx-auto mb-4">
-              <BarChart3 className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-semibold text-text mb-2">No Verified Predictions Yet</h3>
-            <p className="text-text-muted text-sm max-w-sm mx-auto">
-              Analytics will appear here once matches with predictions have finished and results are recorded.
-            </p>
+        <div className="card text-center py-12">
+          <div className="card-icon w-16 h-16 mx-auto mb-4">
+            <BarChart3 className="w-8 h-8" />
           </div>
-        </>
+          <h3 className="text-lg font-semibold text-text mb-2">No graded predictions for {modelLabel} · {periodLabel.toLowerCase()}</h3>
+          <p className="text-text-muted text-sm max-w-md mx-auto">
+            {model === 'live'
+              ? 'The live model’s record starts as the matches it predicted are played and their results are synced (daily at 04:15 UTC). Until then, the tested results above show how it did on matches it never saw in training.'
+              : 'Try a longer period.'}
+          </p>
+        </div>
       ) : (
         <>
-          {/* Overview Stats */}
           <MetricPlate
-            title={`Overall record — ${data.period}`}
+            title={`Live record — ${modelLabel} · ${periodLabel}`}
             rows={[
-              { metric: 'Overall accuracy', value: `${(data.accuracy * 100).toFixed(1)}%`, remark: data.period },
-              { metric: 'Total predictions', value: String(data.total_predictions), remark: 'Verified against results' },
+              { metric: 'Accuracy', value: pct(data.accuracy), remark: `${data.correct_predictions} of ${data.total_predictions} correct` },
+              { metric: 'Graded predictions', value: String(data.total_predictions), remark: 'Made before kickoff, checked against the result' },
               {
-                metric: 'High confidence accuracy',
-                value: highConfidence ? `${(highConfidence.accuracy * 100).toFixed(1)}%` : '--',
-                remark: highConfidence ? `${highConfidence.total} predictions` : 'No high-confidence picks yet',
+                metric: 'Top-pick accuracy (55%+)',
+                value: pct(highConfidence?.accuracy),
+                remark: highConfidence ? `${highConfidence.correct} of ${highConfidence.total} top picks` : 'No top picks in this period',
               },
-              { metric: 'Correct predictions', value: String(data.correct_predictions), remark: 'Out of total verified' },
             ]}
           />
+          {data.total_predictions < 100 && (
+            <p className="text-xs text-text-muted mb-4 px-1">
+              Small sample: with fewer than 100 matches, accuracy can easily swing by ±10 points. Read it alongside the tested results.
+            </p>
+          )}
 
           <div className="content-grid">
-            {/* Accuracy by Outcome */}
             <div className="col-span-6">
               <div className="card">
                 <div className="card-header">
-                  <div className="card-icon">
-                    <Target className="w-5 h-5" />
-                  </div>
+                  <div className="card-icon"><Target className="w-5 h-5" /></div>
                   <div>
-                    <h2 className="card-title">Accuracy by Outcome</h2>
-                    <p className="card-desc">{data.period}</p>
+                    <h2 className="card-title">Accuracy by predicted outcome</h2>
+                    <p className="card-desc">When the model picked home / draw / away, how often it was right</p>
                   </div>
                 </div>
-
                 <AccuracyBarChart
                   data={[
-                    { label: 'Home Wins', accuracy: data.by_outcome.H?.accuracy || 0, total: data.by_outcome.H?.total || 0, correct: data.by_outcome.H?.correct || 0 },
-                    { label: 'Draws', accuracy: data.by_outcome.D?.accuracy || 0, total: data.by_outcome.D?.total || 0, correct: data.by_outcome.D?.correct || 0 },
-                    { label: 'Away Wins', accuracy: data.by_outcome.A?.accuracy || 0, total: data.by_outcome.A?.total || 0, correct: data.by_outcome.A?.correct || 0 },
+                    { label: 'Picked home', accuracy: data.by_outcome.H?.accuracy || 0, total: data.by_outcome.H?.total || 0, correct: data.by_outcome.H?.correct || 0 },
+                    { label: 'Picked draw', accuracy: data.by_outcome.D?.accuracy || 0, total: data.by_outcome.D?.total || 0, correct: data.by_outcome.D?.correct || 0 },
+                    { label: 'Picked away', accuracy: data.by_outcome.A?.accuracy || 0, total: data.by_outcome.A?.total || 0, correct: data.by_outcome.A?.correct || 0 },
                   ]}
                 />
               </div>
             </div>
 
-            {/* Accuracy by Confidence */}
             <div className="col-span-6">
               <div className="card">
                 <div className="card-header">
-                  <div className="card-icon">
-                    <Percent className="w-5 h-5" />
-                  </div>
+                  <div className="card-icon"><Percent className="w-5 h-5" /></div>
                   <div>
-                    <h2 className="card-title">Accuracy by Confidence</h2>
-                    <p className="card-desc">How confidence correlates with accuracy</p>
+                    <h2 className="card-title">Accuracy by confidence</h2>
+                    <p className="card-desc">Higher confidence should mean right more often</p>
                   </div>
                 </div>
-
                 <AccuracyBarChart
                   data={[
-                    { label: 'High (60%+)', accuracy: data.by_confidence.high?.accuracy || 0, total: data.by_confidence.high?.total || 0, correct: data.by_confidence.high?.correct || 0 },
-                    { label: 'Medium (45-60%)', accuracy: data.by_confidence.medium?.accuracy || 0, total: data.by_confidence.medium?.total || 0, correct: data.by_confidence.medium?.correct || 0 },
+                    { label: 'High (55%+)', accuracy: data.by_confidence.high?.accuracy || 0, total: data.by_confidence.high?.total || 0, correct: data.by_confidence.high?.correct || 0 },
+                    { label: 'Medium (45–55%)', accuracy: data.by_confidence.medium?.accuracy || 0, total: data.by_confidence.medium?.total || 0, correct: data.by_confidence.medium?.correct || 0 },
                     { label: 'Low (<45%)', accuracy: data.by_confidence.low?.accuracy || 0, total: data.by_confidence.low?.total || 0, correct: data.by_confidence.low?.correct || 0 },
                   ]}
                 />
               </div>
             </div>
 
-            {/* Summary Card */}
             <div className="col-span-12">
               <div className="card">
                 <div className="card-header">
-                  <div className="card-icon">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
+                  <div className="card-icon"><TrendingUp className="w-5 h-5" /></div>
                   <div>
-                    <h2 className="card-title">Performance Summary</h2>
-                    <p className="card-desc">{data.period}</p>
+                    <h2 className="card-title">Summary</h2>
+                    <p className="card-desc">{modelLabel} · {periodLabel}</p>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-4 bg-surface rounded-lg text-center">
-                    <div className="text-2xl font-bold text-brand">
-                      {data.correct_predictions}
-                    </div>
-                    <div className="text-xs text-text-muted">Correct</div>
-                  </div>
-                  <div className="p-4 bg-surface rounded-lg text-center">
-                    <div className="text-2xl font-bold text-text-secondary">
-                      {data.total_predictions - data.correct_predictions}
-                    </div>
-                    <div className="text-xs text-text-muted">Incorrect</div>
-                  </div>
-                  <div className="p-4 bg-surface rounded-lg text-center">
-                    <div className="text-2xl font-bold text-text">
-                      {(data.accuracy * 100).toFixed(1)}%
-                    </div>
-                    <div className="text-xs text-text-muted">Hit Rate</div>
-                  </div>
-                  <div className="p-4 bg-surface rounded-lg text-center">
-                    <div className="text-2xl font-bold text-text">
-                      {highConfidence?.total || 0}
-                    </div>
-                    <div className="text-xs text-text-muted">High Conf. Bets</div>
-                  </div>
+                  <SummaryTile value={String(data.correct_predictions)} label="Correct" accent />
+                  <SummaryTile value={String(data.total_predictions - data.correct_predictions)} label="Incorrect" />
+                  <SummaryTile value={pct(data.accuracy)} label="Hit rate" />
+                  <SummaryTile value={String(highConfidence?.total || 0)} label="Top picks (55%+)" />
                 </div>
               </div>
             </div>
@@ -187,3 +195,146 @@ export default function AnalyticsPage() {
   );
 }
 
+function SummaryTile({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
+  return (
+    <div className="p-4 bg-surface rounded-lg text-center">
+      <div className={`text-2xl font-bold ${accent ? 'text-brand' : 'text-text'}`}>{value}</div>
+      <div className="text-xs text-text-muted">{label}</div>
+    </div>
+  );
+}
+
+/** The live model's results on matches it never saw in training, vs the bookmakers. */
+function TestedScorecard({ info }: { info: any }) {
+  const sc = info?.scorecard;
+  if (!sc?.test) return null;
+  const t = sc.test;
+  const b = sc.bookmaker;
+  const n = sc.samples?.test;
+  const from = sc.windows?.test_from;
+  return (
+    <div className="card mb-4 sm:mb-6">
+      <div className="card-header">
+        <div className="card-icon"><FlaskConical className="w-5 h-5" /></div>
+        <div>
+          <h2 className="card-title">Tested on unseen matches</h2>
+          <p className="card-desc">
+            {info.version} · {n ? `${n.toLocaleString()} matches` : ''}{from ? ` since ${from}` : ''}, none used in training
+          </p>
+        </div>
+      </div>
+      <div className="table-wrap overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-text-muted text-xs text-left">
+              <th className="py-2 pr-4 font-medium">Predictor</th>
+              <th className="py-2 pr-4 font-medium text-right">Accuracy</th>
+              <th className="py-2 font-medium text-right" title="Lower is better: penalises confident wrong picks">Log loss ↓</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-t border-border-dim">
+              <td className="py-2 pr-4 font-semibold text-text">This model</td>
+              <td className="py-2 pr-4 text-right font-semibold text-brand">{pct(t.accuracy, 2)}</td>
+              <td className="py-2 text-right font-semibold text-text">{t.log_loss?.toFixed(4)}</td>
+            </tr>
+            {b && (
+              <tr className="border-t border-border-dim">
+                <td className="py-2 pr-4 text-text-sec">Bookmakers (average odds)</td>
+                <td className="py-2 pr-4 text-right text-text-sec">{pct(b.accuracy, 2)}</td>
+                <td className="py-2 text-right text-text-sec">{b.log_loss?.toFixed(4)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {Array.isArray(sc.calibration) && sc.calibration.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs text-text-muted mb-2">Does its confidence hold up? When it says X%, how often it was right:</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {sc.calibration.map((row: any) => (
+              <div key={row.band} className="p-3 bg-surface rounded-lg text-center">
+                <div className="text-xs text-text-muted">{bandLabel(row.band)}</div>
+                <div className="text-sm text-text">said {pct(row.predicted)} · right {pct(row.actual)}</div>
+                <div className="text-[10px] text-text-muted">{row.n?.toLocaleString()} matches</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-text-muted mt-3">
+        Football is hard to predict: about 50% is level with the bookmakers. Being accurate is not the same as making money; see Value Bets.
+      </p>
+    </div>
+  );
+}
+
+type PaperGroup = {
+  bets: number; open: number; settled: number; won: number;
+  hit_rate: number | null; avg_odds: number | null; staked: number; profit: number; roi: number | null;
+};
+
+/**
+ * Phase 5, step 2: what following the model would have returned, from
+ * pretend 1-unit bets logged before kickoff at the price available then.
+ */
+function PaperBetsPanel({ days, family, modelLabel, periodLabel }: { days: number; family?: string; modelLabel: string; periodLabel: string }) {
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['paper-bets', { days, family }],
+    queryFn: () => predictionsApi.getPaperBets({ days, model_family: family }),
+  });
+  const groups: [string, string, PaperGroup | undefined][] = [
+    ['all_picks', 'Every model pick', data?.groups?.all_picks],
+    ['top_picks', 'Top picks (55%+)', data?.groups?.top_picks],
+    ['value_bets', 'Value bets (5+ pt edge)', data?.groups?.value_bets],
+  ];
+  const anyBets = groups.some(([, , g]) => g && g.bets > 0);
+  return (
+    <div className="card mb-4 sm:mb-6">
+      <div className="card-header">
+        <div className="card-icon"><Wallet className="w-5 h-5" /></div>
+        <div>
+          <h2 className="card-title">Return if you had bet</h2>
+          <p className="card-desc">Pretend 1-unit bets, logged before kickoff at the odds available then · {modelLabel} · {periodLabel}</p>
+        </div>
+      </div>
+      {isLoading ? <LoadingSpinner /> : !anyBets ? (
+        <p className="text-sm text-text-muted py-4">
+          No paper bets in this period yet. From now on, every prediction is logged as a 1-unit bet the day before kickoff
+          (when the match has odds), and settled after the result. The first ones settle after this weekend’s matches.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {groups.map(([key, label, g]) => (
+              <div key={key} className="p-4 bg-surface rounded-lg">
+                <div className="text-xs text-text-muted mb-1">{label}</div>
+                {g && g.settled > 0 ? (
+                  <>
+                    <div className={`text-2xl font-bold ${(g.roi ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {(g.roi ?? 0) >= 0 ? '+' : ''}{((g.roi ?? 0) * 100).toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {g.profit >= 0 ? '+' : ''}{g.profit.toFixed(2)} units on {g.settled} bets · won {g.won} ({pct(g.hit_rate, 0)}) · avg odds {g.avg_odds?.toFixed(2)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-text-muted">No settled bets yet</div>
+                )}
+                {g && g.open > 0 && <div className="text-[10px] text-text-muted mt-1">{g.open} still to be played</div>}
+              </div>
+            ))}
+          </div>
+          {groups.some(([, , g]) => g && g.settled > 0 && g.settled < 300) && (
+            <p className="text-xs text-text-muted mt-3">
+              Return swings a lot over a few hundred bets; treat anything under ~1,000 settled bets as luck, not proof.
+            </p>
+          )}
+        </>
+      )}
+      <p className="text-xs text-text-muted mt-3">
+        No real money involved. Real returns would also depend on the bookmaker’s price when you bet and any commission.
+      </p>
+    </div>
+  );
+}

@@ -1,9 +1,12 @@
 'use client';
 
-import { Settings, Bell, Globe, Shield, Palette, Trash2, Check } from 'lucide-react';
+import { Settings, Bell, Globe, Shield, Palette, Trash2, Check, Ticket } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSettings, AppSettings } from '@/contexts/SettingsContext';
 import { readPredictionHistory, clearPredictionHistory } from '@/hooks/usePredictionHistory';
+import { BOOKMAKERS } from '@/lib/bookmakers';
+import { useFavoritesStore } from '@/lib/store';
+import { currentSubscription, subscribePush, unsubscribePush, updatePush, pushSupported, isIos, isStandalone } from '@/lib/pwa';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
@@ -39,6 +42,12 @@ export default function SettingsPage() {
                 onClick={() => setActiveTab('region')}
               />
               <SettingsTab
+                icon={Ticket}
+                label="Betting"
+                active={activeTab === 'betting'}
+                onClick={() => setActiveTab('betting')}
+              />
+              <SettingsTab
                 icon={Palette}
                 label="Appearance"
                 active={activeTab === 'appearance'}
@@ -59,6 +68,7 @@ export default function SettingsPage() {
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'region' && <RegionSettings />}
+          {activeTab === 'betting' && <BettingSettings />}
           {activeTab === 'appearance' && <AppearanceSettings />}
           {activeTab === 'privacy' && <PrivacySettings />}
         </div>
@@ -160,7 +170,7 @@ function GeneralSettings() {
 
         <SettingItem
           label="Auto-refresh"
-          description="Automatically poll for new live scores, picks, and predictions in the background"
+          description="Automatically check for new picks and predictions in the background"
         >
           <Toggle checked={settings.autoRefresh} onChange={(v) => set('autoRefresh', v)} />
         </SettingItem>
@@ -200,7 +210,7 @@ function NotificationSettings() {
           <h2 className="card-title">Notification Settings</h2>
           <p className="card-desc">
             Browser notifications while this tab is open — there's no email or push
-            infrastructure behind this app, so alerts only fire live, in-session
+            infrastructure behind this app, so alerts only fire while the app is open
           </p>
         </div>
         <SavedBadge show={saved} />
@@ -217,9 +227,6 @@ function NotificationSettings() {
       )}
 
       <div className="space-y-6">
-        <SettingItem label="Match Live Alerts" description="Get notified the moment a match goes live">
-          <Toggle checked={settings.matchNotifications} onChange={(v) => set('matchNotifications', v)} />
-        </SettingItem>
         <SettingItem label="Prediction Alerts" description="Get notified when a new high-confidence pick appears">
           <Toggle checked={settings.predictionAlerts} onChange={(v) => set('predictionAlerts', v)} />
         </SettingItem>
@@ -227,6 +234,123 @@ function NotificationSettings() {
           <Toggle checked={settings.valueBetAlerts} onChange={(v) => set('valueBetAlerts', v)} />
         </SettingItem>
       </div>
+      <PushSettings />
+    </div>
+  );
+}
+
+function BettingSettings() {
+  const { settings, updateSetting } = useSettings();
+  const [saved, flash] = useSavedFlash();
+  const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    updateSetting(key, value);
+    flash();
+  };
+  const toggleBook = (id: string) => {
+    const next = settings.bookmakers.includes(id)
+      ? settings.bookmakers.filter((b) => b !== id)
+      : [...settings.bookmakers, id];
+    set('bookmakers', next);
+    if (!next.includes(settings.defaultBookmaker) && next[0]) set('defaultBookmaker', next[0]);
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div className="card-icon"><Ticket className="w-5 h-5" /></div>
+        <div>
+          <h2 className="card-title">Betting tools</h2>
+          <p className="card-desc">The bet slip and markets are optional. Bet Hope never places bets or holds money.</p>
+        </div>
+        <SavedBadge show={saved} />
+      </div>
+      <div className="space-y-6">
+        <SettingItem label="Show bet slip and markets" description="The Slip button, the Markets card on match pages and “+ Slip” on predictions">
+          <Toggle checked={settings.bettingTools} onChange={(v) => set('bettingTools', v)} />
+        </SettingItem>
+        <div className={settings.bettingTools ? '' : 'opacity-50 pointer-events-none'}>
+          <div className="text-sm font-medium text-text mb-1">Bookmakers in the slip</div>
+          <p className="text-xs text-text-muted mb-3">
+            &ldquo;Open&rdquo; copies your slip and opens the bookmaker you pick. Use one licensed for your state.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {BOOKMAKERS.map((b) => (
+              <label key={b.id} className="flex items-center gap-2 p-2 bg-surface rounded-lg border border-border-dim text-sm text-text cursor-pointer">
+                <input type="checkbox" checked={settings.bookmakers.includes(b.id)} onChange={() => toggleBook(b.id)} />
+                {b.name}
+              </label>
+            ))}
+          </div>
+          <div className="mt-4">
+            <SettingItem label="Default bookmaker" description="Selected first in the slip">
+              <select className="input select w-48" value={settings.defaultBookmaker} onChange={(e) => set('defaultBookmaker', e.target.value)}>
+                {BOOKMAKERS.filter((b) => settings.bookmakers.includes(b.id)).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </SettingItem>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Push alerts that arrive with the app closed (Phase 6). */
+function PushSettings() {
+  const favoriteTeams = useFavoritesStore((st) => st.favoriteTeams);
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [prefs, setPrefs] = useState<Record<string, boolean>>({ digest: true, results: true, teams: true });
+  useEffect(() => {
+    try { setPrefs((p) => ({ ...p, ...JSON.parse(localStorage.getItem('bethope_push_prefs') || '{}') })); } catch { /* defaults */ }
+    currentSubscription().then((sub) => setOn(!!sub)).catch(() => {});
+  }, []);
+  const savePrefs = (next: Record<string, boolean>) => {
+    setPrefs(next);
+    try { localStorage.setItem('bethope_push_prefs', JSON.stringify(next)); } catch { /* ignore */ }
+    if (on) updatePush(favoriteTeams, next).catch(() => {});
+  };
+  const toggle = async (v: boolean) => {
+    setBusy(true); setMsg('');
+    try {
+      if (v) { await subscribePush(favoriteTeams, prefs); setOn(true); setMsg('Alerts on. The first one arrives tomorrow morning.'); }
+      else { await unsubscribePush(); setOn(false); setMsg('Alerts off.'); }
+    } catch (e: any) {
+      setMsg(e?.message || 'Could not change alerts');
+    } finally { setBusy(false); }
+  };
+  const supported = pushSupported();
+  return (
+    <div className="mt-8 pt-6 border-t border-border-dim space-y-6">
+      <div>
+        <div className="text-sm font-semibold text-text">Push alerts (even when Bet Hope is closed)</div>
+        <p className="text-xs text-text-muted mt-1">
+          {supported
+            ? isIos() && !isStandalone()
+              ? <>On iPhone, first add Bet Hope to your Home Screen (<a href="/install" className="text-brand">how to install</a>), then open it from there to turn this on.</>
+              : 'One alert each morning (acca of the day, top picks, your favourite teams playing today) and one with yesterday\'s results.'
+            : 'This browser does not support push alerts.'}
+        </p>
+      </div>
+      {supported && (
+        <>
+          <SettingItem label="Turn on push alerts" description={busy ? 'Working…' : on ? 'On for this device' : 'Off'}>
+            <Toggle checked={on} onChange={(v) => { if (!busy) toggle(v); }} />
+          </SettingItem>
+          <div className={on ? 'space-y-6' : 'space-y-6 opacity-50 pointer-events-none'}>
+            <SettingItem label="Morning digest" description="Acca of the day and how many top picks there are">
+              <Toggle checked={prefs.digest !== false} onChange={(v) => savePrefs({ ...prefs, digest: v })} />
+            </SettingItem>
+            <SettingItem label="My teams" description={`When a favourite team plays today (${favoriteTeams.length} favourite${favoriteTeams.length === 1 ? '' : 's'})`}>
+              <Toggle checked={prefs.teams !== false} onChange={(v) => savePrefs({ ...prefs, teams: v })} />
+            </SettingItem>
+            <SettingItem label="Results" description="How yesterday's top picks did">
+              <Toggle checked={prefs.results !== false} onChange={(v) => savePrefs({ ...prefs, results: v })} />
+            </SettingItem>
+          </div>
+          {msg && <p className="text-xs text-text-muted">{msg}</p>}
+        </>
+      )}
     </div>
   );
 }

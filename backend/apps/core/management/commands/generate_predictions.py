@@ -83,6 +83,44 @@ class Command(BaseCommand):
             self.stdout.write('Clearing existing predictions...')
             Prediction.objects.all().delete()
 
+        # Model v2 (Phase 3): its own feature pass and predictor
+        if active_model.model_type == 'v2':
+            if upcoming or (not historical and not validate):
+                from apps.ml_pipeline.v2.predict import predict_upcoming
+                result = predict_upcoming(active_model.version, days=days)
+                self.stdout.write(self.style.SUCCESS(
+                    f"Upcoming predictions ({active_model.version}): {result.get('created', 0)} created, "
+                    f"{result.get('updated', 0)} updated, {result.get('frozen', 0)} frozen at kickoff, "
+                    f"{result.get('with_odds', 0)} used bookmaker odds"))
+                from apps.predictions.paper import log_paper_bets
+                paper = log_paper_bets()
+                self.stdout.write(f"Paper bets logged: {paper['created']} "
+                                  f"({paper['skipped_no_odds']} matches skipped: no odds yet)")
+                self.stdout.write(f"Model-change flashes: {result.get('model_change_flashes', 0)}")
+                try:
+                    from apps.engage.acca import build_daily_acca
+                    acca = build_daily_acca()
+                    self.stdout.write(f"Acca of the day: {len(acca.legs) if acca else 0} legs")
+                    from apps.engage import telegram
+                    telegram.post_acca(acca)
+                    # Morning digest goes out from the 05:15 UTC run (after retraining).
+                    from django.utils import timezone as _tz
+                    if _tz.now().hour >= 5:
+                        from apps.engage.push import morning_digest
+                        self.stdout.write(f"Push digest sent: {morning_digest()}")
+                        from apps.engage.previews import generate_previews
+                        self.stdout.write(f"AI match previews: {generate_previews()}")
+                        self.stdout.write(f"Telegram top picks posted: {telegram.post_top_picks()}")
+                except Exception as e:
+                    self.stdout.write(self.style.ERROR(f'Acca of the day failed: {e}'))
+            if historical:
+                self.stdout.write(self.style.WARNING(
+                    'Skipping --historical with v2: back-filled predictions on matches the model '
+                    'was trained on are in-sample and would inflate accuracy (ML-11).'))
+            if validate:
+                self._validate_predictions()
+            return
+
         # Initialize predictor
         predictor = MatchPredictor()
         if not predictor.load_model():
@@ -195,7 +233,8 @@ class Command(BaseCommand):
             query = query.filter(season__code__in=seasons)
         else:
             # Default to current season
-            query = query.filter(season__code='2526')
+            from apps.core.seasons import current_season_code
+            query = query.filter(season__code=current_season_code())
 
         # Only matches without predictions
         query = query.exclude(predictions__isnull=False)
@@ -372,6 +411,22 @@ class Command(BaseCommand):
         return home_prob, draw_prob, away_prob
 
     def _validate_predictions(self):
+        self._validate_predictions_inner()
+        from apps.predictions.paper import settle_paper_bets
+        settled = settle_paper_bets()
+        self.stdout.write(f"Paper bets settled: {settled['won']} won, {settled['lost']} lost, {settled['void']} void")
+        try:
+            from apps.engage.acca import settle_accas
+            from apps.engage.flash import results_flash
+            self.stdout.write(f"Accas settled: {settle_accas()} · results flash: {results_flash()}")
+            from apps.engage.push import results_push
+            self.stdout.write(f"Results push sent: {results_push()}")
+            from apps.engage import telegram
+            self.stdout.write(f"Telegram results posted: {telegram.post_results()}")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Acca/results flash failed: {e}'))
+
+    def _validate_predictions_inner(self):
         """Validate predictions against actual match results."""
         from apps.matches.models import Match
         from apps.predictions.models import Prediction

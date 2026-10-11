@@ -11,7 +11,6 @@ export interface AppSettings {
   // browser Notification API while a tab is open). There's no email/push
   // infrastructure in this deployment, so no "email digest" option here —
   // that would be a toggle for a feature that doesn't exist.
-  matchNotifications: boolean;
   predictionAlerts: boolean;
   valueBetAlerts: boolean;
   // Region & Odds
@@ -24,13 +23,16 @@ export interface AppSettings {
   showAnimations: boolean;
   // Data & Privacy
   savePredictionHistory: boolean;
+  // Betting tools (Phase 5): the bet slip is optional and can be hidden.
+  bettingTools: boolean;
+  bookmakers: string[];      // ids from lib/bookmakers shown in the slip
+  defaultBookmaker: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   defaultView: 'dashboard',
   predictionsPerPage: 25,
   autoRefresh: true,
-  matchNotifications: true,
   predictionAlerts: true,
   valueBetAlerts: true,
   timezone: 'local',
@@ -40,6 +42,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   compactMode: false,
   showAnimations: true,
   savePredictionHistory: true,
+  bettingTools: true,
+  bookmakers: ['bet9ja', 'sportybet', 'betking', '1xbet', 'betway', 'betano'],
+  defaultBookmaker: 'bet9ja',
 };
 
 const STORAGE_KEY = 'bethope_settings';

@@ -2,7 +2,7 @@
 Matches Models
 """
 from django.db import models
-from apps.core.models import SyncedModel
+from apps.core.models import SyncedModel, TimeStampedModel
 
 
 class Match(SyncedModel):
@@ -30,7 +30,12 @@ class Match(SyncedModel):
 
     # Timing
     match_date = models.DateField()
+    # Provider's own clock: UTC from football-data.org, UK local from
+    # football-data.co.uk. Kept for compatibility; use kickoff_at to display.
     kickoff_time = models.TimeField(null=True, blank=True)
+    # The kickoff instant in UTC (Phase 2, DATA-06). The frontend formats it
+    # in the viewer's timezone (Settings > Region > Timezone).
+    kickoff_at = models.DateTimeField(null=True, blank=True)
     matchweek = models.IntegerField(null=True, blank=True)
 
     # Status
@@ -194,3 +199,29 @@ class MatchOdds(SyncedModel):
                  1 / float(self.draw_odds) +
                  1 / float(self.away_odds))
         return round((total - 1) * 100, 2)
+
+
+class BookmakerPrice(TimeStampedModel):
+    """
+    One bookmaker's current 1X2 price for an upcoming match, from The Odds
+    API (Phase 5, step 2b). Kept per bookmaker for the odds comparison and
+    best price; MatchOdds keeps the market average the model uses.
+    """
+    match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='bookmaker_prices')
+    bookmaker = models.CharField(max_length=50)          # The Odds API key, e.g. 'pinnacle'
+    title = models.CharField(max_length=100)
+    home_odds = models.DecimalField(max_digits=7, decimal_places=3)
+    draw_odds = models.DecimalField(max_digits=7, decimal_places=3)
+    away_odds = models.DecimalField(max_digits=7, decimal_places=3)
+    is_exchange = models.BooleanField(default=False)
+    link = models.URLField(max_length=500, blank=True)
+    last_update = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'matches_bookmaker_price'
+        constraints = [
+            models.UniqueConstraint(fields=['match', 'bookmaker'], name='uniq_bookmaker_price'),
+        ]
+
+    def __str__(self):
+        return f'{self.title}: {self.home_odds}/{self.draw_odds}/{self.away_odds} ({self.match_id})'

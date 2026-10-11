@@ -20,6 +20,13 @@
     <a href="roadmap.html">Fix plan</a>
     <a href="phase-0.html">Phase 0 log</a>
     <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+    <a href="phase-4.html">Phase 4 log</a>
+    <a href="betting-integration.html">Betting plan</a>
+    <a href="features.html">Features &amp; ideas</a>
+    <a href="phase-6.html">Phase 6 log</a>
+    <a href="phase-7.html">Phase 7 log</a>
   </nav>
 </div></header>
 
@@ -120,6 +127,7 @@
     <div class="finding-head"><span class="finding-id">DATA-05</span><span class="sev med">Medium</span><span class="finding-title">There is no live-score source, but the UI polls for live matches every 15 seconds</span></div>
     <dl>
       <dt>Where</dt><dd>Status only changes during the once-a-day sync; <code>useLiveMatches</code> polls every 15 s; the dashboard, Matches page "Live" tab and notifications rely on it</dd>
+      <dt>Resolved</dt><dd><span class="st ok">6 Oct 2026</span> Live was removed from the app (Dashboard, Matches tab, alerts), by decision; see the <a href="phase-4.html">Phase 4 log</a>, row 12.</dd>
       <dt>Fix</dt><dd>Either add a real live source (e.g. football-data.org <code>/matches?status=IN_PLAY</code> every few minutes during match windows, within its rate limit), or remove the Live tab and polling and say so.</dd>
     </dl>
   </div>

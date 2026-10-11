@@ -8,17 +8,36 @@ import { formatProbability } from '@/lib/utils';
 import { BarChart3, CheckCircle, XCircle, Target } from 'lucide-react';
 
 export function PredictionStats() {
-  const { data: stats, isLoading } = usePredictionStats({ days: 30 });
-  const { data: modelInfo } = useModelInfo();
+  const { data: modelInfo, isLoading: modelLoading } = useModelInfo();
+  // Only the live model's family (all daily v2 retrains), not v1's history.
+  const family = modelInfo?.version?.split('_')[0];
+  const { data: stats, isLoading } = usePredictionStats({ days: 30, model_family: family });
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading || modelLoading) return <LoadingSpinner />;
 
   if (!stats || (stats as any).error) {
+    const tested = modelInfo?.accuracy ? Number(modelInfo.accuracy) : null;
     return (
-      <div className="text-text-muted text-center py-8">
-        <p className="mb-2">No verified predictions yet.</p>
-        <p className="text-xs">Statistics will appear after matches are completed.</p>
-      </div>
+      <Card>
+        <CardHeader className="flex items-center gap-2 sm:gap-3">
+          <div className="p-1.5 sm:p-2 rounded-lg bg-accent-500/20">
+            <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-accent-400" />
+          </div>
+          <CardTitle className="text-sm sm:text-base">Model Performance</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <div className="text-center py-4">
+            {tested && (
+              <>
+                <div className="text-3xl font-bold text-text">{formatProbability(tested)}</div>
+                <p className="text-xs text-text-muted mb-4">Model {family} accuracy on matches it never saw in training</p>
+              </>
+            )}
+            <p className="text-sm text-text-muted">No graded {family || ''} predictions yet.</p>
+            <p className="text-xs text-text-muted">Its live record appears here as its predicted matches are played.</p>
+          </div>
+        </CardBody>
+      </Card>
     );
   }
 
@@ -30,7 +49,7 @@ export function PredictionStats() {
         </div>
         <div>
           <CardTitle className="text-sm sm:text-base">Model Performance</CardTitle>
-          <p className="text-xs sm:text-sm text-text-secondary">{stats.period}</p>
+          <p className="text-xs sm:text-sm text-text-secondary">Model {family} live record · {stats.period}</p>
         </div>
       </CardHeader>
 
@@ -39,7 +58,7 @@ export function PredictionStats() {
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs sm:text-sm text-text-secondary">Overall Accuracy</span>
-            <span className="text-base sm:text-lg font-semibold text-white">
+            <span className="text-base sm:text-lg font-semibold text-text">
               {formatProbability(stats.accuracy)}
             </span>
           </div>
@@ -77,7 +96,7 @@ export function PredictionStats() {
                   <span className="text-text-secondary capitalize">{level}</span>
                   <div className="flex items-center gap-1.5 sm:gap-2">
                     <span className="text-text-muted">{data.total} picks</span>
-                    <span className="text-white font-medium">
+                    <span className="text-text font-medium">
                       {formatProbability(data.accuracy)}
                     </span>
                   </div>
@@ -121,7 +140,7 @@ function StatCard({ icon: Icon, label, value, color }: StatCardProps) {
         <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${color}`} />
         <span className="text-[10px] sm:text-xs text-text-secondary">{label}</span>
       </div>
-      <p className="text-lg sm:text-xl font-semibold text-white">{value}</p>
+      <p className="text-lg sm:text-xl font-semibold text-text">{value}</p>
     </div>
   );
 }

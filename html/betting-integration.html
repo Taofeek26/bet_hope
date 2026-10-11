@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Betting Integration Plan</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="index.html">Bet Hope <span>Audit</span></a>
+  <nav class="nav">
+    <a href="index.html">Overview</a>
+    <a href="aws-cost.html">AWS cost</a>
+    <a href="ml-model.html">ML model</a>
+    <a href="data-sources.html">Data sources</a>
+    <a href="backend-api.html">Backend &amp; security</a>
+    <a href="frontend.html">Frontend</a>
+    <a href="design.html">Design</a>
+    <a href="roadmap.html">Fix plan</a>
+    <a href="phase-0.html">Phase 0 log</a>
+    <a href="phase-1.html">Phase 1 log</a>
+    <a href="phase-2.html">Phase 2 log</a>
+    <a href="phase-3.html">Phase 3 log</a>
+    <a href="phase-4.html">Phase 4 log</a>
+    <a href="betting-integration.html" class="active">Betting plan</a>
+    <a href="features.html">Features &amp; ideas</a>
+    <a href="phase-6.html">Phase 6 log</a>
+    <a href="phase-7.html">Phase 7 log</a>
+  </nav>
+</div></header>
+
+<main>
+  <h1>Plan: pick in Bet Hope, stake on a betting platform</h1>
+  <p class="lede">Can a pick made here be staked directly on a real betting platform? Yes, in two ways: a link that opens the bookmaker's bet slip already filled in, or direct placement through a betting exchange's API. This page compares them, says what each needs, and recommends an order. Nothing here has been built yet.</p>
+  <p class="meta">Investigated 6 Oct 2026 · approved 6 Oct · <strong>Steps 1–3 done (7 Oct; Step 3 adapted for Nigeria); Step 4 not possible from Nigeria</strong></p>
+
+  <div class="callout warn">
+    <strong>Read this first: the model has no proven edge over the bookmakers.</strong> On 8,086 unseen matches, v2's probabilities never beat the odds by 5+ points. Betting every outcome where it saw <em>any</em> edge returned <strong>−13.9%</strong> (<a href="phase-4.html">Phase 4 log</a>, row 12). The model is good at saying how likely each result is (50.3%, level with the bookmakers), but that isn't the same as making money. Any integration should therefore start with <strong>tracking only (paper betting)</strong>, and real stakes should stay small, capped and manual until the tracked return is positive over many hundreds of bets.
+  </div>
+
+  <h2 id="progress">Progress</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Step</th><th>Status</th><th>What was done</th><th>Commands / commits</th></tr></thead>
+    <tbody>
+      <tr><td>1. Analytics</td><td><span class="st ok">Live 6 Oct</span></td><td>Model selector (live v2 by default / old v1 / all) and period selector (7 / 30 / 90 days / 12 months). "Tested on unseen matches" card: v2 50.32% and log loss 1.0026 vs bookmakers 50.20% and 1.0037 on 8,106 matches, plus calibration. "High" confidence = 55%+ (the top-pick rule). Small-sample warning. <code>?model_family=v1</code> on stats; <code>scorecard</code> in <code>model_info</code>; <code>train_model</code> now saves calibration in its notes.</td><td><code>e1bf39d</code>; CodeBuild; <code>update-function-code</code> ×2; manual <code>train_model</code> invoke (125 s; <code>v2_20261006_210355</code> promoted, same scores, calibration saved); Vercel</td></tr>
+      <tr><td>2a. Paper betting</td><td><span class="st ok">Live 6 Oct</span></td><td>New <code>PaperBet</code> table. Every prediction's pick, and any outcome with a 5+ point edge, is logged as a 1-unit bet when its kickoff is within 26 hours (so at the last daily run before kickoff), at the odds stored then. Bets are settled by the daily validation step: won = odds − 1, lost = −1, postponed or cancelled = void. Both steps can safely run twice. <code>GET /predictions/paper_bets/</code> feeds the Analytics panel "Return if you had bet" (every pick / top picks / value bets).</td><td><code>cf9a96b</code>. Local replay of 20 Sep (31 matches, in a rolled-back transaction): 58 bets logged, 0 on the second run; settled 19 won / 39 lost; profit = odds − 1 checked. Production: manage updated → <code>migrate</code> (<code>predictions.0003_paper_bet</code> OK) → web updated → <code>generate_predictions --upcoming</code>: 0 logged (no kickoffs within 26 h; next fixtures 9 Oct).</td></tr>
+      <tr><td>2b. Odds API</td><td><span class="st ok">Live 6 Oct</span></td><td>New <code>the_odds_api.py</code> provider and <code>BookmakerPrice</code> table. 19 of 21 competitions (not Scottish Championship / League One); region <code>eu</code>, 1X2 market, 1 credit per league. It runs in the daily 04:15 sync for leagues with a fixture in the next 3 days, and stops below 25 credits. It fills the market average only where football-data.co.uk has no odds, and keeps every bookmaker's price. The match page has an odds comparison (best and average price, the model's fair odds, all bookmakers by margin). The key is stored in the git-ignored secrets file and as Lambda <code>ODDS_API_KEY</code>; the SAM template has a NoEcho <code>OddsApiKey</code> parameter.</td><td><code>c18fcfa</code>. Local test (7-day window): 161/161 events matched, 2,758 prices, 9 credits. Production: <code>migrate</code> (<code>matches.0004_bookmaker_price</code>), <code>sync_odds</code>: 6 leagues, <strong>103/103 matched</strong>, 1,667 prices, 6 credits (483 left). <code>generate_predictions</code>: <strong>103 of 188 predictions now use odds</strong> (was 0). Value bets: still 0.</td></tr>
+      <tr><td>3. Bet slip</td><td><span class="st ok">Live 7 Oct</span></td><td>Changed for Nigeria; no pre-filled slips exist for Nigerian bookmakers. <strong>Optional</strong> (Settings → Betting: show or hide; choose bookmakers from Bet9ja, SportyBet, BetKing, 1xBet Nigeria, Betway Nigeria, Betano Nigeria, MSport, BangBet, NairaBet; pick a default). <strong>Markets</strong> on each match page: 1X2, double chance and draw no bet (from the model's tested probabilities); GG/NG, over/under 1.5/2.5/3.5, team goals, clean sheet, top-6 correct scores (Poisson grid from the prediction's xG; over/under 2.5 matches the model's tested figure). Each shows the model's chance, fair odds, and best price where we hold one. <strong>Slip</strong>: one pick per match; type your bookmaker's odds to see above or below fair; combined chance, fair odds and expected gain or loss; stake in naira; "Copy" and "Open bookmaker" (copies the slip, opens the bookmaker's football page). "+ Slip" and "More markets" on prediction cards. Bet Hope never places bets or holds money.</td><td><code>a4bb9e1</code>. Local: Monza v Cagliari markets checked (over 2.5 = stored 0.464). Production: 28 markets for Arsenal v Leeds; headless-Chrome screenshot of the match page checked. Bookmaker URLs checked (Betano and NairaBet return 403 to scripts; homepage links kept).</td></tr>
+      <tr><td>4. Exchange placement</td><td><span class="st broken">Not possible</span></td><td>Betfair lists Nigeria as a restricted country (betting exchanges aren't offered there), and the Nigerian bookmakers have no public betting API. Dropped unless that changes.</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="nigeria">Nigeria (your country)</h2>
+  <ul>
+    <li><strong>Regulation:</strong> since the Supreme Court's November 2024 ruling, betting is licensed by each <strong>state</strong> (e.g. Lagos LSLGA; a reciprocity licence covers 22 states). The NLRC only covers the FCT (<a href="https://www.mondaq.com/nigeria/gaming/1834970/nigerias-online-gaming-and-betting-industry-a-regulatory-guide-for-prospective-operators">Mondaq</a>, <a href="https://www.softswiss.com/gambling-regulation-map/nigeria/">SOFTSWISS</a>). Use a bookmaker licensed for your state.</li>
+    <li><strong>Exchanges:</strong> Betfair restricts Nigeria (<a href="https://www.cheekypunter.com/faq/betfair-country-restrictions/">country list</a>), so direct placement (Step 4) can't work.</li>
+    <li><strong>Bookmakers:</strong> licensed locally: e.g. 1xBet Nigeria and Betway Nigeria (LSLGA), Betano (NLRC) (<a href="https://nlrc-gov.ng/list-of-approved-gaming-operators/">NLRC list</a>), plus Bet9ja, SportyBet and BetKing. None offers a public API for pre-filled bet slips.</li>
+  </ul>
+
+  <h2 id="partners">Nigerian bookmaker partner programmes (researched 7 Oct 2026)</h2>
+  <p>Why this route: getting around geo-blocking with a VPN was ruled out. KYC, payment and VPN checks catch it, and the exchanges' terms let them void bets and keep balances. The legitimate way to get closer to one-click betting from Nigeria is through the bookmakers' own partner programmes.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Bookmaker</th><th>Programme</th><th>Pay</th><th>Useful tools for Bet Hope</th><th>Pre-filled slip?</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1xBet</strong></td><td><a href="https://1xaffiliate.partners/">1xBet Partners</a></td><td>Up to 40% revenue share; weekly payouts, NGN supported</td><td>Tracking links, promo codes, <strong>deep links to specific events</strong>, an <strong>API feed</strong> and postback (S2S) for partners</td><td>Event deep links: <strong>yes</strong>. Slip: ask them</td></tr>
+      <tr><td><strong>SportyBet</strong></td><td><a href="https://www.sportybet.com/ng/partner/index.html#/">SportyBet Partner</a></td><td>20–40% revenue share or CPA; monthly</td><td>Tracking links. SportyBet's own site creates <strong>booking codes</strong> (a shareable slip: no stake, no login, expires at the first kickoff) via an internal endpoint, <code>/api/ng/orders/share</code>.</td><td><strong>Technically yes</strong>, but the endpoint is undocumented (<a href="https://github.com/Tolar07/framework/pull/14">example</a>). Ask the partner team for permission first.</td></tr>
+      <tr><td><strong>Bet9ja</strong></td><td><a href="https://www.incomeaccess.com/press-room/bet9ja-affiliate-programme-income-access/">Bet9ja Affiliates</a> (run by Income Access)</td><td>20–35% revenue share by volume, or CPA; $500 minimum payout</td><td>Banners, tracking links, landing pages, reporting API (<a href="https://statsdrone.com/affiliate-programs/bet9ja-affiliates/">review</a>)</td><td>No public way to create booking codes; users can <em>load</em> a code. Ask them</td></tr>
+      <tr><td><strong>BetKing</strong></td><td><a href="https://www.betkingspartners.com/">BetKing Partners</a></td><td>About 25% of net gaming revenue; 0% in any month with fewer than 5 new depositing players (<a href="https://statsdrone.com/affiliate-programs/betking-affiliates/">review</a>)</td><td>Tracking links, banners, landing pages</td><td>No</td></tr>
+      <tr><td><strong>Betway Nigeria</strong></td><td><a href="https://statsdrone.com/affiliate-programs/betway-partners-africa/">Betway Partners Africa</a></td><td>25% revenue share, or CPA</td><td>Banners, tracking links, landing pages, SMS. No reporting API listed</td><td>No</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Nigerian odds:</strong> no official odds feed was found for Bet9ja, SportyBet or BetKing. An open-source scraper, <a href="https://github.com/jayteealao/NaijaBet_Api">NaijaBet_Api</a>, reads 1X2 and double-chance odds from Bet9ja, BetKing and NairaBet. It is unofficial (it may break, and may breach their terms), so treat it as an experiment at most. Paid marketplace "APIs" for these sites are third-party scrapers with the same problems.</p>
+  <div class="callout warn"><strong>Conflict of interest:</strong> revenue share pays you a cut of what referred players <em>lose</em>. That sits awkwardly with an app that tells people which bets look good, especially since the model has no proven edge. If you join, say so clearly in the app, keep betting tools optional, and check your state's rules on gambling advertising (e.g. LSLGA in Lagos).</div>
+
+  <h2 id="automation">Logging in to a bookmaker account for the user (assessed 7 Oct 2026)</h2>
+  <p><span class="st broken">Not recommended</span> Idea: the user enters their bookmaker login in Bet Hope; a headless browser logs in as them, finds the match, adds the selection and places the stake.</p>
+  <ul>
+    <li><strong>Terms:</strong> Nigerian bookmakers' terms ban bots and automated or third-party account access. The usual penalty is a closed account and voided bets or winnings.</li>
+    <li><strong>Security and law:</strong> Bet Hope would hold passwords to accounts that hold money. A leak means drained wallets. Storing them makes you a data controller under Nigeria's Data Protection Act 2023. Asking for another site's password is also exactly what phishing looks like.</li>
+    <li><strong>Technical:</strong> OTP / 2FA by SMS, captchas, bot detection and frequent site changes. Getting around those means evading the bookmaker's security, which we won't build.</li>
+    <li><strong>Safer alternative, if ever needed:</strong> a browser extension that runs in the user's own logged-in tab (no password leaves their browser). It adds the slip's selections, and the user presses "Place bet" themselves. It is still at the bookmaker's discretion; an official booking code (SportyBet) or deep link (1xBet) via the partner programmes is better.</li>
+  </ul>
+
+  <h2 id="extension">SportyBet desktop extension and mobile pass (7 Oct 2026)</h2>
+  <ul>
+    <li><strong>Extension</strong> (<code>extension/sportybet</code>, local only; not committed, because the repo is public): with SportyBet open in your own browser, it finds each pick in SportyBet's match list (all 21 competitions mapped to Sportradar tournament ids and checked; every Bet Hope market mapped), creates a booking code, and opens it. It fills SportyBet's odds into the Bet Hope slip and shows a banner. It never logs in or places bets. The "Load on SportyBet" slip button appears only when the extension is installed. <span class="st partial">Not yet tested end to end</span> (the automated live test was blocked by the tool's safety check; test it in your browser).</li>
+    <li><strong>Bet9ja:</strong> no public booking-code method and Akamai bot protection; further investigation was blocked. Only the partner programme remains.</li>
+    <li><strong>Mobile:</strong> Tailwind's <code>col-span-*</code> utilities overrode the phone/tablet grid (cards squeezed side by side). Also fixed: logo gradient id (the header logo showed as a dot), stacked metric list, match-card kickoff and league, standings name truncation, two-line team fixture rows, slip button and bottom spacing. Every page checked at 390 px on production: no sideways scrolling. Commit <code>eea6ce9</code>, image <code>eea6ce9…</code> on both functions, Vercel deployed.</li>
+  </ul>
+
+  <h2>Is the Analytics page up to date?</h2>
+  <p><span class="st ok">Fixed 6 Oct</span> (see Progress). It was not: It still counts old v1 predictions together with v2's (so it shows v1's 39.4%), always uses the last 30 days, and shows nothing about the tested scorecard. Fix (part of step 1 below):</p>
+  <ul>
+    <li>A model selector: <strong>Live model (v2)</strong> by default, <strong>Old model (v1)</strong>, or <strong>All</strong>. The backend gets a <code>model_family=v1</code> filter, because v1 versions have no prefix.</li>
+    <li>A period selector: 7 / 30 / 90 days / this season.</li>
+    <li>A "Tested on unseen matches" card: v2 vs the bookmakers (accuracy, log loss) and the calibration table, from the saved training notes. <code>model_info</code> will expose them.</li>
+    <li>Confidence bands matching the rest of the app, and a "Return if you had bet" panel once step 2 exists.</li>
+  </ul>
+
+  <h2>The options</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Option</th><th>How staking works</th><th>What's needed</th><th>Cost</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A. Bet-slip deep links</strong> via <a href="https://the-odds-api.com/releases/deep-links.html">The Odds API</a> (<code>includeLinks=true</code>)</td><td>A "Bet at William Hill 2.10 →" button opens the bookmaker's site or app with the selection added to the bet slip. You log in there, enter the stake and confirm.</td><td>An Odds API key. No bookmaker licence: Bet Hope never touches money or bookmaker logins.</td><td>$30/month (20K credits) or $59 (100K); a free tier of 500 credits for testing (<a href="https://the-odds-api.com/">pricing</a>)</td><td><span class="st ok">Recommended first</span> Safest and quickest. It also gives <strong>best price across bookmakers</strong>, which matters more than anything else for return. Link availability depends on the bookmaker; it falls back to a market or event page.</td></tr>
+      <tr><td><strong>B. Direct placement on a betting exchange</strong>: <a href="https://betfair-developer-docs.atlassian.net/wiki/spaces/1smk3cen4v3lu3yomq5qye0ni/pages/2687786/Getting+Started">Betfair Exchange API</a> or <a href="https://docs.smarkets.com/">Smarkets API</a></td><td>A "Place £5 on Arsenal" button: the backend calls <code>placeOrders</code> on <em>your</em> exchange account, after you confirm.</td><td>A KYC-verified account. Betfair: an application key (a free delayed key for development; a live key needs an application). Smarkets: an application, approval and a £150 one-off fee (<a href="https://help.smarkets.com/hc/en-gb/articles/34697834941085-Smarkets-API-Access-Integration-T-Cs">T&amp;Cs</a>).</td><td>Betfair live key: sources differ, from a <a href="https://betfair-developer-docs.atlassian.net/wiki/spaces/1smk3cen4v3lu3yomq5qye0ni/pages/2687105/Application+Keys">£299 one-off activation fee</a> to "no cost" for personal use (<a href="https://support.developer.betfair.com/hc/en-us/articles/360002464152-Which-API-Licence-Do-I-Require">licence guide</a>), so confirm when applying. Exchanges charge commission on winnings.</td><td><span class="st partial">Personal use only</span> Allowed for <strong>your own account</strong>. Placing bets for <em>other</em> users needs Betfair's <strong>Software Vendor Licence</strong> and, in most countries, a gambling licence. Exchanges are only available in some countries.</td></tr>
+      <tr><td><strong>C. Local bookmakers</strong> (e.g. booking codes or shared bet slips)</td><td>Bet Hope would create a booking code that you load on the bookmaker's site.</td><td>These bookmakers have no public betting API. It would need a commercial or affiliate agreement with each one.</td><td>Unknown</td><td><span class="st none">Not feasible now</span> Revisit only if a bookmaker offers a partner API.</td></tr>
+      <tr><td><strong>D. Fully automatic betting</strong> (the bot stakes every value pick)</td><td>No human click.</td><td>Option B plus strict risk controls.</td><td>—</td><td><span class="st broken">Not recommended</span> With no proven edge, automation just loses money faster. Consider it only after step 2 shows a positive tracked return over 1,000+ bets.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Recommended order</h2>
+  <div class="finding" id="BI-1"><div class="finding-head"><span class="finding-id">Step 1</span><span class="finding-title">Analytics up to date (about 1 day)</span></div>
+    <dl><dt>What</dt><dd>The Analytics fixes above. No new services or costs.</dd></dl></div>
+  <div class="finding" id="BI-2"><div class="finding-head"><span class="finding-id">Step 2</span><span class="finding-title">Live odds and best price, plus paper betting (about 3–4 days)</span></div>
+    <dl><dt>What</dt><dd>
+      <ul>
+        <li><strong>Odds:</strong> a new provider <code>apps/data_ingestion/providers/the_odds_api.py</code>. A scheduled job (e.g. 06:00 and 12:00 UTC, plus 90 minutes before kickoffs) stores each bookmaker's 1X2 and over/under prices and links in a new <code>BookmakerPrice</code> table. This also fixes "upcoming fixtures have no odds yet", which currently blocks value bets and the odds model for most of the week.</li>
+        <li><strong>Value bets:</strong> measured against the <strong>best available price</strong>, not the average.</li>
+        <li><strong>Paper betting:</strong> a <code>PaperBet</code> table logs every pick automatically: the price at the time, a 1-unit stake, and the settled profit or loss after the result arrives.</li>
+        <li><strong>Analytics:</strong> a "Return if you had bet" panel with return %, profit in units and the number of bets, for all picks, top picks and value bets.</li>
+      </ul>
+    </dd>
+    <dt>Credits</dt><dd>One odds call costs about 1 credit per region per market. 20 leagues × 2 regions × 2 markets × ~4 refreshes a day ≈ 9,600 a month, which fits the $30 plan. The leagues The Odds API doesn't cover keep using the football-data.co.uk odds.</dd></dl></div>
+  <div class="finding" id="BI-3"><div class="finding-head"><span class="finding-id">Step 3</span><span class="finding-title">"Bet at …" buttons (about 1–2 days)</span></div>
+    <dl><dt>What</dt><dd>On predictions, top picks, value bets and match pages: the best price and a button that opens that bookmaker's bet slip (option A). Each button links to the bookmaker you choose in Settings, and there's an option to hide all betting buttons. Every betting surface shows a responsible-gambling notice and an 18+ note. Bet Hope never asks for bookmaker passwords.</dd></dl></div>
+  <div class="finding" id="BI-4"><div class="finding-head"><span class="finding-id">Step 4 (optional)</span><span class="finding-title">Place bets on your own exchange account (about 4–5 days)</span></div>
+    <dl><dt>Only if</dt><dd>Step 2 shows a positive tracked return, betting exchanges are legal and available where you live, and this is for <strong>your account only</strong>.</dd>
+    <dt>What</dt><dd>
+      <ul>
+        <li><strong>Placing a bet:</strong> an admin-only "Place bet" button that shows the stake, the price and the potential loss, then asks you to confirm.</li>
+        <li><strong>Server side:</strong> the backend logs in to the exchange (certificate login; the keys and certificate stored in AWS Secrets Manager, not in plain Lambda variables, which addresses SEC-02) and calls <code>placeOrders</code>. The order and its status are saved in a <code>PlacedBet</code> table.</li>
+        <li><strong>Hard limits:</strong> a maximum stake per bet, a daily loss limit and a weekly loss limit, plus an off switch. A bet that would exceed a limit is refused on the server, not just in the page.</li>
+        <li><strong>Testing:</strong> development uses Betfair's free delayed key; the live key goes in last.</li>
+      </ul>
+    </dd></dl></div>
+
+  <h2>Rules that apply whichever option you choose</h2>
+  <ul>
+    <li><strong>Law where you live:</strong> sports betting, betting exchanges and gambling affiliate links are regulated differently in each country. Check that the bookmaker or exchange is licensed and available in your country before Step 3 or 4.</li>
+    <li><strong>No money held:</strong> Bet Hope must never hold anyone's money or store bookmaker passwords. Deep links avoid both; Step 4 uses only your own exchange's official API keys.</li>
+    <li><strong>Making it public</strong> (other people staking through the app) is a different project: a vendor licence, possibly a gambling or affiliate licence, user accounts, age checks and responsible-gambling tools. Keep it personal unless you decide otherwise.</li>
+  </ul>
+
+  <h2>Decisions needed from you</h2>
+  <ol>
+    <li>Which <strong>country</strong> will you bet from? This decides which bookmakers and exchanges are allowed and available.</li>
+    <li>Is this for <strong>you only</strong>, or for other users of the app too?</li>
+    <li>Which <strong>bookmaker or exchange</strong> do you use, or want to use?</li>
+    <li>Do you approve <strong>The Odds API ($30/month)</strong> for Steps 2–3?</li>
+  </ol>
+</main>
+</body>
+</html>

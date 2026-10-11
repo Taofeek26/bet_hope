@@ -1,0 +1,23 @@
+# Fallback image build in AWS CodeBuild (used when GitHub Actions is down).
+# Same steps as .github/workflows/deploy-lambda-web.yml. Started by
+# infrastructure/codebuild/build.sh, which uploads backend/ as the source.
+version: 0.2
+
+env:
+  variables:
+    ECR_REPOSITORY: bet-hope-web
+
+phases:
+  pre_build:
+    commands:
+      - ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+      - REGISTRY="$ACCOUNT.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+      - test -n "$IMAGE_TAG" || { echo "IMAGE_TAG not set"; exit 1; }
+  build:
+    commands:
+      - docker build -f Dockerfile.lambda-web -t "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" .
+  post_build:
+    commands:
+      - docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+      - echo "image-uri=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
