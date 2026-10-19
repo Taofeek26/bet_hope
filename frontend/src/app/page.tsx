@@ -72,7 +72,7 @@ function DashboardStats() {
       title="Model performance — live"
       rows={[
         { metric: 'Accuracy rate', value: accuracy, remark: accuracyRemark },
-        { metric: 'Top picks today', value: String(predictionsToday), remark: '55%+ confidence, all leagues' },
+        { metric: 'Top picks today', value: String(predictionsToday), remark: 'Best market per match at 65%+ (result, double chance, GG, goals)' },
         { metric: 'Value bets found', value: String(valueBetsCount), remark: 'Model beats the odds by 5+ points' },
       ]}
     />
