@@ -17,8 +17,33 @@ interface DailyPicksProps {
   date?: string; // Format: YYYY-MM-DD
 }
 
+// The match's pick across markets (Phase 8); older API responses had only 1X2.
+function marketOf(pick: any) {
+  const { prediction, match } = pick;
+  const side = prediction.outcome === 'HOME' ? 'home' : prediction.outcome === 'AWAY' ? 'away' : 'draw';
+  return pick.pick || {
+    group: '1X2', key: { home: '1', away: '2', draw: 'X' }[side],
+    label: side === 'draw' ? 'Draw' : `${side === 'home' ? match.home_team : match.away_team} to win`,
+    probability: prediction.confidence, fair_odds: 1 / prediction.confidence, best_odds: null,
+  };
+}
+
+function selectionOf(pick: any) {
+  const { match } = pick;
+  const market = marketOf(pick);
+  return {
+    matchId: match.id, match: `${match.home_team} v ${match.away_team}`, kickoff: match.kickoff_at,
+    kickoffAt: match.kickoff_at, league: match.league, leagueCode: match.league_code,
+    home: match.home_team, away: match.away_team,
+    group: market.group, key: market.key, label: market.label,
+    probability: market.probability, fairOdds: market.fair_odds, bestOdds: market.best_odds,
+  };
+}
+
 export function DailyPicks({ date }: DailyPicksProps) {
   const { data, isLoading, error } = useDailyPicks(date ? { date } : undefined);
+  const { settings } = useSettings();
+  const { selections, toggle, setOpen } = useBetSlip();
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -35,8 +60,28 @@ export function DailyPicks({ date }: DailyPicksProps) {
     );
   }
 
+  const open = data.picks.filter((p: any) => !p.match.kickoff_at || new Date(p.match.kickoff_at) > new Date());
+  const missing = open.filter((p: any) => !isInSlip(selections, p.match.id, marketOf(p).key));
+  const chance = open.reduce((a: number, p: any) => a * marketOf(p).probability, 1);
+  const addAll = () => {
+    for (const p of missing) toggle(selectionOf(p));
+    setOpen(true);
+  };
+
   return (
     <div className="space-y-4">
+      {settings.bettingTools && open.length > 1 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-[11px] text-text-muted">
+            All {open.length} together win {(chance * 100).toFixed(chance < 0.1 ? 1 : 0)}% of the time.
+            {open.length > 4 && ' Fewer picks win far more often.'}
+          </p>
+          <button onClick={addAll} disabled={!missing.length} className="btn btn-primary btn-sm">
+            {missing.length ? <Plus className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+            {missing.length ? `Add all ${open.length} to slip` : 'All in slip'}
+          </button>
+        </div>
+      )}
       {data.picks.map((pick: any, index: number) => (
         <PickCard key={index} pick={pick} />
       ))}
@@ -49,13 +94,7 @@ function PickCard({ pick }: { pick: any }) {
   const { selections, toggle } = useBetSlip();
   const prediction = pick.prediction;
   const match = pick.match;
-  // The match's pick across markets (Phase 8); older API responses had only 1X2.
-  const side = prediction.outcome === 'HOME' ? 'home' : prediction.outcome === 'AWAY' ? 'away' : 'draw';
-  const market = pick.pick || {
-    group: '1X2', key: { home: '1', away: '2', draw: 'X' }[side],
-    label: side === 'draw' ? 'Draw' : `${side === 'home' ? match.home_team : match.away_team} to win`,
-    probability: prediction.confidence, fair_odds: 1 / prediction.confidence, best_odds: null,
-  };
+  const market = marketOf(pick);
   const added = isInSlip(selections, match.id, market.key);
 
   return (
@@ -120,12 +159,7 @@ function PickCard({ pick }: { pick: any }) {
       {settings.bettingTools && (
         <div className="flex items-center gap-2 justify-end mt-2">
           <button
-            onClick={() => toggle({
-              matchId: match.id, match: `${match.home_team} v ${match.away_team}`, kickoff: match.kickoff_at,
-              kickoffAt: match.kickoff_at, league: match.league, leagueCode: match.league_code, home: match.home_team, away: match.away_team,
-              group: market.group, key: market.key, label: market.label,
-              probability: market.probability, fairOdds: market.fair_odds, bestOdds: market.best_odds,
-            })}
+            onClick={() => toggle(selectionOf(pick))}
             className={`btn btn-sm text-xs ${added ? 'btn-primary' : 'btn-secondary'}`}
             aria-pressed={added}
             aria-label={added ? `Remove ${market.label} from slip` : `Add ${market.label} to slip`}
