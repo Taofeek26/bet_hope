@@ -39,6 +39,8 @@ SLUGS = {
     'SP1': 'esp.1', 'SP2': 'esp.2', 'F1': 'fra.1', 'F2': 'fra.2',
     'N1': 'ned.1', 'B1': 'bel.1', 'P1': 'por.1', 'T1': 'tur.1', 'G1': 'gre.1',
     'CL': 'uefa.champions',
+    # Phase 9: competitions whose fixtures come from ESPN (espn_leagues.py)
+    'EL': 'uefa.europa', 'JPN': 'jpn.1', 'CHN': 'chn.1', 'AUS': 'aus.1',
 }
 FINAL = {'STATUS_FULL_TIME', 'STATUS_FINAL', 'STATUS_FINAL_AET', 'STATUS_FINAL_PEN', 'STATUS_FINAL_ET'}
 POSTPONED = {'STATUS_POSTPONED'}

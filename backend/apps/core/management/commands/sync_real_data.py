@@ -181,6 +181,17 @@ class Command(BaseCommand):
                     self.style.WARNING('FOOTBALL_DATA_ORG_KEY not configured. Skipping fixture sync.')
                 )
 
+        # Europa League, J1, Chinese Super League, A-League (Phase 9):
+        # fixtures and results straight from ESPN (one request per league).
+        if sync_fixtures or fixtures_only:
+            self.stdout.write('')
+            self.stdout.write('Syncing ESPN-only competitions (EL, JPN, CHN, AUS)...')
+            try:
+                from apps.data_ingestion.providers.espn_leagues import sync_all
+                sync_all(stdout=self.stdout)
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'ESPN competitions failed: {e}'))
+
         # Second results source (Phase 8): ESPN scores for any match that
         # should be over but still has none (football-data.co.uk's CSVs
         # can lag a week for the leagues football-data.org doesn't cover).

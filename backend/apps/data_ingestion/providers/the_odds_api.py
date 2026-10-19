@@ -1,6 +1,7 @@
 """
 The Odds API (Phase 5, step 2b): current 1X2 prices from ~40 bookmakers for
-19 of our 21 competitions (not Scottish Championship / League One).
+19 of our 21 original competitions (not Scottish Championship / League One),
+plus the Europa League, J1 League, Chinese Super League and A-League.
 
 Why: football-data.co.uk's fixtures file only lists the next few days, so
 most fixtures had no odds until shortly before kickoff, which blocked value
@@ -38,7 +39,14 @@ SPORT_KEYS = {
     'N1': 'soccer_netherlands_eredivisie', 'B1': 'soccer_belgium_first_div',
     'P1': 'soccer_portugal_primeira_liga', 'T1': 'soccer_turkey_super_league',
     'G1': 'soccer_greece_super_league', 'CL': 'soccer_uefa_champs_league',
+    # Phase 9: Europa League and the early-morning (WAT) Asian/Australian leagues
+    'EL': 'soccer_uefa_europa_league', 'JPN': 'soccer_japan_j_league',
+    'CHN': 'soccer_china_superleague', 'AUS': 'soccer_australia_aleague',
 }
+# Fetched last, and only while plenty of credits remain, so the original
+# leagues never lose their odds to them on the free 500-credit plan.
+LOW_PRIORITY = {'EL', 'JPN', 'CHN', 'AUS'}
+LOW_PRIORITY_MIN = 120
 
 
 def _names(team):
@@ -108,13 +116,18 @@ def sync_odds(api_key=None, leagues=None, stdout=None):
         status=Match.Status.SCHEDULED, match_date__gte=today,
         match_date__lte=today + timedelta(days=REFRESH_DAYS),
     )
-    due = sorted(set(soon.values_list('season__league__code', flat=True)) & set(SPORT_KEYS))
+    due = sorted(set(soon.values_list('season__league__code', flat=True)) & set(SPORT_KEYS),
+                 key=lambda c: (c in LOW_PRIORITY, c))
     if leagues:
         due = [c for c in due if c in leagues]
     summary = {'leagues': 0, 'events': 0, 'matched': 0, 'unmatched': [], 'odds_filled': 0,
                'prices': 0, 'credits_remaining': None}
 
     for code in due:
+        left = summary['credits_remaining']
+        if code in LOW_PRIORITY and left is not None and left < LOW_PRIORITY_MIN:
+            say(f'  {code}: skipped, {left} credits left (kept for the main leagues)')
+            continue
         try:
             r = requests.get(
                 f'{BASE}/sports/{SPORT_KEYS[code]}/odds',

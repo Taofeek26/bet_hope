@@ -48,6 +48,10 @@ _EXPAND = {
 # of either spelling: canonical normalized key}. Grown from the merge
 # report (manage.py merge_duplicate_teams --report).
 KNOWN_ALIASES = {
+    # Clubs met only in European competitions (league country "Europe").
+    'Europe': {
+        'slavia prague': 'slavia praha',
+    },
     'England': {
         'wolverhampton wanderers': 'wolverhampton',
         'brighton and hove albion': 'brighton',
@@ -151,11 +155,17 @@ KNOWN_ALIASES = {
 }
 
 
+_LETTERS = str.maketrans({'ø': 'o', 'Ø': 'O', 'ł': 'l', 'Ł': 'L', 'đ': 'd', 'Đ': 'D',
+                          'æ': 'ae', 'Æ': 'AE', 'œ': 'oe', 'Œ': 'OE', 'ı': 'i'})
+
+
 def normalize(name: Optional[str]) -> str:
     """Canonical comparison form: no accents, punctuation, noise or years."""
     if not name:
         return ''
     s = name.replace('ß', 'ss').replace('&', ' and ')
+    # Letters NFKD doesn't split into base + accent ("Bodø/Glimt" = "Bodo/Glimt").
+    s = s.translate(_LETTERS)
     s = unicodedata.normalize('NFKD', s)
     s = ''.join(c for c in s if not unicodedata.combining(c)).lower()
     tokens = []
