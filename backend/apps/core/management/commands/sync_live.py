@@ -23,6 +23,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from apps.matches.models import Match
         now = timezone.now()
+        # Once an hour (the first run after :00), fill the scores of matches
+        # that ended without one from ESPN (Phase 8), then settle what they
+        # finish: the daily validation would otherwise wait until 04:15.
+        if now.minute < 5:
+            self._espn_results()
         active = Match.objects.filter(season__league__code__in=COVERED).filter(
             Q(status__in=[Match.Status.LIVE, Match.Status.HALFTIME])
             | Q(status=Match.Status.SCHEDULED, kickoff_at__gte=now - timedelta(minutes=150),
@@ -50,3 +55,13 @@ class Command(BaseCommand):
             live += m['status'] in ('IN_PLAY', 'PAUSED')
             finished += m['status'] == 'FINISHED'
         self.stdout.write(f'Live scores: {live} in play, {finished} finished today ({len(matches)} from the API)')
+
+    def _espn_results(self):
+        try:
+            from apps.data_ingestion.providers.espn import sync_stale_results
+            res = sync_stale_results(days_back=14, stdout=self.stdout)
+            if res['finished'] or res['postponed'] or res['cancelled']:
+                from django.core.management import call_command
+                call_command('generate_predictions', validate=True)
+        except Exception as e:  # never let the results check stop live scores
+            self.stdout.write(f'ESPN results failed: {e}')

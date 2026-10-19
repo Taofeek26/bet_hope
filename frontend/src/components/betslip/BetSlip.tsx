@@ -199,6 +199,13 @@ export function BetSlip() {
                   <div className="text-text font-semibold">{fair.toFixed(2)}</div>
                 </div>
               </div>
+              {(n >= 6 || chance < 0.2) && (
+                // Most losing tickets so far were 8-10 picks at 4-17% (Phase 8 review).
+                <p className="text-xs text-amber-500 p-2 bg-surface rounded" role="status">
+                  Long slip: it loses about {Math.round((1 - chance) * 10)} times in 10, even when the model is right about each pick.
+                  {n > 4 && ' 3–4 picks give a far better chance of being paid.'}
+                </p>
+              )}
               <div className="flex items-center gap-2 text-xs">
                 <label htmlFor="slip-stake" className="text-text-muted">Stake ₦</label>
                 <input id="slip-stake" type="number" min="0" step="100" value={stake}

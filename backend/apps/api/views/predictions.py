@@ -514,17 +514,14 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             target_date = timezone.now().date()
 
-        predictions = Prediction.objects.filter(
-            match__match_date=target_date,
-            match__status='scheduled',
-            confidence_score__gte=0.55,
-        ).select_related(
-            'match', 'match__home_team', 'match__away_team',
-            'match__season__league'
-        ).order_by('-confidence_score')[:10]
+        # Each match's pick across markets (result, double chance, GG/NG,
+        # over/under; apps/predictions/picks.py), 65%+, strongest first.
+        from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
+        chosen = picks_for(top_pick_queryset(match_date=target_date, status='scheduled'),
+                           min_prob=TOP_PICK_PROB)[:10]
 
         picks = []
-        for pred in predictions:
+        for pred, pick in chosen:
             match = pred.match
             league = match.season.league
             league_display = f"{league.name} ({league.country})" if league.country else league.name
@@ -536,6 +533,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                     'home_team_logo': match.home_team.logo_url,
                     'away_team_logo': match.away_team.logo_url,
                     'league': league_display,
+                    'league_code': league.code,
                     'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
                     'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
                 },
@@ -549,7 +547,9 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                         'away': float(pred.away_win_probability),
                     },
                 },
-                'risk': 'low' if pred.confidence_score >= 0.6 else 'medium',
+                'pick': {k: pick[k] for k in ('group', 'key', 'label', 'probability', 'fair_odds',
+                                              'best_odds', 'best_bookmaker', 'tested')},
+                'risk': 'low' if pick['probability'] >= 0.75 else 'medium',
             })
 
         return Response({
@@ -561,6 +561,7 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def weekly_availability(self, request):
         """Get prediction counts for next 7 days."""
+        from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
         today = timezone.now().date()
         availability = []
 
@@ -570,11 +571,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                 match__match_date=date,
                 match__status='scheduled',
             ).count()
-            high_conf_count = Prediction.objects.filter(
-                match__match_date=date,
-                match__status='scheduled',
-                confidence_score__gte=0.55,
-            ).count()
+            high_conf_count = len(picks_for(top_pick_queryset(match_date=date, status='scheduled'),
+                                            min_prob=TOP_PICK_PROB))
             availability.append({
                 'date': date.isoformat(),
                 'day_offset': i,

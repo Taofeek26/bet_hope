@@ -9,7 +9,8 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AIEnhancement } from '@/components/predictions/AIEnhancement';
 import { formatProbability, getOutcomeLabel, formatKickoff } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
-import { Trophy, ArrowRight } from 'lucide-react';
+import { Trophy, ArrowRight, Plus, Check } from 'lucide-react';
+import { useBetSlip, isInSlip } from '@/lib/betslip';
 import Link from 'next/link';
 
 interface DailyPicksProps {
@@ -28,7 +29,7 @@ export function DailyPicks({ date }: DailyPicksProps) {
           No high-confidence picks available for this date.
         </p>
         <p className="text-text-muted text-sm">
-          Picks need a fixture with a confident prediction (55%+). Days without fixtures — e.g. international breaks — have none; the numbered dates above show where picks exist.
+          Picks need a fixture where one market (result, double chance, GG/NG or over/under) has a 65%+ chance. Days without fixtures — e.g. international breaks — have none; the numbered dates above show where picks exist.
         </p>
       </div>
     );
@@ -45,8 +46,17 @@ export function DailyPicks({ date }: DailyPicksProps) {
 
 function PickCard({ pick }: { pick: any }) {
   const { settings } = useSettings();
+  const { selections, toggle } = useBetSlip();
   const prediction = pick.prediction;
   const match = pick.match;
+  // The match's pick across markets (Phase 8); older API responses had only 1X2.
+  const side = prediction.outcome === 'HOME' ? 'home' : prediction.outcome === 'AWAY' ? 'away' : 'draw';
+  const market = pick.pick || {
+    group: '1X2', key: { home: '1', away: '2', draw: 'X' }[side],
+    label: side === 'draw' ? 'Draw' : `${side === 'home' ? match.home_team : match.away_team} to win`,
+    probability: prediction.confidence, fair_odds: 1 / prediction.confidence, best_odds: null,
+  };
+  const added = isInSlip(selections, match.id, market.key);
 
   return (
     <div className="blueprint elev-sm hover:bg-surface/70 transition-colors">
@@ -88,16 +98,10 @@ function PickCard({ pick }: { pick: any }) {
         <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
             <Badge variant={pick.risk === 'low' ? 'win' : 'draw'}>
-              <span className="truncate max-w-[80px] sm:max-w-none">
-                {prediction.outcome === 'HOME' || prediction.outcome === 'H'
-                  ? match.home_team
-                  : prediction.outcome === 'AWAY' || prediction.outcome === 'A'
-                  ? match.away_team
-                  : 'Draw'}
-              </span>
+              <span className="truncate max-w-[140px] sm:max-w-none">{market.label}</span>
             </Badge>
             <span className="text-[10px] sm:text-sm text-text-secondary flex-shrink-0">
-              {formatProbability(prediction.confidence)}
+              {formatProbability(market.probability)} · fair {market.fair_odds.toFixed(2)}
             </span>
           </div>
           <Badge variant={pick.risk === 'low' ? 'win' : 'draw'}>
@@ -112,6 +116,25 @@ function PickCard({ pick }: { pick: any }) {
           awayProb={prediction.probabilities.away}
         />
       </Link>
+
+      {settings.bettingTools && (
+        <div className="flex items-center gap-2 justify-end mt-2">
+          <button
+            onClick={() => toggle({
+              matchId: match.id, match: `${match.home_team} v ${match.away_team}`, kickoff: match.kickoff_at,
+              kickoffAt: match.kickoff_at, league: match.league, leagueCode: match.league_code, home: match.home_team, away: match.away_team,
+              group: market.group, key: market.key, label: market.label,
+              probability: market.probability, fairOdds: market.fair_odds, bestOdds: market.best_odds,
+            })}
+            className={`btn btn-sm text-xs ${added ? 'btn-primary' : 'btn-secondary'}`}
+            aria-pressed={added}
+            aria-label={added ? `Remove ${market.label} from slip` : `Add ${market.label} to slip`}
+          >
+            {added ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />} Slip
+          </button>
+          <Link href={`/matches/${match.id}#markets`} className="text-[11px] text-text-muted hover:text-brand">More markets</Link>
+        </div>
+      )}
 
       {/* AI Enhancement - outside the Link to prevent navigation */}
       {prediction.id && (

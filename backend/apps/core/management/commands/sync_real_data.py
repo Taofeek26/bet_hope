@@ -181,6 +181,19 @@ class Command(BaseCommand):
                     self.style.WARNING('FOOTBALL_DATA_ORG_KEY not configured. Skipping fixture sync.')
                 )
 
+        # Second results source (Phase 8): ESPN scores for any match that
+        # should be over but still has none (football-data.co.uk's CSVs
+        # can lag a week for the leagues football-data.org doesn't cover).
+        # Runs before validation below so picks, accas and bets settle.
+        if sync_fixtures or fixtures_only:
+            self.stdout.write('')
+            self.stdout.write('Filling missing results from ESPN...')
+            try:
+                from apps.data_ingestion.providers.espn import sync_stale_results
+                sync_stale_results(days_back=60, stdout=self.stdout)
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'ESPN results failed: {e}'))
+
         # Bookmaker prices from The Odds API (Phase 5): fills odds for
         # fixtures football-data.co.uk doesn't list yet, before predictions
         # and paper bets use them. Skips itself without ODDS_API_KEY.
