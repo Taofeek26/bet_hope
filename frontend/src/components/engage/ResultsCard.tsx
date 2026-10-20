@@ -25,7 +25,7 @@ export function ResultsCard() {
         <div className="card-icon"><Trophy className="w-5 h-5" /></div>
         <div className="min-w-0">
           <h2 className="card-title">Yesterday&apos;s results</h2>
-          <p className="card-desc">Top picks (55%+), made before kickoff · {day}</p>
+          <p className="card-desc">Top picks (best market, 65%+), made before kickoff · {day}</p>
         </div>
       </div>
       {isLoading ? <LoadingSpinner /> : !data?.total ? (

@@ -514,43 +514,13 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             target_date = timezone.now().date()
 
-        predictions = Prediction.objects.filter(
-            match__match_date=target_date,
-            match__status='scheduled',
-            confidence_score__gte=0.55,
-        ).select_related(
-            'match', 'match__home_team', 'match__away_team',
-            'match__season__league'
-        ).order_by('-confidence_score')[:10]
+        # Each match's pick across markets (result, double chance, GG/NG,
+        # over/under; apps/predictions/picks.py), 65%+, strongest first.
+        from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
+        chosen = picks_for(top_pick_queryset(match_date=target_date, status='scheduled'),
+                           min_prob=TOP_PICK_PROB)[:10]
 
-        picks = []
-        for pred in predictions:
-            match = pred.match
-            league = match.season.league
-            league_display = f"{league.name} ({league.country})" if league.country else league.name
-            picks.append({
-                'match': {
-                    'id': match.id,
-                    'home_team': match.home_team.name,
-                    'away_team': match.away_team.name,
-                    'home_team_logo': match.home_team.logo_url,
-                    'away_team_logo': match.away_team.logo_url,
-                    'league': league_display,
-                    'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
-                    'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
-                },
-                'prediction': {
-                    'id': pred.id,
-                    'outcome': pred.recommended_outcome,
-                    'confidence': float(pred.confidence_score),
-                    'probabilities': {
-                        'home': float(pred.home_win_probability),
-                        'draw': float(pred.draw_probability),
-                        'away': float(pred.away_win_probability),
-                    },
-                },
-                'risk': 'low' if pred.confidence_score >= 0.6 else 'medium',
-            })
+        picks = [_pick_payload(pred, pick) for pred, pick in chosen]
 
         return Response({
             'date': target_date.isoformat(),
@@ -559,8 +529,29 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    def starting_soon(self, request):
+        """
+        The first 10 matches kicking off in the next ?hours= (default 2,
+        max 12) that have a pick, soonest first, each with its pick across
+        markets (same rule as top picks, 60%+).
+        """
+        from apps.predictions.picks import picks_for, top_pick_queryset
+        try:
+            hours = min(max(float(request.query_params.get('hours', 2)), 0.5), 12)
+        except ValueError:
+            hours = 2
+        now = timezone.now()
+        chosen = picks_for(top_pick_queryset(status='scheduled', kickoff_at__gt=now,
+                                             kickoff_at__lte=now + timedelta(hours=hours)))
+        chosen.sort(key=lambda t: (t[0].match.kickoff_at, -t[1]['probability']))
+        picks = [_pick_payload(pred, pick) for pred, pick in chosen[:10]]
+        return Response({'hours': hours, 'until': (now + timedelta(hours=hours)).isoformat(),
+                         'total_picks': len(picks), 'picks': picks})
+
+    @action(detail=False, methods=['get'])
     def weekly_availability(self, request):
         """Get prediction counts for next 7 days."""
+        from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
         today = timezone.now().date()
         availability = []
 
@@ -570,11 +561,8 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
                 match__match_date=date,
                 match__status='scheduled',
             ).count()
-            high_conf_count = Prediction.objects.filter(
-                match__match_date=date,
-                match__status='scheduled',
-                confidence_score__gte=0.55,
-            ).count()
+            high_conf_count = len(picks_for(top_pick_queryset(match_date=date, status='scheduled'),
+                                            min_prob=TOP_PICK_PROB))
             availability.append({
                 'date': date.isoformat(),
                 'day_offset': i,
@@ -586,3 +574,35 @@ class PredictionViewSet(viewsets.ReadOnlyModelViewSet):
             'start_date': today.isoformat(),
             'days': availability,
         })
+
+def _pick_payload(pred, pick):
+    """One top pick for the dashboard: match, model probabilities and the chosen market."""
+    match = pred.match
+    league = match.season.league
+    league_display = f"{league.name} ({league.country})" if league.country else league.name
+    return {
+        'match': {
+            'id': match.id,
+            'home_team': match.home_team.name,
+            'away_team': match.away_team.name,
+            'home_team_logo': match.home_team.logo_url,
+            'away_team_logo': match.away_team.logo_url,
+            'league': league_display,
+            'league_code': league.code,
+            'time': match.kickoff_time.strftime('%H:%M') if match.kickoff_time else None,
+            'kickoff_at': match.kickoff_at.isoformat() if match.kickoff_at else None,
+        },
+        'prediction': {
+            'id': pred.id,
+            'outcome': pred.recommended_outcome,
+            'confidence': float(pred.confidence_score),
+            'probabilities': {
+                'home': float(pred.home_win_probability),
+                'draw': float(pred.draw_probability),
+                'away': float(pred.away_win_probability),
+            },
+        },
+        'pick': {k: pick[k] for k in ('group', 'key', 'label', 'probability', 'fair_odds',
+                                      'best_odds', 'best_bookmaker', 'tested')},
+        'risk': 'low' if pick['probability'] >= 0.75 else 'medium',
+    }

@@ -60,7 +60,6 @@ def morning_digest(now=None):
     """Send today's digest once. Personalised with favourite teams playing today."""
     from apps.engage.models import DailyAcca, PushSubscription
     from apps.matches.models import Match
-    from apps.predictions.models import Prediction
 
     if not os.getenv('VAPID_PRIVATE_KEY'):
         return 0
@@ -73,8 +72,8 @@ def morning_digest(now=None):
     if not log:
         return 0
 
-    top = Prediction.objects.filter(model_version__startswith='v2_', match__match_date=today,
-                                    match__status=Match.Status.SCHEDULED, confidence_score__gte=0.55).count()
+    from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
+    top = len(picks_for(top_pick_queryset(match_date=today, status=Match.Status.SCHEDULED), min_prob=TOP_PICK_PROB))
     acca = DailyAcca.objects.filter(date=today).first()
     base = (f"Acca of the day: {len(acca.legs)} picks, all win {float(acca.combined_probability) * 100:.0f}%. "
             if acca else '') + (f'{top} top picks today.' if top else 'No top picks today.')

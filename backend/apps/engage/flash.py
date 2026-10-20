@@ -245,24 +245,29 @@ def scrape_team_news(now=None, max_age_hours=36):
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 def yesterday_results(day=None):
-    """How yesterday's top picks (55%+, made before kickoff) did. Used by the API and the flash."""
+    """How yesterday's top picks (any market, 65%+, made before kickoff) did. Used by the API and the flash."""
     from django.db.models import F, Q
-    from apps.predictions.models import Prediction
+    from apps.accounts.settle import leg_result
+    from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
 
     day = day or (timezone.now() - timedelta(days=1)).date()
-    picks = (Prediction.objects.filter(match__match_date=day, match__status='finished', confidence_score__gte=0.55,
-                                       model_version__startswith='v2_', is_correct__isnull=False)
+    preds = (top_pick_queryset(match_date=day, status='finished', home_score__isnull=False)
              .filter(Q(match__kickoff_at__isnull=False, created_at__lt=F('match__kickoff_at'))
-                     | Q(match__kickoff_at__isnull=True, created_at__date__lt=F('match__match_date')))
-             .select_related('match__home_team', 'match__away_team').order_by('-confidence_score'))
-    rows = [{
-        'match_id': p.match_id,
-        'match': f'{p.match.home_team.name} v {p.match.away_team.name}',
-        'pick': {'HOME': p.match.home_team.name, 'AWAY': p.match.away_team.name}.get(p.recommended_outcome, 'Draw'),
-        'confidence': float(p.confidence_score),
-        'score': f'{p.match.home_score}-{p.match.away_score}',
-        'correct': bool(p.is_correct),
-    } for p in picks]
+                     | Q(match__kickoff_at__isnull=True, created_at__date__lt=F('match__match_date'))))
+    rows = []
+    for p, pick in picks_for(preds, min_prob=TOP_PICK_PROB):
+        m = p.match
+        result = leg_result(pick['key'], m.home_score, m.away_score, m.status)
+        if result == 'void':
+            continue
+        rows.append({
+            'match_id': p.match_id,
+            'match': f'{m.home_team.name} v {m.away_team.name}',
+            'pick': pick['label'], 'market': pick['group'], 'key': pick['key'],
+            'confidence': pick['probability'],
+            'score': f'{m.home_score}-{m.away_score}',
+            'correct': result == 'won',
+        })
     return {'date': day.isoformat(), 'total': len(rows), 'won': sum(r['correct'] for r in rows), 'picks': rows}
 
 

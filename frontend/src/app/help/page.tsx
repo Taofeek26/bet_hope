@@ -25,7 +25,7 @@ export default function HelpPage() {
     },
     {
       question: 'Which leagues are supported?',
-      answer: 'Historical data covers 20 leagues. New fixtures and results currently arrive for 8 of them: Premier League, Championship, La Liga, Serie A, Bundesliga, Ligue 1, Eredivisie and Primeira Liga (plus the Champions League and Europa League). The other leagues show their most recent imported season until their live data source is added.',
+      answer: 'Bet Hope covers 20 European leagues plus the Champions League and Europa League, and three leagues that play in the Nigerian morning or midday: J1 League (Japan), the A-League (Australia) and the Chinese Super League. Fixtures and results for all of them update every day; results fill in within about an hour of full time. The Korean K League is not covered yet: no free data source has its results.',
     },
     {
       question: 'How often are predictions updated?',

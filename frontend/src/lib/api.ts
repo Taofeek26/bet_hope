@@ -30,19 +30,23 @@ api.interceptors.request.use((config) => {
 });
 
 // Response interceptor (Phase 7): an expired sign-in is refreshed once with
-// the refresh token; if that fails the user is signed out and the request is
+// the refresh token. Only when the server REJECTS the refresh token (401/400)
+// is the user signed out; a network error, cold start or bad deploy must not
+// sign anyone out and wipe their bets from the device. The request is then
 // retried without a token (public pages must keep working).
-let refreshing: Promise<string | null> | null = null;
-async function refreshAccess(): Promise<string | null> {
+type Refresh = { access: string | null; rejected: boolean };
+let refreshing: Promise<Refresh> | null = null;
+async function refreshAccess(): Promise<Refresh> {
   const refresh = typeof window !== 'undefined' ? localStorage.getItem('refresh') : null;
-  if (!refresh) return null;
+  if (!refresh) return { access: null, rejected: true };
   try {
     const { data } = await axios.post(`${api.defaults.baseURL}/auth/token/refresh/`, { refresh });
     localStorage.setItem('token', data.access);
     if (data.refresh) localStorage.setItem('refresh', data.refresh);
-    return data.access;
-  } catch {
-    return null;
+    return { access: data.access, rejected: false };
+  } catch (e: any) {
+    const status = e?.response?.status;
+    return { access: null, rejected: status === 401 || status === 400 };
   }
 }
 
@@ -53,14 +57,16 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && typeof window !== 'undefined' && !cfg._retried && !String(cfg.url || '').includes('/auth/token')) {
       cfg._retried = true;
       refreshing = refreshing || refreshAccess().finally(() => { refreshing = null; });
-      const access = await refreshing;
+      const { access, rejected } = await refreshing;
       if (access) {
         cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${access}` };
-      } else {
+      } else if (rejected) {
         localStorage.removeItem('token');
         localStorage.removeItem('refresh');
         window.dispatchEvent(new Event('bethope-signed-out'));
         if (cfg.headers) delete cfg.headers.Authorization;
+      } else {
+        return Promise.reject(error); // refresh failed for another reason: stay signed in, try later
       }
       return api.request(cfg);
     }
@@ -262,6 +268,11 @@ export const predictionsApi = {
 
   getStats: async (params?: { days?: number; model_family?: string }) => {
     const { data } = await api.get<PredictionStats>('/predictions/stats/', { params });
+    return data;
+  },
+
+  getStartingSoon: async (hours = 2) => {
+    const { data } = await api.get('/predictions/starting_soon/', { params: { hours } });
     return data;
   },
 

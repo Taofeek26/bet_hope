@@ -46,6 +46,7 @@ export const queryKeys = {
     valueBets: ['predictions', 'value-bets'] as const,
     stats: ['predictions', 'stats'] as const,
     dailyPicks: ['predictions', 'daily-picks'] as const,
+    startingSoon: ['predictions', 'starting-soon'] as const,
     modelInfo: ['predictions', 'model-info'] as const,
   },
 };
@@ -247,6 +248,14 @@ export function usePredictionStats(params?: { days?: number; model_family?: stri
   return useQuery({
     queryKey: [...queryKeys.predictions.stats, params],
     queryFn: () => predictionsApi.getStats(params),
+  });
+}
+
+export function useStartingSoon(hours = 2) {
+  return useQuery({
+    queryKey: [...queryKeys.predictions.startingSoon, hours],
+    queryFn: () => predictionsApi.getStartingSoon(hours),
+    refetchInterval: useAutoRefreshInterval(300000),
   });
 }
 

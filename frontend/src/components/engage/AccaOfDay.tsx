@@ -12,8 +12,8 @@ import { ShareButton } from './ShareButton';
 const RESULT_ICON: Record<string, string> = { won: '✅', lost: '❌', void: '➖' };
 
 /**
- * Acca of the day (Phase 6): the 3-4 strongest picks kicking off in the next
- * 36 hours, with the honest chance that ALL of them win, tracked every day.
+ * Acca of the day (Phase 6; mixed markets since Phase 8): the 3-4 strongest
+ * picks kicking off in the next 36 hours, with the honest chance that ALL of them win, tracked every day.
  */
 export function AccaOfDay() {
   const { settings } = useSettings();
@@ -49,13 +49,13 @@ export function AccaOfDay() {
         <div className="min-w-0">
           <h2 className="card-title">Acca of the day</h2>
           <p className="card-desc">
-            Strongest picks in the next 36 hours
+            Strongest picks in the next 36 hours, mixed markets
             {record?.settled ? ` · won ${record.won} of the last ${record.settled}` : ''}
           </p>
         </div>
       </div>
       {isLoading ? <LoadingSpinner /> : !acca ? (
-        <p className="text-sm text-text-muted py-4">No acca yet. One is built each morning when at least 3 picks of 55%+ kick off within 36 hours. During international breaks there may be none.</p>
+        <p className="text-sm text-text-muted py-4">No acca yet. One is built each morning when at least 3 matches with a 60%+ pick (result, double chance, GG/NG or over/under) kick off within 36 hours. During international breaks there may be none.</p>
       ) : (
         <>
           {!isToday && (

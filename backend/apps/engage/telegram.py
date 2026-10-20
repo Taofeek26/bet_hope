@@ -54,19 +54,17 @@ def post_acca(acca):
 
 def post_top_picks(now=None):
     from apps.matches.models import Match
-    from apps.predictions.models import Prediction
+    from apps.predictions.picks import TOP_PICK_PROB, picks_for, top_pick_queryset
     now = now or timezone.now()
-    picks = (Prediction.objects.filter(model_version__startswith='v2_', match__match_date=now.date(),
-                                       match__status=Match.Status.SCHEDULED, confidence_score__gte=0.55)
-             .select_related('match__home_team', 'match__away_team').order_by('-confidence_score')[:10])
+    picks = picks_for(top_pick_queryset(match_date=now.date(), status=Match.Status.SCHEDULED),
+                      min_prob=TOP_PICK_PROB)[:10]
     if not picks:
         return False
     e = html.escape
-    name = lambda p: {'HOME': p.match.home_team.name, 'AWAY': p.match.away_team.name}.get(p.recommended_outcome, 'Draw')
     lines = [f"<b>⚽ Top picks today · {now:%a %d %b}</b>"]
     lines += [f"• {e(p.match.home_team.name)} v {e(p.match.away_team.name)}"
               f"{' ' + p.match.kickoff_at.strftime('%H:%M UTC') if p.match.kickoff_at else ''}: "
-              f"<b>{e(name(p))}</b> {float(p.confidence_score) * 100:.0f}%" for p in picks]
+              f"<b>{e(pick['label'])}</b> {pick['probability'] * 100:.0f}%" for p, pick in picks]
     return _post(f'picks:{now.date()}', '\n'.join(lines))
 
 

@@ -37,6 +37,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* The SportyBet extension marks <html> before any page script runs.
+            If React later re-renders from the root it drops that attribute,
+            so remember it here, before React starts (see extensionVersion). */}
+        <script dangerouslySetInnerHTML={{ __html: 'window.__bethopeExt=document.documentElement.dataset.bethopeExt||null;' }} />
+      </head>
       <body className="font-sans antialiased">
         <Providers>
           <SettingsProvider>
