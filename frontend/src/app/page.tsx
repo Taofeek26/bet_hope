@@ -102,23 +102,30 @@ export default function HomePage() {
   }, [settings.defaultView, router]);
 
   // Calculate the selected date based on offset
-  const today = useMemo(() => {
+  // "Today" comes from the browser after it loads, never from the server:
+  // Vercel serves this page as rendered at build time, so a server-side date
+  // goes stale, the HTML stops matching, and React re-renders the whole page
+  // (which also wiped the SportyBet extension's marker on <html>).
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    return d;
+    setToday(d);
   }, []);
 
   const selectedDate = useMemo(() => {
+    if (!today) return null;
     const d = new Date(today);
     d.setDate(d.getDate() + selectedDateOffset);
     return d;
   }, [today, selectedDateOffset]);
 
-  const selectedDateStr = formatDateForAPI(selectedDate);
-  const selectedDateLabel = formatDateDisplay(selectedDate, today);
+  const selectedDateStr = selectedDate ? formatDateForAPI(selectedDate) : '';
+  const selectedDateLabel = selectedDate && today ? formatDateDisplay(selectedDate, today) : '';
 
   // Generate date options (today + 6 days) with availability data
   const dateOptions = useMemo(() => {
+    if (!today) return [];
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(today);
       d.setDate(d.getDate() + i);
@@ -215,7 +222,7 @@ export default function HomePage() {
               </div>
             </div>
             <Suspense fallback={<LoadingSection />}>
-              <DailyPicks date={selectedDateStr} />
+              {selectedDateStr ? <DailyPicks date={selectedDateStr} /> : <LoadingSection />}
             </Suspense>
           </div>
         </div>

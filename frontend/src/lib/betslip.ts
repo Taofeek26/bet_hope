@@ -62,3 +62,9 @@ export const useBetSlip = create<SlipState>()(
 
 export const isInSlip = (sel: SlipSelection[], matchId: number, key: string) =>
   sel.some((x) => x.matchId === matchId && x.key === key);
+
+/** Version of the SportyBet desktop extension if it is installed in this browser, else null. */
+export function extensionVersion(): string | null {
+  if (typeof window === 'undefined') return null;
+  return document.documentElement.dataset.bethopeExt || (window as any).__bethopeExt || null;
+}

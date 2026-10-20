@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Ticket, X, Copy, ExternalLink, Trash2, Check } from 'lucide-react';
-import { useBetSlip } from '@/lib/betslip';
+import { useBetSlip, extensionVersion } from '@/lib/betslip';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { BOOKMAKERS, bookmakerById } from '@/lib/bookmakers';
@@ -30,7 +30,7 @@ export function BetSlip() {
   useEffect(() => {
     setReady(true);
     // The desktop extension marks the page when it is installed.
-    const check = () => setExt(!!document.documentElement.dataset.bethopeExt);
+    const check = () => setExt(!!extensionVersion());
     setIsPhone(/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent));
     check();
     const t = setTimeout(check, 800);
@@ -75,7 +75,7 @@ export function BetSlip() {
   // The extension marks the page when it loads; check again whenever the
   // slip opens (e.g. after the extension was switched on and the page refreshed).
   useEffect(() => {
-    if (open) setExt(!!document.documentElement.dataset.bethopeExt);
+    if (open) setExt(!!extensionVersion());
   }, [open]);
 
   const loadOnSportyBet = () => {
