@@ -42,8 +42,6 @@ function selectionOf(pick: any) {
 
 export function DailyPicks({ date }: DailyPicksProps) {
   const { data, isLoading, error } = useDailyPicks(date ? { date } : undefined);
-  const { settings } = useSettings();
-  const { selections, toggle, setOpen } = useBetSlip();
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -60,7 +58,14 @@ export function DailyPicks({ date }: DailyPicksProps) {
     );
   }
 
-  const open = data.picks.filter((p: any) => !p.match.kickoff_at || new Date(p.match.kickoff_at) > new Date());
+  return <PickList picks={data.picks} />;
+}
+
+/** Pick cards with "Add all to slip" (top picks, starting soon). */
+export function PickList({ picks }: { picks: any[] }) {
+  const { settings } = useSettings();
+  const { selections, toggle, setOpen } = useBetSlip();
+  const open = picks.filter((p: any) => !p.match.kickoff_at || new Date(p.match.kickoff_at) > new Date());
   const missing = open.filter((p: any) => !isInSlip(selections, p.match.id, marketOf(p).key));
   const chance = open.reduce((a: number, p: any) => a * marketOf(p).probability, 1);
   const addAll = () => {
@@ -82,8 +87,8 @@ export function DailyPicks({ date }: DailyPicksProps) {
           </button>
         </div>
       )}
-      {data.picks.map((pick: any, index: number) => (
-        <PickCard key={index} pick={pick} />
+      {picks.map((pick: any) => (
+        <PickCard key={pick.match.id} pick={pick} />
       ))}
     </div>
   );

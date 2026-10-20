@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { DailyPicks } from '@/components/predictions/DailyPicks';
+import { StartingSoon } from '@/components/predictions/StartingSoon';
 import { UpcomingMatches } from '@/components/matches/UpcomingMatches';
 import { PredictionStats } from '@/components/predictions/PredictionStats';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -154,6 +155,9 @@ export default function HomePage() {
 
       {/* Stats Grid */}
       <DashboardStats />
+
+      {/* Matches about to start (next 2 hours), before the day's top picks */}
+      <StartingSoon />
 
 
       {/* Main Content Grid */}

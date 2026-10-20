@@ -271,6 +271,11 @@ export const predictionsApi = {
     return data;
   },
 
+  getStartingSoon: async (hours = 2) => {
+    const { data } = await api.get('/predictions/starting_soon/', { params: { hours } });
+    return data;
+  },
+
   getDailyPicks: async (params?: { date?: string }) => {
     const { data } = await api.get('/predictions/daily_picks/', { params });
     return data;
